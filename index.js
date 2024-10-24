@@ -23,6 +23,11 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Root route to handle the base URL '/'
+app.get('/', (req, res) => {
+  res.send('Welcome to the AI Procurement Backend!');
+});
+
 // Sample signup route
 app.post('/api/signup', (req, res) => {
   const { username, password } = req.body;
