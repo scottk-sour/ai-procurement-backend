@@ -5,6 +5,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
+const fs = require('fs');
+const path = require('path');
 
 // Import route files
 const authRoutes = require('./routes/authRoutes');
@@ -25,6 +27,13 @@ if (!PORT || !MONGODB_URI || !JWT_SECRET) {
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json()); // Parse incoming JSON payloads
 app.use(morgan('dev')); // Log HTTP requests
+
+// Ensure the 'uploads' directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // Fix for Mongoose deprecation warning
 mongoose.set('strictQuery', false);
@@ -54,27 +63,35 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Internal Server Error', error: err.message });
 });
 
-// Start the server
-const server = app.listen(PORT, () => {
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-});
-
-// Graceful shutdown function
-const shutdown = () => {
-    console.log('\n🛑 Shutting down server...');
-    server.close(() => {
-        console.log('✅ Server closed');
-        mongoose.connection.close(false, () => {
-            console.log('✅ MongoDB connection closed');
-            process.exit(0);
-        });
+// Start the server only if the database is connected
+mongoose.connection.once('open', () => {
+    const server = app.listen(PORT, () => {
+        console.log(`🚀 Server is running on http://localhost:${PORT}`);
     });
-};
 
-// Handle termination signals
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err.message);
-    shutdown();
+    // Graceful shutdown function
+    const shutdown = () => {
+        console.log('\n🛑 Shutting down server...');
+        server.close(() => {
+            console.log('✅ Server closed');
+            mongoose.connection.close(false, () => {
+                console.log('✅ MongoDB connection closed');
+                process.exit(0);
+            });
+        });
+    };
+
+    // Handle termination signals
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    process.on('uncaughtException', (err) => {
+        console.error('❌ Uncaught Exception:', err.message);
+        shutdown();
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (err) => {
+        console.error('❌ Unhandled Rejection:', err.message);
+        shutdown();
+    });
 });
