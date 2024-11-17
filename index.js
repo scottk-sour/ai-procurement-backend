@@ -11,8 +11,7 @@ const path = require('path');
 // Import route files
 const authRoutes = require('./routes/authRoutes');
 const vendorRoutes = require('./routes/vendorRoutes');
-const fileRoutes = require('./routes/fileRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes'); // Removed fileRoutes
 
 const app = express();
 
@@ -54,8 +53,8 @@ app.get('/', (req, res) => {
 // Route integrations
 app.use('/api/auth', authRoutes);           // Authentication routes
 app.use('/api/vendors', vendorRoutes);      // Vendor-related routes
-app.use('/api/files', fileRoutes);          // File handling routes
 app.use('/api/analytics', analyticsRoutes); // Analytics routes
+// Removed: app.use('/api/files', fileRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -8,8 +8,8 @@ const vendorSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     services: [String], // Array of services offered
+    uploads: [{ type: String }], // Array to store paths of uploaded files
     createdAt: { type: Date, default: Date.now }
-    // Add additional fields as needed
 });
 
 const Vendor = mongoose.model('Vendor', vendorSchema);
