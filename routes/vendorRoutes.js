@@ -3,15 +3,12 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const csv = require('csv-parser');
-const xlsx = require('xlsx');
-const fs = require('fs');
-const path = require('path');
 const vendorAuth = require('../middleware/vendorAuth');
 const Vendor = require('../models/Vendor');
-const Product = require('../models/Product');
+const fs = require('fs');
+const path = require('path');
 
-// Configure storage for vendor uploads (PDFs, images, etc.)
+// Configure storage for all uploads (PDFs, images, CSV, Excel)
 const storage = multer.diskStorage({
   destination: 'uploads/vendors/',
   filename: (req, file, cb) => {
@@ -21,20 +18,21 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 1024 * 1024 * 5 },
+  limits: { fileSize: 1024 * 1024 * 10 }, // Limit file size to 10MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv',
+      'image/jpeg',
+      'image/png'
+    ];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Invalid file type'), false);
+      return cb(new Error('Invalid file type. Only PDF, Excel, CSV, and images are allowed'), false);
     }
     cb(null, true);
   }
-});
-
-// Configure storage for product data uploads (CSV/Excel)
-const productUpload = multer({
-  dest: 'uploads/vendors/products/',
-  limits: { fileSize: 1024 * 1024 * 10 }
 });
 
 // Vendor Signup Route
@@ -77,7 +75,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Vendor File Upload Route (PDF, Images)
+// Unified Upload Route (PDF, Excel, CSV, Images)
 router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded or invalid file type' });
@@ -85,9 +83,12 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.vendorId);
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    // Save the file path in the vendor's uploads array
     vendor.uploads.push(req.file.path);
     await vendor.save();
-    res.status(200).json({ message: 'File uploaded successfully', file: req.file });
+
+    res.status(200).json({ message: 'File uploaded successfully', filePath: req.file.path });
   } catch (error) {
     console.error('Error uploading file:', error.message);
     res.status(500).json({ message: 'Internal server error' });
@@ -103,72 +104,6 @@ router.get('/profile', vendorAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching vendor profile:', error.message);
     res.status(500).json({ message: 'Internal server error' });
-  }
-});
-
-// Upload Products (CSV/Excel)
-router.post('/upload-products', vendorAuth, productUpload.single('file'), async (req, res) => {
-  console.log('Headers:', req.headers);
-  console.log('Vendor ID from token:', req.vendorId);
-
-  if (!req.file) {
-    return res.status(400).json({ message: 'No file uploaded' });
-  }
-
-  const vendorId = req.vendorId;
-  const filePath = path.join(__dirname, '..', req.file.path);
-  const products = [];
-
-  console.log('File Path:', filePath);
-  console.log('File MIME Type:', req.file.mimetype);
-
-  try {
-    if (req.file.mimetype === 'text/csv') {
-      console.log('Parsing CSV file...');
-      fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (row) => {
-          products.push({
-            vendorId,
-            productName: row.productName,
-            category: row.category,
-            description: row.description,
-            price: parseFloat(row.price),
-            features: row.features ? row.features.split(',') : []
-          });
-        })
-        .on('end', async () => {
-          await Product.insertMany(products);
-          res.status(200).json({ message: 'Products uploaded successfully (CSV)', products });
-        })
-        .on('error', (err) => {
-          console.error('Error reading CSV file:', err.message);
-          res.status(500).json({ message: 'Error parsing CSV file', error: err.message });
-        });
-
-    } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-      console.log('Parsing Excel file...');
-      const workbook = xlsx.readFile(filePath);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = xlsx.utils.sheet_to_json(worksheet);
-      rows.forEach(row => {
-        products.push({
-          vendorId,
-          productName: row.productName,
-          category: row.category,
-          description: row.description,
-          price: parseFloat(row.price),
-          features: row.features ? row.features.split(',') : []
-        });
-      });
-      await Product.insertMany(products);
-      res.status(200).json({ message: 'Products uploaded successfully (Excel)', products });
-    } else {
-      return res.status(400).json({ message: 'Unsupported file type' });
-    }
-  } catch (error) {
-    console.error('Error uploading products:', error.message);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
 

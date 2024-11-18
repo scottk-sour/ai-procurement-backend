@@ -1,68 +1,143 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const userAuth = require('../middleware/userAuth'); // Authentication middleware for users
-const QuoteRequest = require('../models/QuoteRequest'); // Import the QuoteRequest model
+const fs = require('fs');
+const path = require('path');
+const userAuth = require('../middleware/userAuth');
+const User = require('../models/User');
+const UserDocument = require('../models/UserDocument');
+require('dotenv').config();
 
-// Configure storage for user uploads
-const storage = multer.diskStorage({
-  destination: 'uploads/users/', // Folder to store user files
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
-  },
-});
-
-const upload = multer({ storage: storage });
+const { JWT_SECRET } = process.env;
 
 // ----------------------------------------------
-// Route 1: User File Upload
+// User Registration Route
 // ----------------------------------------------
-router.post('/upload', userAuth, upload.single('file'), (req, res) => {
+router.post('/signup', async (req, res) => {
+  const { name, email, password, company } = req.body;
+
+  // Validate required fields
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Name, email, and password are required' });
+  }
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded' });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
     }
-    res.status(200).json({
-      message: 'File uploaded successfully',
-      file: req.file,
-    });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({ name, email, password: hashedPassword, company });
+    await newUser.save();
+
+    res.status(201).json({ message: 'User registered successfully' });
   } catch (error) {
-    console.error('Error uploading user file:', error.message);
+    console.error('Error registering user:', error.message);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
 
 // ----------------------------------------------
-// Route 2: Submit a Quote Request
+// User Login Route
 // ----------------------------------------------
-router.post('/request-quote', userAuth, async (req, res) => {
-  const { productName, category, budget, features, description } = req.body;
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
 
   // Validate required fields
-  if (!productName || !category || !budget) {
-    return res.status(400).json({ message: 'Product name, category, and budget are required' });
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
   }
 
   try {
-    // Create a new quote request
-    const newRequest = new QuoteRequest({
-      userId: req.userId,
-      productName,
-      category,
-      budget,
-      features,
-      description,
-    });
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ message: 'Invalid email or password' });
+    }
 
-    // Save the quote request to the database
-    await newRequest.save();
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '4h' });
 
-    res.status(201).json({ message: 'Quote request submitted successfully', request: newRequest });
+    res.json({ token, userId: user._id, message: 'Login successful' });
   } catch (error) {
-    console.error('Error submitting quote request:', error.message);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error('Error during user login:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
-// Export the router
+// ----------------------------------------------
+// Configure Storage for User File Uploads
+// ----------------------------------------------
+const storage = multer.diskStorage({
+  destination: 'uploads/users/',
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PDF, Excel, and CSV are allowed'), false);
+    }
+    cb(null, true);
+  }
+});
+
+// ----------------------------------------------
+// User File Upload Route (Contracts and Bills)
+// ----------------------------------------------
+router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded or invalid file type' });
+  }
+
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Save file details to the database
+    const newDocument = new UserDocument({
+      userId: req.userId,
+      fileName: req.file.filename,
+      filePath: req.file.path,
+      uploadDate: new Date(),
+      documentType: req.body.documentType || 'contract'
+    });
+
+    await newDocument.save();
+
+    res.status(200).json({ 
+      message: 'File uploaded successfully', 
+      filePath: req.file.path 
+    });
+  } catch (error) {
+    console.error('Error uploading file:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// ----------------------------------------------
+// Fetch User Profile Route
+// ----------------------------------------------
+router.get('/profile', userAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.status(200).json({ user });
+  } catch (error) {
+    console.error('Error fetching user profile:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 module.exports = router;
