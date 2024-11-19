@@ -17,8 +17,6 @@ const { JWT_SECRET } = process.env;
 // ----------------------------------------------
 router.post('/signup', async (req, res) => {
   const { name, email, password, company } = req.body;
-
-  // Validate required fields
   if (!name || !email || !password) {
     return res.status(400).json({ message: 'Name, email, and password are required' });
   }
@@ -45,8 +43,6 @@ router.post('/signup', async (req, res) => {
 // ----------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-
-  // Validate required fields
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
@@ -70,7 +66,21 @@ router.post('/login', async (req, res) => {
 // Configure Storage for User File Uploads
 // ----------------------------------------------
 const storage = multer.diskStorage({
-  destination: 'uploads/users/',
+  destination: (req, file, cb) => {
+    const documentType = req.body.documentType;
+    let uploadPath = 'uploads/users/';
+
+    if (documentType === 'contract') {
+      uploadPath += 'contracts/';
+    } else if (documentType === 'bill') {
+      uploadPath += 'bills/';
+    } else {
+      uploadPath += 'others/';
+    }
+
+    fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
   filename: (req, file, cb) => {
     cb(null, Date.now() + '-' + file.originalname);
   }
@@ -101,25 +111,22 @@ router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
     return res.status(400).json({ message: 'No file uploaded or invalid file type' });
   }
 
+  const documentType = req.body.documentType || 'others';
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Save file details to the database
     const newDocument = new UserDocument({
       userId: req.userId,
       fileName: req.file.filename,
       filePath: req.file.path,
       uploadDate: new Date(),
-      documentType: req.body.documentType || 'contract'
+      documentType
     });
 
     await newDocument.save();
 
-    res.status(200).json({ 
-      message: 'File uploaded successfully', 
-      filePath: req.file.path 
-    });
+    res.status(200).json({ message: 'File uploaded successfully', filePath: req.file.path });
   } catch (error) {
     console.error('Error uploading file:', error.message);
     res.status(500).json({ message: 'Internal server error' });
