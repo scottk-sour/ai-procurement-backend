@@ -11,20 +11,21 @@ const path = require('path');
 // Import route files
 const authRoutes = require('./routes/authRoutes');
 const vendorRoutes = require('./routes/vendorRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
-const userRoutes = require('./routes/userRoutes'); // Added this line
+const userRoutes = require('./routes/userRoutes');
+const adminRoutes = require('./routes/adminRoutes'); // Added admin routes
+const analyticsRoutes = require('./routes/analyticsRoutes'); // Ensure this route file exists
 
 const app = express();
 
 // Validate required environment variables
-const { PORT, MONGODB_URI, JWT_SECRET } = process.env;
-if (!PORT || !MONGODB_URI || !JWT_SECRET) {
+const { PORT, MONGODB_URI, JWT_SECRET, ADMIN_JWT_SECRET } = process.env;
+if (!PORT || !MONGODB_URI || !JWT_SECRET || !ADMIN_JWT_SECRET) {
     console.error('❌ Missing required environment variables');
     process.exit(1);
 }
 
 // Middleware setup
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: 'http://localhost:3000', credentials: true })); // Adjust origin if necessary
 app.use(express.json()); // Parse incoming JSON payloads
 app.use(morgan('dev')); // Log HTTP requests
 
@@ -35,7 +36,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Fix for Mongoose deprecation warning
+// Fix for Mongoose deprecation warnings
 mongoose.set('strictQuery', false);
 
 // Connect to MongoDB
@@ -54,8 +55,9 @@ app.get('/', (req, res) => {
 // Route integrations
 app.use('/api/auth', authRoutes);           // Authentication routes
 app.use('/api/vendors', vendorRoutes);      // Vendor-related routes
+app.use('/api/users', userRoutes);          // User-related routes
+app.use('/api/admin', adminRoutes);         // Admin-related routes
 app.use('/api/analytics', analyticsRoutes); // Analytics routes
-app.use('/api/users', userRoutes);          // User-related routes (Added this line)
 
 // Global error handler
 app.use((err, req, res, next) => {
