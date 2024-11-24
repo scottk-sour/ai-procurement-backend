@@ -3,7 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User'); // Import User model
 const Vendor = require('../models/Vendor'); // Import Vendor model
-const QuoteRequest = require('../models/QuoteRequest'); // Import Quote model
+const QuoteRequest = require('../models/QuoteRequest'); // Import QuoteRequest model
 const UserDocument = require('../models/UserDocument'); // Import UserDocument model
 require('dotenv').config();
 
@@ -14,18 +14,18 @@ const adminAuth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1]; // Extract Bearer token
 
   if (!token) {
-    return res.status(401).json({ message: 'Access denied. No token provided.' });
+    return res.status(401).json({ status: 'error', message: 'Access denied. No token provided.' });
   }
 
   try {
     const decoded = jwt.verify(token, ADMIN_JWT_SECRET);
     if (decoded.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Not authorized.' });
+      return res.status(403).json({ status: 'error', message: 'Access denied. Not authorized.' });
     }
     next();
   } catch (error) {
     console.error('Token verification error:', error.message);
-    return res.status(400).json({ message: 'Invalid token.' });
+    return res.status(400).json({ status: 'error', message: 'Invalid token.' });
   }
 };
 
@@ -33,23 +33,20 @@ const adminAuth = (req, res, next) => {
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
 
-  // Validate input
   if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required' });
+    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
   }
 
-  // Check credentials
   if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
     try {
-      // Generate JWT token for admin
       const token = jwt.sign({ role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '2h' });
-      return res.status(200).json({ token, message: 'Login successful' });
+      return res.status(200).json({ status: 'success', token, message: 'Login successful.' });
     } catch (error) {
       console.error('Error generating token:', error.message);
-      return res.status(500).json({ message: 'Internal server error' });
+      return res.status(500).json({ status: 'error', message: 'Internal server error.' });
     }
   } else {
-    return res.status(401).json({ message: 'Invalid credentials' });
+    return res.status(401).json({ status: 'error', message: 'Invalid credentials.' });
   }
 });
 
@@ -57,10 +54,10 @@ router.post('/login', (req, res) => {
 router.get('/total-users', adminAuth, async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
-    res.status(200).json({ totalUsers });
+    res.status(200).json({ status: 'success', totalUsers });
   } catch (error) {
     console.error('Error fetching total users:', error.message);
-    res.status(500).json({ message: 'Error fetching total users' });
+    res.status(500).json({ status: 'error', message: 'Error fetching total users.' });
   }
 });
 
@@ -68,10 +65,10 @@ router.get('/total-users', adminAuth, async (req, res) => {
 router.get('/total-vendors', adminAuth, async (req, res) => {
   try {
     const totalVendors = await Vendor.countDocuments();
-    res.status(200).json({ totalVendors });
+    res.status(200).json({ status: 'success', totalVendors });
   } catch (error) {
     console.error('Error fetching total vendors:', error.message);
-    res.status(500).json({ message: 'Error fetching total vendors' });
+    res.status(500).json({ status: 'error', message: 'Error fetching total vendors.' });
   }
 });
 
@@ -79,10 +76,10 @@ router.get('/total-vendors', adminAuth, async (req, res) => {
 router.get('/total-quotes', adminAuth, async (req, res) => {
   try {
     const totalQuotes = await QuoteRequest.countDocuments();
-    res.status(200).json({ totalQuotes });
+    res.status(200).json({ status: 'success', totalQuotes });
   } catch (error) {
     console.error('Error fetching total quotes:', error.message);
-    res.status(500).json({ message: 'Error fetching total quotes' });
+    res.status(500).json({ status: 'error', message: 'Error fetching total quotes.' });
   }
 });
 
@@ -90,10 +87,32 @@ router.get('/total-quotes', adminAuth, async (req, res) => {
 router.get('/total-uploads', adminAuth, async (req, res) => {
   try {
     const totalUploads = await UserDocument.countDocuments();
-    res.status(200).json({ totalUploads });
+    res.status(200).json({ status: 'success', totalUploads });
   } catch (error) {
     console.error('Error fetching total uploads:', error.message);
-    res.status(500).json({ message: 'Error fetching total uploads' });
+    res.status(500).json({ status: 'error', message: 'Error fetching total uploads.' });
+  }
+});
+
+// Fetch detailed user list
+router.get('/users', adminAuth, async (req, res) => {
+  try {
+    const users = await User.find({}, 'name email company createdAt'); // Fetch specific fields
+    res.status(200).json({ status: 'success', data: users });
+  } catch (error) {
+    console.error('Error fetching users:', error.message);
+    res.status(500).json({ status: 'error', message: 'Error fetching users.' });
+  }
+});
+
+// Fetch detailed vendor list
+router.get('/vendors', adminAuth, async (req, res) => {
+  try {
+    const vendors = await Vendor.find({}, 'name email company services uploads createdAt'); // Fetch specific fields
+    res.status(200).json({ status: 'success', data: vendors });
+  } catch (error) {
+    console.error('Error fetching vendors:', error.message);
+    res.status(500).json({ status: 'error', message: 'Error fetching vendors.' });
   }
 });
 
