@@ -8,7 +8,7 @@ module.exports = async function (req, res, next) {
     // Extract token from the Authorization header
     const authHeader = req.header('Authorization');
     if (!authHeader) {
-      return res.status(401).json({ message: 'No token, authorization denied' });
+      return res.status(401).json({ message: 'No token provided, authorization denied' });
     }
 
     // Ensure the token is in the correct format: "Bearer <token>"
@@ -20,17 +20,20 @@ module.exports = async function (req, res, next) {
     // Verify the token using the secret key
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Check if it's a user token and proceed
-    if (decoded.userId) {
-      req.userId = decoded.userId; // Set req.userId for subsequent handlers
-      const user = await User.findById(req.userId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-      next(); // Proceed to the next middleware or route handler
-    } else {
-      return res.status(403).json({ message: 'Authorization denied for user' });
+    // Check if the token contains the user ID and is valid
+    if (!decoded || !decoded.userId) {
+      return res.status(403).json({ message: 'Invalid token, authorization denied' });
     }
+
+    // Fetch the user from the database
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found, authorization denied' });
+    }
+
+    // Attach user ID to the request object for further use
+    req.userId = decoded.userId;
+    next(); // Proceed to the next middleware or route handler
   } catch (err) {
     console.error('Token verification failed:', err.message);
     res.status(401).json({ message: 'Invalid or expired token' });

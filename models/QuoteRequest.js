@@ -1,16 +1,16 @@
-const mongoose = require('mongoose');
+const mongoose = require('mongoose'); // Import mongoose
 
-const quoteRequestSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  productName: { type: String, required: true },
-  category: { type: String, required: true },
-  budget: { type: Number, required: true },
-  features: [String],
-  description: { type: String },
-  createdAt: { type: Date, default: Date.now },
-  status: { type: String, default: 'pending' } // 'pending', 'completed'
-});
+const QuoteRequestSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  serviceType: { type: String, required: true },
+  quantity: { type: Number, required: true },
+  preferredVendor: { type: String, required: false },
+  deadline: { type: Date, required: true },
+  specialRequirements: { type: String, required: false },
+  budgetRange: { type: String, required: true },
+  category: { type: String, required: false },
+  productName: { type: String, required: false },
+  status: { type: String, default: 'Pending' },
+}, { timestamps: true }); // Add timestamps for createdAt and updatedAt
 
-const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);
-
-module.exports = QuoteRequest;
+module.exports = mongoose.model('QuoteRequest', QuoteRequestSchema);
