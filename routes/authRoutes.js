@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
 router.post('/register', async (req, res) => {
     const { email, password } = req.body;
 
-    // Check if email and password are provided
+    // Validate input
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
     }
@@ -29,7 +29,8 @@ router.post('/register', async (req, res) => {
         }
 
         // Hash the password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const salt = await bcrypt.genSalt(10); // Generate salt
+        const hashedPassword = await bcrypt.hash(password, salt);
 
         // Create a new user
         const newUser = new User({ email, password: hashedPassword });
@@ -46,7 +47,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
-    // Check if email and password are provided
+    // Validate input
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required' });
     }
@@ -65,9 +66,14 @@ router.post('/login', async (req, res) => {
         }
 
         // Generate a JWT token
-        const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign(
+            { id: user._id }, // Payload
+            JWT_SECRET,      // Secret
+            { expiresIn: '1h' } // Options
+        );
 
-        res.status(200).json({ message: 'Login successful', token });
+        // Send the token and user data
+        res.status(200).json({ message: 'Login successful', token, user: { id: user._id, email: user.email } });
     } catch (error) {
         console.error('Error logging in user:', error.message);
         res.status(500).json({ message: 'Internal server error' });
