@@ -4,7 +4,6 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const fs = require('fs');
-const path = require('path');
 const userAuth = require('../middleware/userAuth');
 const User = require('../models/User');
 const UserDocument = require('../models/UserDocument');
@@ -13,10 +12,53 @@ require('dotenv').config();
 const { JWT_SECRET } = process.env;
 
 // ----------------------------------------------
+// Configure Multer for File Uploads
+// ----------------------------------------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const documentType = req.body.documentType || 'others';
+    console.log('Multer received documentType:', documentType); // Debugging log
+
+    let uploadPath = 'uploads/users/';
+    if (documentType === 'contract') {
+      uploadPath += 'contracts/';
+    } else if (documentType === 'bill') {
+      uploadPath += 'bills/';
+    } else {
+      uploadPath += 'others/';
+    }
+
+    fs.mkdirSync(uploadPath, { recursive: true }); // Ensure the directory exists
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv',
+    ];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PDF, Excel, and CSV are allowed'), false);
+    }
+    cb(null, true);
+  },
+});
+
+// ----------------------------------------------
 // User Registration Route
 // ----------------------------------------------
 router.post('/signup', async (req, res) => {
   const { name, email, password, company } = req.body;
+
   if (!name || !email || !password) {
     return res.status(400).json({ message: 'Name, email, and password are required' });
   }
@@ -43,6 +85,7 @@ router.post('/signup', async (req, res) => {
 // ----------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
+
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
@@ -63,55 +106,18 @@ router.post('/login', async (req, res) => {
 });
 
 // ----------------------------------------------
-// Configure Storage for User File Uploads
-// ----------------------------------------------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const documentType = req.body.documentType;
-    let uploadPath = 'uploads/users/';
-
-    if (documentType === 'contract') {
-      uploadPath += 'contracts/';
-    } else if (documentType === 'bill') {
-      uploadPath += 'bills/';
-    } else {
-      uploadPath += 'others/';
-    }
-
-    fs.mkdirSync(uploadPath, { recursive: true });
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size to 5MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Invalid file type. Only PDF, Excel, and CSV are allowed'), false);
-    }
-    cb(null, true);
-  }
-});
-
-// ----------------------------------------------
-// User File Upload Route (Contracts and Bills)
+// User File Upload Route
 // ----------------------------------------------
 router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
+  console.log('Received documentType:', req.body.documentType); // Debugging log
+
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded or invalid file type' });
   }
 
   const documentType = req.body.documentType || 'others';
+  console.log('Saving to documentType folder:', documentType); // Debugging log
+
   try {
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -121,15 +127,19 @@ router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
       fileName: req.file.filename,
       filePath: req.file.path,
       uploadDate: new Date(),
-      documentType
+      documentType,
     });
 
     await newDocument.save();
 
-    res.status(200).json({ message: 'File uploaded successfully', filePath: req.file.path });
+    res.status(200).json({
+      message: 'File uploaded successfully',
+      filePath: req.file.path,
+      documentType: documentType,
+    });
   } catch (error) {
-    console.error('Error uploading file:', error.message);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error('Error during file upload:', error.message);
+    res.status(500).json({ message: 'Internal server error during file upload' });
   }
 });
 
@@ -139,7 +149,9 @@ router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
 router.get('/profile', userAuth, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
     res.status(200).json({ user });
   } catch (error) {
     console.error('Error fetching user profile:', error.message);
@@ -148,7 +160,20 @@ router.get('/profile', userAuth, async (req, res) => {
 });
 
 // ----------------------------------------------
-// Fetch All Users (for Admin Use)
+// Fetch Uploaded Files Route
+// ----------------------------------------------
+router.get('/uploaded-files', userAuth, async (req, res) => {
+  try {
+    const files = await UserDocument.find({ userId: req.userId });
+    res.status(200).json({ files });
+  } catch (error) {
+    console.error('Error fetching uploaded files:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// ----------------------------------------------
+// Fetch All Users (Admin Use)
 // ----------------------------------------------
 router.get('/', async (req, res) => {
   try {

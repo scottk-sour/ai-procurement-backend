@@ -1,21 +1,18 @@
-// middleware/vendorAuth.js
 const jwt = require('jsonwebtoken');
+const Vendor = require('../models/Vendor');
 
-module.exports = function (req, res, next) {
+module.exports = async function (req, res, next) {
   try {
-    // Extract token from the Authorization header
     const authHeader = req.header('Authorization');
     if (!authHeader) {
       return res.status(401).json({ message: 'No token provided. Authorization denied.' });
     }
 
-    // Ensure the token is in the correct format: "Bearer <token>"
     const token = authHeader.split(' ')[1];
     if (!token) {
       return res.status(401).json({ message: 'Malformed token. Authorization denied.' });
     }
 
-    // Verify the token using the secret key
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -28,10 +25,16 @@ module.exports = function (req, res, next) {
       return res.status(401).json({ message: 'Invalid token. Authorization denied.' });
     }
 
-    // Check if it's a vendor token and proceed
     if (decoded.vendorId) {
-      req.vendorId = decoded.vendorId; // Set req.vendorId for subsequent handlers
-      next(); // Proceed to the next middleware or route handler
+      // Check if vendor exists in the database
+      const vendor = await Vendor.findById(decoded.vendorId).select('-password');
+      if (!vendor) {
+        return res.status(404).json({ message: 'Vendor not found. Authorization denied.' });
+      }
+
+      req.vendorId = vendor.id;
+      req.vendor = vendor; // Optionally attach vendor object
+      next();
     } else {
       return res.status(403).json({ message: 'Authorization denied. Invalid vendor token.' });
     }

@@ -7,6 +7,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
+const expressFormData = require('express-form-data'); // Import express-form-data
 
 // Import route files
 const authRoutes = require('./routes/authRoutes');
@@ -29,6 +30,9 @@ if (!PORT || !MONGODB_URI || !JWT_SECRET || !ADMIN_JWT_SECRET) {
 app.use(cors({ origin: 'http://localhost:3000', credentials: true })); // Adjust origin if necessary
 app.use(express.json()); // Parse incoming JSON payloads
 app.use(morgan('dev')); // Log HTTP requests
+
+// Add express-form-data middleware
+app.use(expressFormData.parse()); // Parse form-data requests
 
 // Ensure the 'uploads' directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
