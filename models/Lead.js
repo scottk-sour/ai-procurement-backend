@@ -1,5 +1,4 @@
-// models/Lead.js
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const leadSchema = new mongoose.Schema({
   vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
@@ -16,4 +15,6 @@ const leadSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model('Lead', leadSchema);
+// Export the model as default
+const Lead = mongoose.model('Lead', leadSchema);
+export default Lead;

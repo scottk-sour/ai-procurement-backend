@@ -1,14 +1,16 @@
-const express = require('express');
-const router = express.Router();
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const multer = require('multer');
-const fs = require('fs');
-const userAuth = require('../middleware/userAuth');
-const User = require('../models/User');
-const UserDocument = require('../models/UserDocument');
-require('dotenv').config();
+import express from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import fs from 'fs';
+import User from '../models/User.js';
+import UserDocument from '../models/UserDocument.js';
+import userAuth from '../middleware/userAuth.js';
+import dotenv from 'dotenv';
 
+dotenv.config();
+
+const router = express.Router();
 const { JWT_SECRET } = process.env;
 
 // ----------------------------------------------
@@ -17,7 +19,6 @@ const { JWT_SECRET } = process.env;
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const documentType = req.body.documentType || 'others';
-    console.log('Multer received documentType:', documentType); // Debugging log
 
     let uploadPath = 'uploads/users/';
     if (documentType === 'contract') {
@@ -109,14 +110,11 @@ router.post('/login', async (req, res) => {
 // User File Upload Route
 // ----------------------------------------------
 router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
-  console.log('Received documentType:', req.body.documentType); // Debugging log
-
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded or invalid file type' });
   }
 
   const documentType = req.body.documentType || 'others';
-  console.log('Saving to documentType folder:', documentType); // Debugging log
 
   try {
     const user = await User.findById(req.userId);
@@ -185,4 +183,4 @@ router.get('/', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

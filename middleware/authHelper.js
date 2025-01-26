@@ -1,16 +1,22 @@
-const jwt = require('jsonwebtoken');
+import jwt from 'jsonwebtoken';
 
-exports.verifyToken = (authHeader, secret) => {
-  if (!authHeader) {
-    throw { status: 401, message: 'No token provided. Authorization denied.' };
+/**
+ * Verifies a JSON Web Token from the Authorization header.
+ *
+ * @param {string} authHeader - The Authorization header containing the token.
+ * @param {string} secret - The secret key used to verify the token.
+ * @returns {object} - The decoded token payload if verification is successful.
+ * @throws {object} - An error object with `status` and `message` properties.
+ */
+export const verifyToken = (authHeader, secret) => {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw { status: 401, message: 'Authorization denied. No or malformed token provided.' };
   }
 
   const token = authHeader.split(' ')[1];
-  if (!token) {
-    throw { status: 401, message: 'Malformed token. Authorization denied.' };
-  }
 
   try {
+    // Verify the token and return its payload
     return jwt.verify(token, secret);
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

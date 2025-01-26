@@ -1,8 +1,9 @@
-const express = require('express');
+import express from 'express';
+import QuoteRequest from '../models/QuoteRequest.js';
+import Vendor from '../models/Vendor.js'; // A model representing vendors
+import userAuth from '../middleware/userAuth.js'; // Authentication middleware
+
 const router = express.Router();
-const QuoteRequest = require('../models/QuoteRequest'); 
-const Vendor = require('../models/Vendor'); // A model representing vendors
-const userAuth = require('../middleware/userAuth'); // Authentication middleware
 
 // Route to handle quote submission
 router.post('/submit-request', userAuth, async (req, res) => {
@@ -25,38 +26,38 @@ router.post('/submit-request', userAuth, async (req, res) => {
 
     // Create a new quote request document
     const newQuoteRequest = new QuoteRequest({
-      userId: req.userId, // from userAuth middleware
+      userId: req.userId, // `userId` added via userAuth middleware
       serviceType,
       quantity,
       preferredVendor,
       deadline,
       specialRequirements,
       budgetRange,
-      category: category || 'General',
+      category: category || 'General', // Default to "General" if no category is provided
       productName: productName || null,
       status: 'Pending',
     });
 
     await newQuoteRequest.save();
 
-    // Now fetch vendors that match the serviceType (and possibly other criteria)
-    let query = { servicesOffered: serviceType }; 
-    // Adjust the query fields based on how you store vendor data
+    // Query vendors that match the serviceType
+    let query = { services: serviceType };
+
+    // If a preferredVendor is specified, include it in the query
     if (preferredVendor) {
       query = { ...query, name: preferredVendor };
     }
 
+    // Fetch vendors that match the query
     const allVendors = await Vendor.find(query);
 
-    // If you need to pick three vendors, just take the first three or pick them randomly.
-    // Here, we just take the first three for simplicity.
+    // Select up to three vendors (randomly or by any logic)
     const selectedVendors = allVendors.slice(0, 3);
 
-    // Generate quotes. How you do this depends on your business logic.
-    // For example, each vendor might have a basePrice or pricing formula.
-    const quotes = selectedVendors.map(vendor => {
-      const basePrice = vendor.basePrice || 100; // Example field
-      const totalCost = basePrice * quantity; // Simple calculation example
+    // Generate quotes for the selected vendors
+    const quotes = selectedVendors.map((vendor) => {
+      const basePrice = vendor.basePrice || 100; // Example: Default base price
+      const totalCost = basePrice * quantity; // Simple calculation
       return {
         vendorName: vendor.name,
         price: totalCost,
@@ -70,10 +71,10 @@ router.post('/submit-request', userAuth, async (req, res) => {
     }
 
     // Return the quote request ID along with the generated quotes
-    res.status(201).json({ 
-      message: 'Quote request submitted successfully', 
+    res.status(201).json({
+      message: 'Quote request submitted successfully',
       quoteId: newQuoteRequest._id,
-      quotes: quotes
+      quotes,
     });
   } catch (error) {
     console.error('Error submitting quote request:', error.message);
@@ -81,4 +82,4 @@ router.post('/submit-request', userAuth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

@@ -1,38 +1,45 @@
-// Load environment variables from .env file
-require('dotenv').config();
-
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const morgan = require('morgan');
-const fs = require('fs');
-const path = require('path');
-const expressFormData = require('express-form-data'); // Import express-form-data
+import 'dotenv/config'; // Automatically loads environment variables from .env
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import morgan from 'morgan';
+import fs from 'fs';
+import path from 'path';
+import expressFormData from 'express-form-data';
+import { fileURLToPath } from 'url';
 
 // Import route files
-const authRoutes = require('./routes/authRoutes');
-const vendorRoutes = require('./routes/vendorRoutes');
-const userRoutes = require('./routes/userRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
-const submitRequestRoutes = require('./routes/submitRequestRoutes'); // Ensure this route file exists
+import authRoutes from './routes/authRoutes.js';
+import vendorRoutes from './routes/vendorRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import submitRequestRoutes from './routes/submitRequestRoutes.js';
+import quoteRoutes from './routes/quoteRoutes.js';
 
 const app = express();
 
-// Validate required environment variables
-const { PORT, MONGODB_URI, JWT_SECRET, ADMIN_JWT_SECRET } = process.env;
-if (!PORT || !MONGODB_URI || !JWT_SECRET || !ADMIN_JWT_SECRET) {
-  console.error('❌ Missing required environment variables');
+// Handling __dirname and __filename in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Destructure environment variables
+const {
+  PORT = 5000, // Default to 5000 if not provided
+  MONGODB_URI,
+  JWT_SECRET,
+} = process.env;
+
+// Check environment variables
+if (!MONGODB_URI || !JWT_SECRET) {
+  console.error('❌ Missing required environment variables (MONGODB_URI, JWT_SECRET)');
   process.exit(1);
 }
 
 // Middleware setup
-app.use(cors({ origin: 'http://localhost:3000', credentials: true })); // Adjust origin if necessary
-app.use(express.json()); // Parse incoming JSON payloads
-app.use(morgan('dev')); // Log HTTP requests
-
-// Add express-form-data middleware
-app.use(expressFormData.parse()); // Parse form-data requests
+app.use(cors({ origin: 'http://localhost:3000', credentials: true })); // Adjust origin as needed
+app.use(express.json()); // Parse JSON payloads
+app.use(morgan('dev')); // Log HTTP requests in the console
+app.use(expressFormData.parse()); // Parse form-data
 
 // Ensure the 'uploads' directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -41,37 +48,38 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir)); // Serve uploaded files
 
-// Fix for Mongoose deprecation warnings
+// Fix Mongoose deprecation warnings
 mongoose.set('strictQuery', false);
 
 // Connect to MongoDB
-mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('✅ Connected to MongoDB'))
+mongoose
+  .connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('✅ Connected to MongoDB:', mongoose.connection.name))
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);
-    process.exit(1);
+    process.exit(1); // Exit the process if the DB connection fails
   });
 
-// Root route for health check
+// Health-check route
 app.get('/', (req, res) => {
   res.send('🚀 AI Procurement Backend is running!');
 });
 
-// Route integrations
-app.use('/api/auth', authRoutes);            // Authentication routes
-app.use('/api/vendors', vendorRoutes);       // Vendor-related routes
-app.use('/api/users', userRoutes);           // User-related routes
-app.use('/api/admin', adminRoutes);          // Admin-related routes
-app.use('/api/analytics', analyticsRoutes);  // Analytics routes
-app.use('/api', submitRequestRoutes);        // Quote submission routes
+// Register API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/vendors', vendorRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/quotes', quoteRoutes);
+app.use('/api/submit-request', submitRequestRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Global Error:', err.message);
-  res.status(500).json({ message: 'Internal Server Error', error: err.message });
+  res.status(500).json({ message: 'Internal server error', error: err.message });
 });
 
-// Start the server only if the database is connected
+// Start the server once the DB is ready
 mongoose.connection.once('open', () => {
   const server = app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
@@ -89,15 +97,13 @@ mongoose.connection.once('open', () => {
     });
   };
 
-  // Handle termination signals
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  // Handle process termination signals
+  process.on('SIGINT', shutdown); // Ctrl+C
+  process.on('SIGTERM', shutdown); // Termination signal
   process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err.message);
     shutdown();
   });
-
-  // Handle unhandled promise rejections
   process.on('unhandledRejection', (err) => {
     console.error('❌ Unhandled Rejection:', err.message);
     shutdown();

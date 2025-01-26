@@ -1,17 +1,16 @@
-// /models/Product.js
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const productSchema = new mongoose.Schema({
-  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
+  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
   productName: { type: String, required: true },
   category: { type: String, required: true },
   description: { type: String },
   price: { type: Number, required: true },
   features: [String], // Array of features
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 
-// Create a model from the schema
+// Create and export the model
 const Product = mongoose.model('Product', productSchema);
 
-module.exports = Product;
+export default Product;
