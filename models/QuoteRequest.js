@@ -31,7 +31,7 @@ const quoteRequestSchema = new mongoose.Schema({
   category: { 
     type: String, 
     default: 'General' 
-  }, // Category of the request (default to "General")
+  }, // Category (default "General")
   productName: { 
     type: String 
   }, // Optional product name
@@ -39,13 +39,12 @@ const quoteRequestSchema = new mongoose.Schema({
     type: String, 
     enum: ['Pending', 'In Progress', 'Completed', 'Cancelled'], 
     default: 'Pending' 
-  }, // Status of the quote request
+  }, // Request status
   createdAt: { 
     type: Date, 
     default: Date.now 
-  }, // Timestamp of the request
+  }, // Timestamp
 });
 
-// Create and export the model
 const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);
 export default QuoteRequest;

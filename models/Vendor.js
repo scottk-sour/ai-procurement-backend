@@ -39,13 +39,18 @@ const vendorSchema = new mongoose.Schema({
   },
   pricing: {
     type: Map,
-    of: Number, // Pricing for services (e.g., "CCTV": 500)
+    of: Number, // e.g. { "CCTV": 500 }
   },
   uploads: [
     {
-      fileName: { type: String, trim: true },
-      filePath: { type: String, trim: true },
+      fileName: { type: String, required: true, trim: true },
+      filePath: { type: String, required: true, trim: true },
       uploadDate: { type: Date, default: Date.now },
+      fileType: {
+        type: String,
+        enum: ['pdf', 'csv', 'excel', 'image'],
+        required: true,
+      },
     },
   ],
   location: {
@@ -71,7 +76,7 @@ const vendorSchema = new mongoose.Schema({
   },
 });
 
-// Pre-save hook for validation
+// Pre-save hook for additional validation
 vendorSchema.pre('save', function (next) {
   if (!this.services || this.services.length === 0) {
     return next(new Error('At least one service must be provided.'));
@@ -82,11 +87,30 @@ vendorSchema.pre('save', function (next) {
   next();
 });
 
-// Custom method to get active services
+// Instance method to get active services
 vendorSchema.methods.getActiveServices = function () {
   return this.services.filter((service) => validServices.includes(service));
 };
 
-// Export the Vendor model
+// Instance method to add an uploaded file
+vendorSchema.methods.addUpload = async function (fileName, filePath, fileType) {
+  if (!['pdf', 'csv', 'excel', 'image'].includes(fileType)) {
+    throw new Error('Invalid file type.');
+  }
+  this.uploads.push({
+    fileName,
+    filePath,
+    fileType,
+    uploadDate: new Date(),
+  });
+  await this.save();
+};
+
+// Instance method to remove an uploaded file by its ID
+vendorSchema.methods.removeUpload = async function (fileId) {
+  this.uploads = this.uploads.filter((upload) => upload._id.toString() !== fileId);
+  await this.save();
+};
+
 const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;

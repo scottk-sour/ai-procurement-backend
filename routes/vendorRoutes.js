@@ -15,8 +15,17 @@ import Lead from '../models/Lead.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
-
 const router = express.Router();
+
+// Helper function to determine fileType from file extension
+const getFileType = (file) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ext === '.pdf') return 'pdf';
+  if (ext === '.csv') return 'csv';
+  if (ext === '.xls' || ext === '.xlsx') return 'excel';
+  if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) return 'image';
+  return 'unknown';
+};
 
 // ----------------------------------------------
 // Configure Multer for File Uploads
@@ -47,7 +56,7 @@ const upload = multer({
       'image/png',
     ];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Invalid file type. Only PDF, Excel, CSV, and images are allowed.'), false);
+      return cb(new Error('Invalid file type. Only PDF, Excel, CSV, and images are allowed.'));
     }
     cb(null, true);
   },
@@ -70,7 +79,7 @@ router.post(
         const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
         return services.every((service) => validServices.includes(service));
       })
-      .withMessage('Invalid services provided'),
+      .withMessage('Invalid services provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -92,7 +101,7 @@ router.post(
       await newVendor.save();
       res.status(201).json({ message: 'Vendor registered successfully.' });
     } catch (error) {
-      console.error('Error registering vendor:', error);
+      console.error('Error registering vendor:', error.message);
       res.status(500).json({ message: 'Internal server error.' });
     }
   }
@@ -103,22 +112,64 @@ router.post(
 // ----------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required.' });
   }
-
   try {
     const vendor = await Vendor.findOne({ email });
     if (!vendor || !(await bcrypt.compare(password, vendor.password))) {
       return res.status(400).json({ message: 'Invalid email or password.' });
     }
-
     const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, { expiresIn: '4h' });
     res.json({ token, vendorId: vendor._id, message: 'Login successful.' });
   } catch (error) {
-    console.error('Error during vendor login:', error);
+    console.error('Error during vendor login:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+// ----------------------------------------------
+// Vendor Upload Route
+// ----------------------------------------------
+router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
+  try {
+    console.log('Request File:', req.file);
+    console.log('Vendor ID:', req.vendorId);
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    const fileType = getFileType(req.file);
+    console.log('Computed fileType:', fileType);
+    if (fileType === 'unknown') {
+      return res.status(400).json({ message: 'Unsupported file type.' });
+    }
+
+    const vendorId = req.vendorId;
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found.' });
+    }
+
+    const newUpload = {
+      fileName: req.file.filename,
+      filePath: req.file.path,
+      uploadDate: new Date(),
+      fileType: fileType,
+    };
+
+    vendor.uploads.push(newUpload);
+    await vendor.save();
+
+    res.status(200).json({
+      message: 'File uploaded successfully.',
+      upload: newUpload,
+      vendor: vendor,
+    });
+  } catch (error) {
+    console.error('Error during file upload:', error.message);
+    res.status(500).json({ message: 'Internal server error during file upload.', error: error.message });
   }
 });
 
@@ -162,8 +213,8 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
     );
 
     const leads = await Lead.find({ vendor: vendorId }).lean();
-    const vendor = await Vendor.findById(vendorId);
-    const uploads = vendor?.uploads || [];
+    const vendorData = await Vendor.findById(vendorId);
+    const uploads = vendorData?.uploads || [];
 
     res.status(200).json({
       kpis: {
@@ -177,7 +228,7 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
       uploads,
     });
   } catch (error) {
-    console.error('Error fetching dashboard data:', error);
+    console.error('Error fetching dashboard data:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });

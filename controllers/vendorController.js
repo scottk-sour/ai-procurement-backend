@@ -1,95 +1,236 @@
+import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import mongoose from 'mongoose';
+import { body, validationResult } from 'express-validator';
+import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
+import QuoteRequest from '../models/QuoteRequest.js';
+import Listing from '../models/Listing.js';
+import Order from '../models/Order.js';
+import Lead from '../models/Lead.js';
+import dotenv from 'dotenv';
 
-// Vendor Signup
-export const signup = async (req, res) => {
-  const { name, company, email, password, services } = req.body;
+dotenv.config();
+const router = express.Router();
 
-  // Validate input
-  if (!name || !company || !email || !password || !services) {
-    return res.status(400).json({ message: 'All fields are required.' });
-  }
-
-  try {
-    // Check for existing vendor
-    const existingVendor = await Vendor.findOne({ email });
-    if (existingVendor) {
-      return res
-        .status(400)
-        .json({ message: 'Vendor with this email already exists.' });
-    }
-
-    // Validate services
-    const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
-    const isValidService = services.every((service) =>
-      validServices.includes(service)
-    );
-
-    if (!isValidService) {
-      return res.status(400).json({
-        message: 'Invalid services provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.',
-      });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create and save new vendor
-    const newVendor = new Vendor({
-      name,
-      company,
-      email,
-      password: hashedPassword,
-      services,
-    });
-
-    const savedVendor = await newVendor.save();
-
-    return res.status(201).json({
-      message: 'Vendor registered successfully.',
-      vendor: { id: savedVendor._id, name: savedVendor.name, email: savedVendor.email },
-    });
-  } catch (error) {
-    console.error('Error in signup:', error);
-    return res.status(500).json({ message: 'Internal server error.' });
-  }
+// Helper function to determine fileType from file extension
+const getFileType = (file) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ext === '.pdf') return 'pdf';
+  if (ext === '.csv') return 'csv';
+  if (ext === '.xls' || ext === '.xlsx') return 'excel';
+  if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) return 'image';
+  return 'unknown';
 };
 
-// Vendor Login
-export const login = async (req, res) => {
-  const { email, password } = req.body;
+// ----------------------------------------------
+// Configure Multer for File Uploads
+// ----------------------------------------------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/vendors/';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
 
-  // Validate input
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv',
+      'image/jpeg',
+      'image/png',
+    ];
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Only PDF, Excel, CSV, and images are allowed.'));
+    }
+    cb(null, true);
+  },
+});
+
+// ----------------------------------------------
+// Vendor Signup Route
+// ----------------------------------------------
+router.post(
+  '/signup',
+  [
+    body('name').notEmpty().withMessage('Name is required'),
+    body('company').notEmpty().withMessage('Company name is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('services')
+      .isArray({ min: 1 })
+      .withMessage('At least one service must be provided')
+      .custom((services) => {
+        const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
+        return services.every((service) => validServices.includes(service));
+      })
+      .withMessage('Invalid services provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, company, email, password, services } = req.body;
+
+    try {
+      const existingVendor = await Vendor.findOne({ email });
+      if (existingVendor) {
+        return res.status(400).json({ message: 'Vendor with this email already exists.' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newVendor = new Vendor({ name, company, email, password: hashedPassword, services });
+
+      await newVendor.save();
+      res.status(201).json({ message: 'Vendor registered successfully.' });
+    } catch (error) {
+      console.error('Error registering vendor:', error.message);
+      res.status(500).json({ message: 'Internal server error.' });
+    }
+  }
+);
+
+// ----------------------------------------------
+// Vendor Login Route
+// ----------------------------------------------
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required.' });
   }
-
   try {
-    // Find vendor by email
     const vendor = await Vendor.findOne({ email });
+    if (!vendor || !(await bcrypt.compare(password, vendor.password))) {
+      return res.status(400).json({ message: 'Invalid email or password.' });
+    }
+    const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, { expiresIn: '4h' });
+    res.json({ token, vendorId: vendor._id, message: 'Login successful.' });
+  } catch (error) {
+    console.error('Error during vendor login:', error.message);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+// ----------------------------------------------
+// Vendor Upload Route
+// ----------------------------------------------
+router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
+  try {
+    console.log('Request File:', req.file);
+    console.log('Vendor ID:', req.vendorId);
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded.' });
+    }
+
+    // Determine fileType based on the file's original name
+    const fileType = getFileType(req.file);
+    if (fileType === 'unknown') {
+      return res.status(400).json({ message: 'Unsupported file type.' });
+    }
+
+    const vendorId = req.vendorId;
+    const vendor = await Vendor.findById(vendorId);
     if (!vendor) {
-      return res.status(400).json({ message: 'Invalid email or password.' });
+      return res.status(404).json({ message: 'Vendor not found.' });
     }
 
-    // Compare password
-    const isMatch = await bcrypt.compare(password, vendor.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email or password.' });
-    }
+    const newUpload = {
+      fileName: req.file.filename,
+      filePath: req.file.path,
+      uploadDate: new Date(),
+      fileType: fileType,
+    };
 
-    // Generate JWT token
-    const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, {
-      expiresIn: '1d', // Token expires in 1 day
-    });
+    vendor.uploads.push(newUpload);
+    await vendor.save();
 
-    return res.status(200).json({
-      token,
-      vendor: { id: vendor._id, name: vendor.name, email: vendor.email },
-      message: 'Login successful.',
+    res.status(200).json({
+      message: 'File uploaded successfully.',
+      upload: newUpload,
+      vendor: vendor,
     });
   } catch (error) {
-    console.error('Error in login:', error);
-    return res.status(500).json({ message: 'Internal server error.' });
+    console.error('Error during file upload:', error.message);
+    res.status(500).json({ message: 'Internal server error during file upload.', error: error.message });
   }
-};
+});
+
+// ----------------------------------------------
+// Vendor Dashboard Route
+// ----------------------------------------------
+router.get('/dashboard', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+
+    const totalRevenue = await QuoteRequest.aggregate([
+      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
+      { $group: { _id: null, total: { $sum: '$quoteValue' } } },
+    ]);
+
+    const activeListings = await Listing.countDocuments({ vendor: vendorId, isActive: true });
+    const totalOrders = await Order.countDocuments({ vendor: vendorId });
+
+    const revenueData = await QuoteRequest.aggregate([
+      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+          revenue: { $sum: '$quoteValue' },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const quoteFunnelData = await QuoteRequest.aggregate([
+      { $match: { vendor: mongoose.Types.ObjectId(vendorId) } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+
+    const formattedQuoteFunnelData = quoteFunnelData.reduce(
+      (acc, item) => {
+        acc[item._id] = item.count || 0;
+        return acc;
+      },
+      { created: 0, pending: 0, won: 0, lost: 0 }
+    );
+
+    const leads = await Lead.find({ vendor: vendorId }).lean();
+    const vendorData = await Vendor.findById(vendorId);
+    const uploads = vendorData?.uploads || [];
+
+    res.status(200).json({
+      kpis: {
+        totalRevenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
+        activeListings,
+        totalOrders,
+      },
+      revenueData,
+      quoteFunnelData: formattedQuoteFunnelData,
+      leads,
+      uploads,
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error.message);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+export default router;
