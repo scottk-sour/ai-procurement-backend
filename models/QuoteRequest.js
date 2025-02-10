@@ -1,50 +1,15 @@
 import mongoose from 'mongoose';
 
-const quoteRequestSchema = new mongoose.Schema({
-  userId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
-    required: true 
-  }, // Reference to the user making the request
-  serviceType: { 
-    type: String, 
-    required: true 
-  }, // Type of service requested
-  quantity: { 
-    type: Number, 
-    required: true 
-  }, // Quantity of items or services requested
-  preferredVendor: { 
-    type: String 
-  }, // Optional preferred vendor name
-  deadline: { 
-    type: Date, 
-    required: true 
-  }, // Deadline for the quote request
-  specialRequirements: { 
-    type: String 
-  }, // Optional special requirements
-  budgetRange: { 
-    type: String, 
-    required: true 
-  }, // Budget range for the request
-  category: { 
-    type: String, 
-    default: 'General' 
-  }, // Category (default "General")
-  productName: { 
-    type: String 
-  }, // Optional product name
-  status: { 
-    type: String, 
-    enum: ['Pending', 'In Progress', 'Completed', 'Cancelled'], 
-    default: 'Pending' 
-  }, // Request status
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
-  }, // Timestamp
-});
+const quoteRequestSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    serviceType: { type: String, required: true },
+    budgetRange: { type: Number, required: true },
+    specialRequirements: { type: String, required: true },
+    status: { type: String, default: 'Pending' },
+    preferredVendor: { type: String },
+  },
+  { timestamps: true }
+);
 
-const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);
-export default QuoteRequest;
+export const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);

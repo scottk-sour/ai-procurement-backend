@@ -1,8 +1,10 @@
+// routes/adminRoutes.js
+
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
-import QuoteRequest from '../models/QuoteRequest.js';
+import { QuoteRequest } from '../models/QuoteRequest.js'; // Use named import
 import UserDocument from '../models/UserDocument.js';
 import 'dotenv/config';
 

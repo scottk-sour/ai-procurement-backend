@@ -8,16 +8,14 @@ import mongoose from 'mongoose';
 import { body, validationResult } from 'express-validator';
 import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
-import QuoteRequest from '../models/QuoteRequest.js';
-import Listing from '../models/Listing.js';
-import Order from '../models/Order.js';
-import Lead from '../models/Lead.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 const router = express.Router();
 
-// Helper function to determine fileType from file extension
+// -------------------------------------------------
+// 🔹 Helper: Get File Type from Extension
+// -------------------------------------------------
 const getFileType = (file) => {
   const ext = path.extname(file.originalname).toLowerCase();
   if (ext === '.pdf') return 'pdf';
@@ -27,9 +25,9 @@ const getFileType = (file) => {
   return 'unknown';
 };
 
-// ----------------------------------------------
-// Configure Multer for File Uploads
-// ----------------------------------------------
+// -------------------------------------------------
+// 🔹 Configure Multer for File Uploads
+// -------------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = 'uploads/vendors/';
@@ -38,8 +36,30 @@ const storage = multer.diskStorage({
     }
     cb(null, dir);
   },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+  filename: async (req, file, cb) => {
+    try {
+      const vendorId = req.vendorId;
+      const vendor = await Vendor.findById(vendorId);
+      if (!vendor) {
+        return cb(new Error('Vendor not found'));
+      }
+
+      // 🔹 Clean Company Name (Remove Spaces & Special Characters)
+      const companyName = vendor.company.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
+
+      // 🔹 Define File Path
+      const newFileName = `${companyName}${path.extname(file.originalname)}`;
+      const filePath = path.join('uploads/vendors', newFileName);
+
+      // 🔹 Delete Old File with Same Name
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      cb(null, newFileName);
+    } catch (error) {
+      cb(error);
+    }
   },
 });
 
@@ -62,9 +82,9 @@ const upload = multer({
   },
 });
 
-// ----------------------------------------------
-// Vendor Signup Route
-// ----------------------------------------------
+// -------------------------------------------------
+// 🔹 Vendor Signup Route
+// -------------------------------------------------
 router.post(
   '/signup',
   [
@@ -72,14 +92,6 @@ router.post(
     body('company').notEmpty().withMessage('Company name is required'),
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('services')
-      .isArray({ min: 1 })
-      .withMessage('At least one service must be provided')
-      .custom((services) => {
-        const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
-        return services.every((service) => validServices.includes(service));
-      })
-      .withMessage('Invalid services provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -87,7 +99,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, company, email, password, services } = req.body;
+    const { name, company, email, password } = req.body;
 
     try {
       const existingVendor = await Vendor.findOne({ email });
@@ -96,20 +108,20 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newVendor = new Vendor({ name, company, email, password: hashedPassword, services });
+      const newVendor = new Vendor({ name, company, email, password: hashedPassword });
 
       await newVendor.save();
       res.status(201).json({ message: 'Vendor registered successfully.' });
     } catch (error) {
-      console.error('Error registering vendor:', error.message);
+      console.error('❌ Error registering vendor:', error.message);
       res.status(500).json({ message: 'Internal server error.' });
     }
   }
 );
 
-// ----------------------------------------------
-// Vendor Login Route
-// ----------------------------------------------
+// -------------------------------------------------
+// 🔹 Vendor Login Route
+// -------------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -123,27 +135,18 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, { expiresIn: '4h' });
     res.json({ token, vendorId: vendor._id, message: 'Login successful.' });
   } catch (error) {
-    console.error('Error during vendor login:', error.message);
+    console.error('❌ Error during vendor login:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
 
-// ----------------------------------------------
-// Vendor Upload Route
-// ----------------------------------------------
+// -------------------------------------------------
+// 🔹 Vendor File Upload Route
+// -------------------------------------------------
 router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   try {
-    console.log('Request File:', req.file);
-    console.log('Vendor ID:', req.vendorId);
-
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded.' });
-    }
-
-    const fileType = getFileType(req.file);
-    console.log('Computed fileType:', fileType);
-    if (fileType === 'unknown') {
-      return res.status(400).json({ message: 'Unsupported file type.' });
     }
 
     const vendorId = req.vendorId;
@@ -152,11 +155,20 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found.' });
     }
 
+    const fileType = getFileType(req.file);
+    if (fileType === 'unknown') {
+      return res.status(400).json({ message: 'Unsupported file type.' });
+    }
+
+    // 🔹 Remove old file entry from MongoDB if it exists
+    vendor.uploads = vendor.uploads.filter(upload => upload.fileType !== fileType);
+
+    // 🔹 Add New File Details
     const newUpload = {
       fileName: req.file.filename,
       filePath: req.file.path,
       uploadDate: new Date(),
-      fileType: fileType,
+      fileType,
     };
 
     vendor.uploads.push(newUpload);
@@ -165,70 +177,34 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
     res.status(200).json({
       message: 'File uploaded successfully.',
       upload: newUpload,
-      vendor: vendor,
     });
   } catch (error) {
     console.error('Error during file upload:', error.message);
-    res.status(500).json({ message: 'Internal server error during file upload.', error: error.message });
+    res.status(500).json({ message: 'Internal server error during file upload.' });
   }
 });
 
-// ----------------------------------------------
-// Vendor Dashboard Route
-// ----------------------------------------------
-router.get('/dashboard', vendorAuth, async (req, res) => {
+// -------------------------------------------------
+// 🔹 File Download Route
+// -------------------------------------------------
+router.get('/download/:fileName', vendorAuth, async (req, res) => {
   try {
     const vendorId = req.vendorId;
+    const fileName = req.params.fileName;
+    const vendor = await Vendor.findById(vendorId);
 
-    const totalRevenue = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
-      { $group: { _id: null, total: { $sum: '$quoteValue' } } },
-    ]);
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found.' });
+    }
 
-    const activeListings = await Listing.countDocuments({ vendor: vendorId, isActive: true });
-    const totalOrders = await Order.countDocuments({ vendor: vendorId });
+    const fileEntry = vendor.uploads.find((file) => file.fileName === fileName);
+    if (!fileEntry) {
+      return res.status(404).json({ message: 'File not found.' });
+    }
 
-    const revenueData = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-          revenue: { $sum: '$quoteValue' },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]);
-
-    const quoteFunnelData = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId) } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
-
-    const formattedQuoteFunnelData = quoteFunnelData.reduce(
-      (acc, item) => {
-        acc[item._id] = item.count || 0;
-        return acc;
-      },
-      { created: 0, pending: 0, won: 0, lost: 0 }
-    );
-
-    const leads = await Lead.find({ vendor: vendorId }).lean();
-    const vendorData = await Vendor.findById(vendorId);
-    const uploads = vendorData?.uploads || [];
-
-    res.status(200).json({
-      kpis: {
-        totalRevenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
-        activeListings,
-        totalOrders,
-      },
-      revenueData,
-      quoteFunnelData: formattedQuoteFunnelData,
-      leads,
-      uploads,
-    });
+    res.download(fileEntry.filePath, fileEntry.fileName);
   } catch (error) {
-    console.error('Error fetching dashboard data:', error.message);
+    console.error('Error downloading file:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });

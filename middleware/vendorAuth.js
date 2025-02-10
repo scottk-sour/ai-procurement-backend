@@ -3,56 +3,64 @@ import Vendor from '../models/Vendor.js';
 
 const vendorAuth = async (req, res, next) => {
   try {
-    // Extract the Authorisation header
-    const authHeader = req.header('Authorization');
-    if (!authHeader) {
-      return res.status(401).json({ message: 'Authorisation header missing. Access denied.' });
+    // 🔍 Step 1: Extract & Validate Authorization Header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.warn('⚠️ No valid token provided.');
+      return res.status(401).json({ message: 'Access denied. No token provided.' });
     }
 
-    // Extract the token from the header
-    const token = authHeader.split(' ')[1];
+    // 🔍 Step 2: Extract the JWT Token
+    const token = authHeader.split(' ')[1]; // Extract the token part
     if (!token) {
-      return res.status(401).json({ message: 'Malformed authorisation header. Access denied.' });
+      console.warn('⚠️ Malformed Authorization header.');
+      return res.status(401).json({ message: 'Access denied. Malformed token.' });
     }
 
-    // Verify the token
+    // 🔍 Step 3: Verify JWT Token
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
       if (err.name === 'TokenExpiredError') {
-        console.error('Token has expired:', err.message);
-        return res.status(401).json({ message: 'Token expired. Please log in again.' });
+        console.error('🔴 Token has expired:', err.message);
+        return res.status(401).json({ message: 'Session expired. Please log in again.' });
       }
-      console.error('Token verification failed:', err.message);
+      console.error('🔴 Token verification failed:', err.message);
       return res.status(401).json({ message: 'Invalid token. Access denied.' });
     }
 
-    // Validate the decoded token for a vendorId
+    // 🔍 Step 4: Ensure Token Contains a Vendor ID
     if (!decoded.vendorId) {
-      return res.status(403).json({ message: 'Invalid vendor token. Access denied.' });
+      console.warn('⚠️ Token does not contain a valid vendor ID.');
+      return res.status(403).json({ message: 'Invalid authentication. Access denied.' });
     }
 
-    // Fetch the vendor from the database
+    // 🔍 Step 5: Fetch Vendor from Database
     const vendor = await Vendor.findById(decoded.vendorId).select('-password');
     if (!vendor) {
-      return res.status(404).json({ message: 'Vendor not found. Access denied.' });
+      console.warn(`⚠️ Vendor with ID ${decoded.vendorId} not found.`);
+      return res.status(404).json({ message: 'Vendor account not found. Access denied.' });
     }
 
-    // Optional: Check if the vendor's account is active
-    if (vendor.status && vendor.status.toLowerCase() !== 'active') {
-      return res.status(403).json({ message: 'Vendor account is not active. Access denied.' });
+    // 🔍 Step 6: Ensure Vendor Account is Active
+    if (vendor.status?.toLowerCase() !== 'active') {
+      console.warn(`⚠️ Vendor account "${vendor.company}" is inactive.`);
+      return res.status(403).json({ message: 'Vendor account is inactive. Contact support.' });
     }
 
-    // Attach vendor data to the request object
+    // ✅ Step 7: Attach Vendor Data to Request Object
     req.vendorId = vendor._id;
     req.vendor = vendor;
 
-    // Proceed to the next middleware or route handler
+    // ✅ Step 8: Proceed to Next Middleware
     next();
   } catch (err) {
-    console.error('Unexpected error in vendor authentication middleware:', err.message);
-    res.status(500).json({ message: 'Internal server error during authentication.', error: err.message });
+    console.error('❌ Unexpected error in vendor authentication:', err.message);
+    res.status(500).json({
+      message: 'Internal server error during authentication.',
+      error: err.message,
+    });
   }
 };
 

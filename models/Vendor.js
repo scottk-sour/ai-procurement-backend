@@ -3,6 +3,28 @@ import mongoose from 'mongoose';
 // Define valid services
 const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
 
+// Define file schema for uploaded files
+const fileSchema = new mongoose.Schema({
+  fileName: { type: String, required: true, trim: true },
+  filePath: { type: String, required: true, trim: true },
+  fileType: { 
+    type: String,
+    enum: ['pdf', 'csv', 'excel', 'image'],
+    required: true,
+  },
+  uploadDate: { type: Date, default: Date.now },
+});
+
+// Define machine schema for vendor product listings
+const machineSchema = new mongoose.Schema({
+  model: { type: String, required: true, trim: true },
+  type: { type: String, required: true, enum: ['A3', 'A4'], trim: true },
+  mono_cpc: { type: Number, required: true },
+  color_cpc: { type: Number, required: true },
+  lease_cost: { type: Number, required: true },
+  provider: { type: String, required: true, trim: true },
+});
+
 // Define vendor schema
 const vendorSchema = new mongoose.Schema({
   name: {
@@ -21,6 +43,7 @@ const vendorSchema = new mongoose.Schema({
     unique: true,
     trim: true,
     match: [/.+@.+\..+/, 'Please provide a valid email address'],
+    index: true, // Improves search performance
   },
   password: {
     type: String,
@@ -39,20 +62,10 @@ const vendorSchema = new mongoose.Schema({
   },
   pricing: {
     type: Map,
-    of: Number, // e.g. { "CCTV": 500 }
+    of: Number, // e.g., { "CCTV": 500, "Photocopiers": 1000 }
   },
-  uploads: [
-    {
-      fileName: { type: String, required: true, trim: true },
-      filePath: { type: String, required: true, trim: true },
-      uploadDate: { type: Date, default: Date.now },
-      fileType: {
-        type: String,
-        enum: ['pdf', 'csv', 'excel', 'image'],
-        required: true,
-      },
-    },
-  ],
+  uploads: [fileSchema], // Uses the defined file schema
+  machines: [machineSchema], // Stores vendor product listings
   location: {
     type: String,
     trim: true,
@@ -76,7 +89,7 @@ const vendorSchema = new mongoose.Schema({
   },
 });
 
-// Pre-save hook for additional validation
+// Pre-save Hook for Validation
 vendorSchema.pre('save', function (next) {
   if (!this.services || this.services.length === 0) {
     return next(new Error('At least one service must be provided.'));
@@ -108,7 +121,23 @@ vendorSchema.methods.addUpload = async function (fileName, filePath, fileType) {
 
 // Instance method to remove an uploaded file by its ID
 vendorSchema.methods.removeUpload = async function (fileId) {
-  this.uploads = this.uploads.filter((upload) => upload._id.toString() !== fileId);
+  this.uploads = this.uploads.filter(
+    (upload) => upload._id.toString() !== fileId
+  );
+  await this.save();
+};
+
+// Instance method to add a machine
+vendorSchema.methods.addMachine = async function (machineData) {
+  this.machines.push(machineData);
+  await this.save();
+};
+
+// Instance method to remove a machine by its ID
+vendorSchema.methods.removeMachine = async function (machineId) {
+  this.machines = this.machines.filter(
+    (machine) => machine._id.toString() !== machineId
+  );
   await this.save();
 };
 

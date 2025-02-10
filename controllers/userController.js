@@ -1,3 +1,5 @@
+// controllers/UserController.js
+
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -8,7 +10,6 @@ import UserDocument from '../models/UserDocument.js';
 dotenv.config();
 
 const { JWT_SECRET } = process.env;
-
 if (!JWT_SECRET) {
   console.error("❌ ERROR: Missing JWT_SECRET in environment variables.");
   process.exit(1);
@@ -54,9 +55,10 @@ export const login = async (req, res) => {
   try {
     const user = await User.findOne({ email });
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(400).json({ message: '❌ Invalid email or password' });
+      return res.status(401).json({ message: '❌ Invalid email or password' });
     }
 
+    // Generate a JWT token with the userId in its payload
     const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '4h' });
 
     res.json({ token, userId: user._id, message: '✅ Login successful' });
@@ -68,6 +70,7 @@ export const login = async (req, res) => {
 
 /**
  * Get User Profile
+ * (Assumes an authentication middleware has set req.userId)
  */
 export const getUserProfile = async (req, res) => {
   try {
@@ -93,6 +96,7 @@ export const uploadFile = async (req, res) => {
   const documentType = req.body.documentType || 'others';
 
   try {
+    // Assumes authentication middleware sets req.userId
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: '⚠ User not found' });
 
@@ -109,7 +113,7 @@ export const uploadFile = async (req, res) => {
     res.status(200).json({
       message: '✅ File uploaded successfully',
       filePath: req.file.path,
-      documentType: documentType,
+      documentType,
     });
   } catch (error) {
     console.error('❌ Error during file upload:', error.message);
@@ -122,6 +126,7 @@ export const uploadFile = async (req, res) => {
  */
 export const getUploadedFiles = async (req, res) => {
   try {
+    // Assumes req.userId is set by authentication middleware
     const files = await UserDocument.find({ userId: req.userId });
     res.status(200).json({ files });
   } catch (error) {
@@ -135,6 +140,7 @@ export const getUploadedFiles = async (req, res) => {
  */
 export const getRecentActivity = async (req, res) => {
   try {
+    // This is a hard-coded example; in a real application, you'd likely pull this from a database or activity log.
     const recentActivity = [
       { description: 'Uploaded a document', date: new Date().toISOString() },
       { description: 'Requested a quote', date: new Date().toISOString() },

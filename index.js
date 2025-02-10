@@ -28,7 +28,7 @@ app.use(express.json({ limit: '10mb' })); // Ensure JSON parsing works
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev')); // Log HTTP requests
 
-// ✅ Debugging Middleware: Log Incoming Requests and Warn if Content-Type is not application/json
+// ✅ Debugging Middleware: Log Incoming Requests and warn if Content-Type is not application/json
 app.use((req, res, next) => {
   console.log(`🔍 Incoming Request: ${req.method} ${req.url}`);
   if (req.method !== 'GET' && !req.is('application/json')) {
