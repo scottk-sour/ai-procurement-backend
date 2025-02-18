@@ -13,22 +13,21 @@ const __dirname = path.dirname(__filename);
 
 // ✅ Validate Required Environment Variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
-
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   console.error('❌ ERROR: Missing required environment variables (MONGODB_URI, JWT_SECRET, or OPENAI_API_KEY)');
   process.exit(1);
 }
 
-// ✅ Initialise Express App
+// ✅ Initialize Express App
 const app = express();
 
 // ✅ Middleware Setup
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
-app.use(express.json({ limit: '10mb' })); // Ensure JSON parsing works
+app.use(express.json({ limit: '10mb' })); // Parse JSON payloads
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev')); // Log HTTP requests
 
-// ✅ Debugging Middleware: Log Incoming Requests and warn if Content-Type is not application/json
+// ✅ Debugging Middleware: Log Incoming Requests
 app.use((req, res, next) => {
   console.log(`🔍 Incoming Request: ${req.method} ${req.url}`);
   if (req.method !== 'GET' && !req.is('application/json')) {
@@ -37,18 +36,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Ensure 'uploads' directory exists
+// ✅ Ensure 'uploads' directory exists and serve it as static files
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsDir)); // Serve uploaded files
+app.use('/uploads', express.static(uploadsDir));
 
 // ✅ Fix Mongoose Deprecation Warning
 mongoose.set('strictQuery', false);
 
 // ✅ Connect to MongoDB
-mongoose.connect(MONGODB_URI, {
+mongoose
+  .connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000, // Prevent hanging if DB is unreachable
@@ -67,6 +67,7 @@ app.get('/', (req, res) => {
 // ✅ Import and Register API Routes
 import authRoutes from './routes/authRoutes.js';
 import vendorRoutes from './routes/vendorRoutes.js';
+import vendorListingsRoutes from './routes/vendorListings.js'; // New listings routes file
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
@@ -74,6 +75,7 @@ import submitRequestRoutes from './routes/submitRequestRoutes.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
+app.use('/api/vendors/listings', vendorListingsRoutes); // Mount vendor listings routes
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
@@ -108,7 +110,7 @@ mongoose.connection.once('open', () => {
     });
   };
 
-  process.on('SIGINT', shutdown);  // Handle Ctrl+C
+  process.on('SIGINT', shutdown); // Handle Ctrl+C
   process.on('SIGTERM', shutdown); // Handle termination signals
   process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err.message);

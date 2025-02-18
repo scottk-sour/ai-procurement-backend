@@ -44,14 +44,10 @@ const storage = multer.diskStorage({
         return cb(new Error('Vendor not found'));
       }
 
-      // 🔹 Clean Company Name (Remove Spaces & Special Characters)
       const companyName = vendor.company.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
-
-      // 🔹 Define File Path
       const newFileName = `${companyName}${path.extname(file.originalname)}`;
       const filePath = path.join('uploads/vendors', newFileName);
 
-      // 🔹 Delete Old File with Same Name
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
@@ -80,6 +76,37 @@ const upload = multer({
     }
     cb(null, true);
   },
+});
+
+// -------------------------------------------------
+// 🔹 Vendor Dashboard Route (GET /api/vendors/dashboard)
+// -------------------------------------------------
+router.get('/dashboard', vendorAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId).select('-password');
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found.' });
+    }
+    res.json({
+      companyName: vendor.company,
+      email: vendor.email,
+      uploads: vendor.uploads,
+      kpis: {
+        totalRevenue: vendor.totalRevenue || 0,
+        activeListings: vendor.activeListings || 0,
+        totalOrders: vendor.totalOrders || 0,
+      },
+      quoteFunnelData: {
+        created: vendor.quotesCreated || 0,
+        pending: vendor.quotesPending || 0,
+        won: vendor.quotesWon || 0,
+        lost: vendor.quotesLost || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching vendor dashboard:', error.message);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
 });
 
 // -------------------------------------------------
@@ -160,52 +187,19 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'Unsupported file type.' });
     }
 
-    // 🔹 Remove old file entry from MongoDB if it exists
-    vendor.uploads = vendor.uploads.filter(upload => upload.fileType !== fileType);
-
-    // 🔹 Add New File Details
-    const newUpload = {
+    vendor.uploads.push({
       fileName: req.file.filename,
       filePath: req.file.path,
       uploadDate: new Date(),
       fileType,
-    };
+    });
 
-    vendor.uploads.push(newUpload);
     await vendor.save();
 
-    res.status(200).json({
-      message: 'File uploaded successfully.',
-      upload: newUpload,
-    });
+    res.status(200).json({ message: 'File uploaded successfully.', vendor });
   } catch (error) {
     console.error('Error during file upload:', error.message);
     res.status(500).json({ message: 'Internal server error during file upload.' });
-  }
-});
-
-// -------------------------------------------------
-// 🔹 File Download Route
-// -------------------------------------------------
-router.get('/download/:fileName', vendorAuth, async (req, res) => {
-  try {
-    const vendorId = req.vendorId;
-    const fileName = req.params.fileName;
-    const vendor = await Vendor.findById(vendorId);
-
-    if (!vendor) {
-      return res.status(404).json({ message: 'Vendor not found.' });
-    }
-
-    const fileEntry = vendor.uploads.find((file) => file.fileName === fileName);
-    if (!fileEntry) {
-      return res.status(404).json({ message: 'File not found.' });
-    }
-
-    res.download(fileEntry.filePath, fileEntry.fileName);
-  } catch (error) {
-    console.error('Error downloading file:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
   }
 });
 

@@ -17,7 +17,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 const router = express.Router();
 
-// Helper function to determine fileType from file extension
+// ----------------------------------------------
+// ✅ Helper function to determine fileType
+// ----------------------------------------------
 const getFileType = (file) => {
   const ext = path.extname(file.originalname).toLowerCase();
   if (ext === '.pdf') return 'pdf';
@@ -28,7 +30,7 @@ const getFileType = (file) => {
 };
 
 // ----------------------------------------------
-// Configure Multer for File Uploads
+// ✅ Configure Multer for File Uploads
 // ----------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -63,7 +65,7 @@ const upload = multer({
 });
 
 // ----------------------------------------------
-// Vendor Signup Route
+// ✅ Vendor Signup Route
 // ----------------------------------------------
 router.post(
   '/signup',
@@ -72,14 +74,7 @@ router.post(
     body('company').notEmpty().withMessage('Company name is required'),
     body('email').isEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('services')
-      .isArray({ min: 1 })
-      .withMessage('At least one service must be provided')
-      .custom((services) => {
-        const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
-        return services.every((service) => validServices.includes(service));
-      })
-      .withMessage('Invalid services provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.'),
+    body('services').isArray({ min: 1 }).withMessage('At least one service must be provided'),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -90,13 +85,13 @@ router.post(
     const { name, company, email, password, services } = req.body;
 
     try {
-      const existingVendor = await Vendor.findOne({ email });
+      const existingVendor = await Vendor.findOne({ email }).lean();
       if (existingVendor) {
         return res.status(400).json({ message: 'Vendor with this email already exists.' });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newVendor = new Vendor({ name, company, email, password: hashedPassword, services });
+      const newVendor = new Vendor({ name, company, email, password: hashedPassword, services, status: 'active' });
 
       await newVendor.save();
       res.status(201).json({ message: 'Vendor registered successfully.' });
@@ -108,77 +103,58 @@ router.post(
 );
 
 // ----------------------------------------------
-// Vendor Login Route
+// ✅ Vendor Listings Routes (Fixes Missing `/listings` Route)
 // ----------------------------------------------
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required.' });
-  }
+router.get('/listings', vendorAuth, async (req, res) => {
   try {
-    const vendor = await Vendor.findOne({ email });
-    if (!vendor || !(await bcrypt.compare(password, vendor.password))) {
-      return res.status(400).json({ message: 'Invalid email or password.' });
-    }
-    const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, { expiresIn: '4h' });
-    res.json({ token, vendorId: vendor._id, message: 'Login successful.' });
+    const listings = await Listing.find({ vendor: req.vendor._id }).lean();
+    res.status(200).json(listings);
   } catch (error) {
-    console.error('Error during vendor login:', error.message);
+    console.error('Error fetching listings:', error.message);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.post('/listings', vendorAuth, async (req, res) => {
+  try {
+    if (req.vendor.status !== 'active') {
+      return res.status(403).json({ message: 'Vendor account is inactive.' });
+    }
+
+    const { name, category, price, status } = req.body;
+    if (!name || !category || !price) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+
+    const newListing = new Listing({ vendor: req.vendor._id, name, category, price, status: status || 'Active' });
+    await newListing.save();
+
+    res.status(201).json(newListing);
+  } catch (error) {
+    console.error('Error creating listing:', error.message);
+    res.status(500).json({ message: 'Internal server error.' });
+  }
+});
+
+router.delete('/listings/:id', vendorAuth, async (req, res) => {
+  try {
+    const deletedListing = await Listing.findOneAndDelete({ _id: req.params.id, vendor: req.vendor._id });
+    if (!deletedListing) {
+      return res.status(404).json({ message: 'Listing not found or unauthorized.' });
+    }
+    res.status(200).json({ message: 'Listing deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting listing:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
 
 // ----------------------------------------------
-// Vendor Upload Route
-// ----------------------------------------------
-router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
-  try {
-    console.log('Request File:', req.file);
-    console.log('Vendor ID:', req.vendorId);
-
-    if (!req.file) {
-      return res.status(400).json({ message: 'No file uploaded.' });
-    }
-
-    // Determine fileType based on the file's original name
-    const fileType = getFileType(req.file);
-    if (fileType === 'unknown') {
-      return res.status(400).json({ message: 'Unsupported file type.' });
-    }
-
-    const vendorId = req.vendorId;
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) {
-      return res.status(404).json({ message: 'Vendor not found.' });
-    }
-
-    const newUpload = {
-      fileName: req.file.filename,
-      filePath: req.file.path,
-      uploadDate: new Date(),
-      fileType: fileType,
-    };
-
-    vendor.uploads.push(newUpload);
-    await vendor.save();
-
-    res.status(200).json({
-      message: 'File uploaded successfully.',
-      upload: newUpload,
-      vendor: vendor,
-    });
-  } catch (error) {
-    console.error('Error during file upload:', error.message);
-    res.status(500).json({ message: 'Internal server error during file upload.', error: error.message });
-  }
-});
-
-// ----------------------------------------------
-// Vendor Dashboard Route
+// ✅ Vendor Dashboard Route
 // ----------------------------------------------
 router.get('/dashboard', vendorAuth, async (req, res) => {
   try {
-    const vendorId = req.vendorId;
+    const vendorId = req.vendor._id;
 
     const totalRevenue = await QuoteRequest.aggregate([
       { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
@@ -188,33 +164,13 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
     const activeListings = await Listing.countDocuments({ vendor: vendorId, isActive: true });
     const totalOrders = await Order.countDocuments({ vendor: vendorId });
 
-    const revenueData = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-          revenue: { $sum: '$quoteValue' },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]);
-
     const quoteFunnelData = await QuoteRequest.aggregate([
       { $match: { vendor: mongoose.Types.ObjectId(vendorId) } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
 
-    const formattedQuoteFunnelData = quoteFunnelData.reduce(
-      (acc, item) => {
-        acc[item._id] = item.count || 0;
-        return acc;
-      },
-      { created: 0, pending: 0, won: 0, lost: 0 }
-    );
-
     const leads = await Lead.find({ vendor: vendorId }).lean();
-    const vendorData = await Vendor.findById(vendorId);
-    const uploads = vendorData?.uploads || [];
+    const uploads = req.vendor?.uploads || [];
 
     res.status(200).json({
       kpis: {
@@ -222,8 +178,7 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
         activeListings,
         totalOrders,
       },
-      revenueData,
-      quoteFunnelData: formattedQuoteFunnelData,
+      quoteFunnelData,
       leads,
       uploads,
     });
