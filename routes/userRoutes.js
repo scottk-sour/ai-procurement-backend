@@ -63,6 +63,31 @@ const upload = multer({
 });
 
 // ----------------------------------------------
+// 🔹 User Token Verification Route
+// ----------------------------------------------
+router.get('/auth/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1]; // Extract token from "Bearer <token>"
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    // Verify token using your JWT secret
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await User.findById(decoded.userId); // Adjust based on your token payload
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    res.json({ authenticated: true, userId: decoded.userId });
+  } catch (error) {
+    console.error('Token verification error:', error.message);
+    res.status(401).json({ message: 'Invalid or expired token' });
+  }
+});
+
+// ----------------------------------------------
 // 🔹 User Registration Route
 // ----------------------------------------------
 router.post('/signup', async (req, res) => {
