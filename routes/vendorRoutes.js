@@ -4,17 +4,18 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
-import mongoose from 'mongoose';
 import { body, validationResult } from 'express-validator';
 import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
+import Machine from '../models/Machine.js'; // Ensure this file exists in models/
 import dotenv from 'dotenv';
+import csv from 'csv-parser';
 
 dotenv.config();
 const router = express.Router();
 
 // -------------------------------------------------
-// 🔹 Helper: Get File Type from Extension
+// Helper: Get File Type from Extension
 // -------------------------------------------------
 const getFileType = (file) => {
   const ext = path.extname(file.originalname).toLowerCase();
@@ -26,7 +27,7 @@ const getFileType = (file) => {
 };
 
 // -------------------------------------------------
-// 🔹 Configure Multer for File Uploads
+// Configure Multer for File Uploads
 // -------------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -36,26 +37,24 @@ const storage = multer.diskStorage({
     }
     cb(null, dir);
   },
-  filename: async (req, file, cb) => {
-    try {
-      const vendorId = req.vendorId;
-      const vendor = await Vendor.findById(vendorId);
-      if (!vendor) {
-        return cb(new Error('Vendor not found'));
-      }
-
-      const companyName = vendor.company.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
-      const newFileName = `${companyName}${path.extname(file.originalname)}`;
-      const filePath = path.join('uploads/vendors', newFileName);
-
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-
-      cb(null, newFileName);
-    } catch (error) {
-      cb(error);
-    }
+  filename: (req, file, cb) => {
+    const vendorId = req.vendorId;
+    Vendor.findById(vendorId)
+      .then((vendor) => {
+        if (!vendor) {
+          return cb(new Error('Vendor not found'));
+        }
+        // Create a filename based on the vendor's company name + original extension
+        const companyName = vendor.company.replace(/\s+/g, '').replace(/[^a-zA-Z0-9]/g, '');
+        const newFileName = `${companyName}${path.extname(file.originalname)}`;
+        const filePath = path.join('uploads/vendors', newFileName);
+        // If the file already exists, remove it
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        cb(null, newFileName);
+      })
+      .catch((err) => cb(err));
   },
 });
 
@@ -79,7 +78,7 @@ const upload = multer({
 });
 
 // -------------------------------------------------
-// 🔹 Vendor Dashboard Route (GET /api/vendors/dashboard)
+// Vendor Dashboard Route (GET /api/vendors/dashboard)
 // -------------------------------------------------
 router.get('/dashboard', vendorAuth, async (req, res) => {
   try {
@@ -87,6 +86,8 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
     if (!vendor) {
       return res.status(404).json({ message: 'Vendor not found.' });
     }
+    // Fetch machines from the Machine collection instead of from vendor.machines
+    const machines = await Machine.find({ vendorId: vendor._id }).lean();
     res.json({
       companyName: vendor.company,
       email: vendor.email,
@@ -102,6 +103,7 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
         won: vendor.quotesWon || 0,
         lost: vendor.quotesLost || 0,
       },
+      machines, // Machines are now coming from the separate Machine collection
     });
   } catch (error) {
     console.error('Error fetching vendor dashboard:', error.message);
@@ -110,7 +112,7 @@ router.get('/dashboard', vendorAuth, async (req, res) => {
 });
 
 // -------------------------------------------------
-// 🔹 Vendor Signup Route
+// Vendor Signup Route (POST /api/vendors/signup)
 // -------------------------------------------------
 router.post(
   '/signup',
@@ -127,27 +129,33 @@ router.post(
     }
 
     const { name, company, email, password } = req.body;
-
     try {
       const existingVendor = await Vendor.findOne({ email });
       if (existingVendor) {
-        return res.status(400).json({ message: 'Vendor with this email already exists.' });
+        return res
+          .status(400)
+          .json({ message: 'Vendor with this email already exists.' });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newVendor = new Vendor({ name, company, email, password: hashedPassword });
+      const newVendor = new Vendor({
+        name,
+        company,
+        email,
+        password: hashedPassword,
+      });
 
       await newVendor.save();
       res.status(201).json({ message: 'Vendor registered successfully.' });
     } catch (error) {
-      console.error('❌ Error registering vendor:', error.message);
+      console.error('Error registering vendor:', error.message);
       res.status(500).json({ message: 'Internal server error.' });
     }
   }
 );
 
 // -------------------------------------------------
-// 🔹 Vendor Login Route
+// Vendor Login Route (POST /api/vendors/login)
 // -------------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -162,13 +170,13 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ vendorId: vendor._id }, process.env.JWT_SECRET, { expiresIn: '4h' });
     res.json({ token, vendorId: vendor._id, message: 'Login successful.' });
   } catch (error) {
-    console.error('❌ Error during vendor login:', error.message);
+    console.error('Error during vendor login:', error.message);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
 
 // -------------------------------------------------
-// 🔹 Vendor File Upload Route
+// Vendor File Upload Route (POST /api/vendors/upload)
 // -------------------------------------------------
 router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   try {
@@ -182,11 +190,13 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
       return res.status(404).json({ message: 'Vendor not found.' });
     }
 
+    // Determine the file type
     const fileType = getFileType(req.file);
     if (fileType === 'unknown') {
       return res.status(400).json({ message: 'Unsupported file type.' });
     }
 
+    // Always store file metadata in vendor.uploads
     vendor.uploads.push({
       fileName: req.file.filename,
       filePath: req.file.path,
@@ -194,12 +204,70 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
       fileType,
     });
 
-    await vendor.save();
+    if (fileType === 'csv') {
+      const filePath = req.file.path;
+      const csvRows = [];
+      console.log(`Starting CSV parse for file: ${filePath}`);
 
-    res.status(200).json({ message: 'File uploaded successfully.', vendor });
+      fs.createReadStream(filePath)
+        .pipe(csv())
+        .on('data', (row) => {
+          console.log('Parsed row:', row);
+          // Ensure required columns exist; if so, add vendorId and push the row
+          if (row.model && row.type && row.mono_cpc && row.color_cpc && row.lease_cost) {
+            csvRows.push({
+              vendorId: vendor._id, // Link machine to vendor
+              model: row.model.trim(),
+              type: row.type.trim(),
+              mono_cpc: parseFloat(row.mono_cpc) || 0,
+              color_cpc: parseFloat(row.color_cpc) || 0,
+              lease_cost: parseFloat(row.lease_cost) || 0,
+              services: row.services ? row.services.trim() : 'Photocopiers',
+              provider: row.provider ? row.provider.trim() : '',
+            });
+          }
+        })
+        .on('end', async () => {
+          try {
+            console.log(`CSV parse complete. Total rows: ${csvRows.length}`);
+            // Save the parsed CSV data into the Machine collection
+            const machines = await Machine.insertMany(csvRows);
+            console.log('Machines successfully saved:', machines);
+            // Do not store machines inside vendor.machines – they go to the separate collection
+            await vendor.save();
+            return res.status(201).json({
+              message: 'File uploaded & CSV processed successfully.',
+              machines,
+            });
+          } catch (err) {
+            console.error('Error saving machines:', err);
+            return res.status(500).json({
+              message: 'Failed to save CSV data to machines.',
+              error: err.message,
+            });
+          }
+        })
+        .on('error', (parseError) => {
+          console.error('CSV parsing error:', parseError);
+          return res.status(500).json({
+            message: 'Error processing the CSV file.',
+            error: parseError.message,
+          });
+        });
+    } else {
+      // For non-CSV files, just save vendor with new upload info
+      await vendor.save();
+      return res.status(200).json({
+        message: 'File uploaded successfully.',
+        vendor,
+      });
+    }
   } catch (error) {
     console.error('Error during file upload:', error.message);
-    res.status(500).json({ message: 'Internal server error during file upload.' });
+    res.status(500).json({
+      message: 'Internal server error during file upload.',
+      error: error.message,
+    });
   }
 });
 

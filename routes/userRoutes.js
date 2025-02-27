@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import User from '../models/User.js';
 import UserDocument from '../models/UserDocument.js';
 import userAuth from '../middleware/userAuth.js';
-import { extractFromPDF, extractFromExcel, extractFromCSV } from '../utils/fileProcessor.js';
+import { extractFromPDF, extractFromCSV } from '../utils/fileProcessor.js';
 
 dotenv.config();
 

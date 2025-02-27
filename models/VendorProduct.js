@@ -1,7 +1,7 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const productSchema = new mongoose.Schema({
-  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor", required: true }, // Links to the vendor
+const vendorProductSchema = new mongoose.Schema({
+  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true },
   manufacturer: { type: String, required: true },
   model: { type: String, required: true },
   speed: { type: Number, required: true },
@@ -12,33 +12,28 @@ const productSchema = new mongoose.Schema({
   minVolume: { type: Number, required: true },
   maxVolume: { type: Number, required: true },
   totalMachineCost: { type: Number, required: true },
-
   costPerCopy: {
     A4Mono: { type: Number, required: true },
-    A4Colour: { type: Number, required: true },
+    A4Color: { type: Number, required: true },
     A3Mono: { type: Number, required: true },
-    A3Colour: { type: Number, required: true },
+    A3Color: { type: Number, required: true },
     SRA3Mono: { type: Number, required: true },
-    SRA3Colour: { type: Number, required: true },
+    SRA3Color: { type: Number, required: true },
   },
-
   auxiliaries: [
     {
-      item: { type: String },
-      price: { type: Number },
+      item: { type: String, required: true },
+      price: { type: Number, required: true },
     },
   ],
-
   leaseRates: [
     {
-      months: { type: Number, required: true },
+      month: { type: Number, required: true },
       profile: { type: String, required: true },
       ratePer000: { type: Number, required: true },
     },
   ],
+}, { timestamps: true });
 
-  createdAt: { type: Date, default: Date.now },
-});
-
-const Product = mongoose.model("Product", productSchema);
-export default Product;
+const VendorProduct = mongoose.model('VendorProduct', vendorProductSchema);
+export default VendorProduct;

@@ -5,9 +5,11 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import mongoose from 'mongoose';
+import csvParser from 'csv-parser';
 import { body, validationResult } from 'express-validator';
 import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
+import Machine from '../models/Machine.js'; // ✅ Ensure Machine model exists
 import QuoteRequest from '../models/QuoteRequest.js';
 import Listing from '../models/Listing.js';
 import Order from '../models/Order.js';
@@ -16,18 +18,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 const router = express.Router();
-
-// ----------------------------------------------
-// ✅ Helper function to determine fileType
-// ----------------------------------------------
-const getFileType = (file) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (ext === '.pdf') return 'pdf';
-  if (ext === '.csv') return 'csv';
-  if (ext === '.xls' || ext === '.xlsx') return 'excel';
-  if (['.jpg', '.jpeg', '.png', '.gif'].includes(ext)) return 'image';
-  return 'unknown';
-};
 
 // ----------------------------------------------
 // ✅ Configure Multer for File Uploads
@@ -49,16 +39,9 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv',
-      'image/jpeg',
-      'image/png',
-    ];
+    const allowedTypes = ['text/csv'];
     if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error('Invalid file type. Only PDF, Excel, CSV, and images are allowed.'));
+      return cb(new Error('Invalid file type. Only CSV is allowed.'));
     }
     cb(null, true);
   },
@@ -103,7 +86,7 @@ router.post(
 );
 
 // ----------------------------------------------
-// ✅ Vendor Listings Routes (Fixes Missing `/listings` Route)
+// ✅ Vendor Listings Routes
 // ----------------------------------------------
 router.get('/listings', vendorAuth, async (req, res) => {
   try {
@@ -136,15 +119,93 @@ router.post('/listings', vendorAuth, async (req, res) => {
   }
 });
 
-router.delete('/listings/:id', vendorAuth, async (req, res) => {
+// ----------------------------------------------
+// ✅ CSV Upload & Processing Route
+// ----------------------------------------------
+router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   try {
-    const deletedListing = await Listing.findOneAndDelete({ _id: req.params.id, vendor: req.vendor._id });
-    if (!deletedListing) {
-      return res.status(404).json({ message: 'Listing not found or unauthorized.' });
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded.' });
     }
-    res.status(200).json({ message: 'Listing deleted successfully.' });
+
+    const vendor = await Vendor.findById(req.vendor._id);
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found.' });
+    }
+
+    const filePath = req.file.path;
+    const machinesData = [];
+
+    console.log("📂 Processing CSV file:", filePath);
+
+    // ✅ Read and parse the CSV file
+    fs.createReadStream(filePath)
+      .pipe(csvParser())
+      .on('data', (row) => {
+        console.log("📌 Parsed row:", row);
+
+        if (row.model && row.type && row.lease_cost) {
+          machinesData.push({
+            vendorId: vendor._id, // ✅ Link to vendor
+            model: row.model.trim(),
+            type: row.type.trim(),
+            mono_cpc: row.mono_cpc ? parseFloat(row.mono_cpc) : 0,
+            color_cpc: row.color_cpc ? parseFloat(row.color_cpc) : 0,
+            lease_cost: parseFloat(row.lease_cost) || 0,
+            services: row.services || '',
+            provider: row.provider || '',
+          });
+        } else {
+          console.warn("⚠ Skipping row due to missing fields:", row);
+        }
+      })
+      .on('end', async () => {
+        try {
+          console.log("✅ Parsed Machines:", machinesData);
+
+          if (machinesData.length === 0) {
+            return res.status(400).json({ message: 'No valid machines found in CSV.' });
+          }
+
+          await Machine.insertMany(machinesData);
+          vendor.uploads.push({
+            fileName: req.file.filename,
+            filePath,
+            fileType: 'csv',
+            uploadDate: new Date(),
+          });
+          await vendor.save();
+
+          console.log("💾 Machines successfully saved.");
+          res.status(201).json({
+            message: '✅ File processed successfully.',
+            machines: machinesData,
+          });
+
+        } catch (dbError) {
+          console.error("❌ Database error:", dbError);
+          res.status(500).json({ message: 'Database error while saving machines.' });
+        }
+      });
+
   } catch (error) {
-    console.error('Error deleting listing:', error.message);
+    console.error("❌ File upload error:", error);
+    res.status(500).json({ message: 'Error uploading file.' });
+  }
+});
+
+// ----------------------------------------------
+// ✅ Get Machines for a Vendor
+// ----------------------------------------------
+router.get('/machines', vendorAuth, async (req, res) => {
+  try {
+    const machines = await Machine.find({ vendorId: req.vendor._id }).lean();
+    if (machines.length === 0) {
+      return res.status(404).json({ message: 'No machines found for this vendor.' });
+    }
+    res.status(200).json(machines);
+  } catch (error) {
+    console.error("❌ Error fetching machines:", error);
     res.status(500).json({ message: 'Internal server error.' });
   }
 });
@@ -154,34 +215,13 @@ router.delete('/listings/:id', vendorAuth, async (req, res) => {
 // ----------------------------------------------
 router.get('/dashboard', vendorAuth, async (req, res) => {
   try {
-    const vendorId = req.vendor._id;
+    const vendor = await Vendor.findById(req.vendor._id).lean();
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found.' });
+    }
 
-    const totalRevenue = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId), status: 'Won' } },
-      { $group: { _id: null, total: { $sum: '$quoteValue' } } },
-    ]);
-
-    const activeListings = await Listing.countDocuments({ vendor: vendorId, isActive: true });
-    const totalOrders = await Order.countDocuments({ vendor: vendorId });
-
-    const quoteFunnelData = await QuoteRequest.aggregate([
-      { $match: { vendor: mongoose.Types.ObjectId(vendorId) } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
-
-    const leads = await Lead.find({ vendor: vendorId }).lean();
-    const uploads = req.vendor?.uploads || [];
-
-    res.status(200).json({
-      kpis: {
-        totalRevenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0,
-        activeListings,
-        totalOrders,
-      },
-      quoteFunnelData,
-      leads,
-      uploads,
-    });
+    const machines = await Machine.find({ vendorId: vendor._id }).lean();
+    res.status(200).json({ vendor, machines });
   } catch (error) {
     console.error('Error fetching dashboard data:', error.message);
     res.status(500).json({ message: 'Internal server error.' });

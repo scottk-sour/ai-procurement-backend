@@ -14,7 +14,9 @@ const __dirname = path.dirname(__filename);
 // ✅ Validate Required Environment Variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
-  console.error('❌ ERROR: Missing required environment variables (MONGODB_URI, JWT_SECRET, or OPENAI_API_KEY)');
+  console.error(
+    '❌ ERROR: Missing required environment variables (MONGODB_URI, JWT_SECRET, or OPENAI_API_KEY)'
+  );
   process.exit(1);
 }
 
@@ -53,7 +55,9 @@ mongoose
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000, // Prevent hanging if DB is unreachable
   })
-  .then(() => console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`))
+  .then(() =>
+    console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`)
+  )
   .catch((err) => {
     console.error('❌ MongoDB Connection Error:', err.message);
     process.exit(1);
@@ -67,19 +71,23 @@ app.get('/', (req, res) => {
 // ✅ Import and Register API Routes
 import authRoutes from './routes/authRoutes.js';
 import vendorRoutes from './routes/vendorRoutes.js';
-import vendorListingsRoutes from './routes/vendorListings.js'; // New listings routes file
+import vendorListingsRoutes from './routes/vendorListings.js'; // Vendor listings routes
+import vendorProductRoutes from './routes/vendorProductRoutes.js'; // Vendor products route
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
 import submitRequestRoutes from './routes/submitRequestRoutes.js';
+import vendorUploadsRoutes from './routes/vendorUploads.js'; // Correct file for file uploads
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes); // Mount vendor listings routes
+app.use('/api/vendor-products', vendorProductRoutes); // Route for vendor product uploads
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
+app.use('/api/uploads', vendorUploadsRoutes); // Route for handling file uploads
 
 // ✅ 404 Handler for Unknown Routes
 app.use((req, res) => {
