@@ -102,7 +102,17 @@ app.use((err, req, res, next) => {
 
 // ✅ Start Server After MongoDB is Connected
 mongoose.connection.once('open', () => {
-  const server = app.listen(Number(PORT), () => {
+  const server = app.listen(Number(PORT), (err) => {
+    if (err) {
+      console.error('❌ Failed to start server:', err.message);
+      if (err.code === 'EADDRINUSE') {
+        console.log('⚠ Port 5000 is in use. Trying port 5001...');
+        app.listen(5001, () => {
+          console.log(`🚀 Server is running on http://localhost:5001`);
+        });
+      }
+      return;
+    }
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
   });
 
@@ -129,3 +139,4 @@ mongoose.connection.once('open', () => {
     shutdown();
   });
 });
+# Save
