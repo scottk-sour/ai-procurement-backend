@@ -1,3 +1,12 @@
+cd C:\Users\pmeth\Projects\ai-procurement-backend
+# Ensure a backup
+copy .\routes\vendorRoutes.js .\routes\vendorRoutes.backup.js
+# Open in your editor and replace encoded emojis with Unicode:
+# - `âœ…` → `✅`
+# - `âŒ` → `❌`
+# - `âš ` → `⚠`
+# - `ðŸ”¹` → `🔹`
+# Use the updated version I provided earlier, or manually update:
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -226,3 +235,4 @@ router.get('/listings', vendorAuth, async (req, res) => {
 });
 
 export default router;
+# Save
