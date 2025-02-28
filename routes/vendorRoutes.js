@@ -7,6 +7,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import Vendor from '../models/Vendor.js';
 import VendorDocument from '../models/VendorDocument.js';
+import VendorListing from '../models/VendorListing.js'; // Add this import
 import vendorAuth from '../middleware/vendorAuth.js';
 import { extractFromPDF, extractFromCSV } from '../utils/fileProcessor.js';
 
