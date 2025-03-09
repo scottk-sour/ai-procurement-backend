@@ -7,11 +7,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ✅ Handle __dirname in ES Modules
+// Handle __dirname in ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Validate Required Environment Variables
+// Validate Required Environment Variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   console.error(
@@ -20,16 +20,16 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   process.exit(1);
 }
 
-// ✅ Initialize Express App
+// Initialize Express App
 const app = express();
 
-// ✅ Middleware Setup
+// Middleware Setup
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '10mb' })); // Parse JSON payloads
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev')); // Log HTTP requests
 
-// ✅ Debugging Middleware: Log Incoming Requests
+// Debugging Middleware: Log Incoming Requests
 app.use((req, res, next) => {
   console.log(`🔍 Incoming Request: ${req.method} ${req.url}`);
   if (req.method !== 'GET' && !req.is('application/json')) {
@@ -38,69 +38,92 @@ app.use((req, res, next) => {
   next();
 });
 
-// ✅ Ensure 'uploads' directory exists and serve it as static files
+// Ensure 'uploads' directory exists and serve it as static files
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// ✅ Fix Mongoose Deprecation Warning
+// Fix Mongoose Deprecation Warning
 mongoose.set('strictQuery', false);
 
-// ✅ Connect to MongoDB
+// Connect to MongoDB
 mongoose
   .connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000, // Prevent hanging if DB is unreachable
   })
-  .then(() =>
-    console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`)
-  )
+  .then(() => console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`))
   .catch((err) => {
     console.error('❌ MongoDB Connection Error:', err.message);
     process.exit(1);
   });
 
-// ✅ Health Check Route
+// Health Check Route
 app.get('/', (req, res) => {
   res.send('🚀 TendorAI Backend is Running!');
 });
 
-// ✅ Import and Register API Routes
+// ----------------------------------------------
+// Import and Register API Routes
+// ----------------------------------------------
 import authRoutes from './routes/authRoutes.js';
+
+// IMPORTANT: Replace or merge your old vendorRoutes with the new one that has signup/login
 import vendorRoutes from './routes/vendorRoutes.js';
-import vendorListingsRoutes from './routes/vendorListings.js'; // Vendor listings routes
-import vendorProductRoutes from './routes/vendorProductRoutes.js'; // Vendor products route
+
+import vendorListingsRoutes from './routes/vendorListings.js';
+import vendorProductRoutes from './routes/vendorProductRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
 import submitRequestRoutes from './routes/submitRequestRoutes.js';
-import vendorUploadsRoutes from './routes/vendorUploads.js'; // Correct file for file uploads
+import vendorUploadsRoutes from './routes/vendorUploads.js';
 
+// Newly Added Routes
+import aiRoutes from './routes/aiRoutes.js';
+import analyticsRoutes from './routes/analyticsRoutes.js';
+
+// ----------------------------------------------
+// Mount the routes
+// ----------------------------------------------
 app.use('/api/auth', authRoutes);
+
+// If your new vendorRoutes covers all vendor logic (signup, login, etc.),
+// you can keep or remove vendorListingsRoutes and vendorProductRoutes as needed.
 app.use('/api/vendors', vendorRoutes);
-app.use('/api/vendors/listings', vendorListingsRoutes); // Mount vendor listings routes
-app.use('/api/vendor-products', vendorProductRoutes); // Route for vendor product uploads
+app.use('/api/vendors/listings', vendorListingsRoutes);
+app.use('/api/vendor-products', vendorProductRoutes);
+
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
-app.use('/api/uploads', vendorUploadsRoutes); // Route for handling file uploads
+app.use('/api/uploads', vendorUploadsRoutes);
 
-// ✅ 404 Handler for Unknown Routes
+app.use('/api/ai', aiRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
+// ----------------------------------------------
+// 404 Handler for Unknown Routes
+// ----------------------------------------------
 app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
-// ✅ Global Error Handler
+// ----------------------------------------------
+// Global Error Handler
+// ----------------------------------------------
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message);
   res.status(500).json({ message: '❌ Internal server error', error: err.message });
 });
 
-// ✅ Start Server After MongoDB is Connected
+// ----------------------------------------------
+// Start Server After MongoDB is Connected
+// ----------------------------------------------
 mongoose.connection.once('open', () => {
   const server = app.listen(Number(PORT), (err) => {
     if (err) {
@@ -116,7 +139,7 @@ mongoose.connection.once('open', () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
   });
 
-  // ✅ Graceful Shutdown Handling
+  // Graceful Shutdown Handling
   const shutdown = () => {
     console.log('\n🛑 Shutting down server...');
     server.close(() => {
@@ -128,8 +151,8 @@ mongoose.connection.once('open', () => {
     });
   };
 
-  process.on('SIGINT', shutdown); // Handle Ctrl+C
-  process.on('SIGTERM', shutdown); // Handle termination signals
+  process.on('SIGINT', shutdown);   // Handle Ctrl+C
+  process.on('SIGTERM', shutdown);  // Handle termination signals
   process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err.message);
     shutdown();

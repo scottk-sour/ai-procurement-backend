@@ -1,41 +1,34 @@
-cd C:\Users\pmeth\Projects\ai-procurement-backend
-# Ensure a backup
-copy .\routes\vendorRoutes.js .\routes\vendorRoutes.backup.js
-# Open in your editor and replace encoded emojis with Unicode:
-# - `âœ…` → `✅`
-# - `âŒ` → `❌`
-# - `âš ` → `⚠`
-# - `ðŸ”¹` → `🔹`
-# Use the updated version I provided earlier, or manually update:
+// routes/vendorRoutes.js
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import multer from 'multer';
+import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-import dotenv from 'dotenv';
-import Vendor from '../models/Vendor.js';
-import VendorDocument from '../models/VendorDocument.js';
-import VendorListing from '../models/VendorListing.js'; // Add this import
-import vendorAuth from '../middleware/vendorAuth.js';
-import { extractFromPDF, extractFromCSV } from '../utils/fileProcessor.js';
+import multer from 'multer';
+
+import Vendor from '../models/vendor.js';           // Your main Vendor model
+import VendorDocument from '../models/vendorDocument.js'; // Storing vendor file data
+import vendorAuth from '../middleware/vendorAuth.js';     // The vendorAuth middleware
+import { extractFromPDF, extractFromCSV } from '../utils/fileProcessor.js'; 
+// Or wherever you store your PDF/CSV extraction logic
+// If you also handle Excel, import your excel logic similarly
 
 dotenv.config();
-
 const router = express.Router();
-const { JWT_SECRET } = process.env;
 
-// ✅ Ensure JWT_SECRET is set in .env
+const { JWT_SECRET } = process.env;
 if (!JWT_SECRET) {
-  console.error("❌ ERROR: Missing JWT_SECRET in environment variables.");
+  console.error('❌ ERROR: Missing JWT_SECRET in environment variables.');
   process.exit(1);
 }
 
 // ----------------------------------------------
-// 🔹 Configure Multer for File Uploads
+// 🔹 Multer Setup for Vendor File Upload
 // ----------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // You can separate vendor uploads, e.g. 'uploads/vendors'
     const documentType = req.body.documentType || 'others';
     const uploadPath = path.join('uploads', 'vendors', documentType);
 
@@ -45,7 +38,7 @@ const storage = multer.diskStorage({
       }
       cb(null, uploadPath);
     } catch (err) {
-      console.error("❌ Error creating upload directory:", err.message);
+      console.error('❌ Error creating upload directory:', err.message);
       cb(new Error('⚠ Server error while setting up upload directory.'));
     }
   },
@@ -73,48 +66,33 @@ const upload = multer({
 });
 
 // ----------------------------------------------
-// 🔹 Vendor Token Verification Route
-// ----------------------------------------------
-router.get('/auth/verify', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1]; // Extract token from "Bearer <token>"
-    if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
-    }
-
-    // Verify token using your JWT secret
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const vendor = await Vendor.findById(decoded.vendorId); // Adjust based on your token payload
-
-    if (!vendor) {
-      return res.status(401).json({ message: 'Invalid token' });
-    }
-
-    res.json({ authenticated: true, vendorId: decoded.vendorId });
-  } catch (error) {
-    console.error('Token verification error:', error.message);
-    res.status(401).json({ message: 'Invalid or expired token' });
-  }
-});
-
-// ----------------------------------------------
-// 🔹 Vendor Registration Route
+// 🔹 Vendor Registration (Signup)
 // ----------------------------------------------
 router.post('/signup', async (req, res) => {
-  const { name, email, password, company } = req.body;
-
-  if (!name || !email || !password || !company) {
-    return res.status(400).json({ message: '⚠ Name, email, password, and company are required.' });
-  }
-
   try {
+    const { name, email, password, company, services = ['Photocopiers'] } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: '⚠ Name, email, and password are required.' });
+    }
+
+    // Check if vendor already exists
     const existingVendor = await Vendor.findOne({ email });
     if (existingVendor) {
       return res.status(400).json({ message: '⚠ Vendor already exists.' });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
-    const newVendor = new Vendor({ name, email, password: hashedPassword, company });
+
+    // Create vendor record
+    const newVendor = new Vendor({
+      name,
+      email,
+      password: hashedPassword, // stored as hashed
+      company,
+      services,                // Must match your schema constraints
+    });
     await newVendor.save();
 
     res.status(201).json({ message: '✅ Vendor registered successfully.' });
@@ -125,24 +103,44 @@ router.post('/signup', async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 Vendor Login Route
+// 🔹 Vendor Login
 // ----------------------------------------------
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ message: '⚠ Email and password are required.' });
-  }
-
   try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: '⚠ Email and password are required.' });
+    }
+
+    // Find vendor by email
     const vendor = await Vendor.findOne({ email });
-    if (!vendor || !(await bcrypt.compare(password, vendor.password))) {
+    if (!vendor) {
       return res.status(401).json({ message: '❌ Invalid email or password.' });
     }
 
-    const token = jwt.sign({ vendorId: vendor._id }, JWT_SECRET, { expiresIn: '4h' });
+    // Compare submitted password to hashed password
+    const isMatch = await bcrypt.compare(password, vendor.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: '❌ Invalid email or password.' });
+    }
 
-    res.json({ token, vendorId: vendor._id, message: '✅ Login successful.' });
+    // Create JWT
+    const token = jwt.sign(
+      { vendorId: vendor._id, email: vendor.email },
+      JWT_SECRET,
+      { expiresIn: '4h' } // Adjust as you like
+    );
+
+    // (Optional) Store token in vendor doc if you want
+    // vendor.token = token;
+    // await vendor.save();
+
+    res.json({
+      token,
+      vendorId: vendor._id,
+      message: '✅ Vendor login successful.',
+    });
   } catch (error) {
     console.error('❌ Error during vendor login:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });
@@ -150,7 +148,30 @@ router.post('/login', async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 Vendor File Upload Route with AI Processing
+// 🔹 Vendor Token Verification (Optional)
+// ----------------------------------------------
+router.get('/auth/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const vendor = await Vendor.findById(decoded.vendorId);
+    if (!vendor) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    res.json({ authenticated: true, vendorId: vendor._id });
+  } catch (error) {
+    console.error('Vendor token verification error:', error.message);
+    res.status(401).json({ message: 'Invalid or expired token' });
+  }
+});
+
+// ----------------------------------------------
+// 🔹 Vendor File Upload (with AI Processing?)
 // ----------------------------------------------
 router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -162,27 +183,22 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
   let extractedData = {};
 
   try {
-    const vendor = await Vendor.findById(req.vendorId);
-    if (!vendor) {
-      return res.status(404).json({ message: '⚠ Vendor not found.' });
-    }
-
-    // Process the uploaded file based on its type
+    // Here, we assume you might do some kind of PDF/CSV/Excel extraction
     if (req.file.mimetype === 'application/pdf') {
       extractedData = await extractFromPDF(filePath);
     } else if (req.file.mimetype.includes('spreadsheetml') || req.file.mimetype.includes('excel')) {
-      extractedData = extractFromExcel(filePath);
+      extractedData = extractFromExcel(filePath); // or your own logic
     } else if (req.file.mimetype.includes('csv')) {
       extractedData = await extractFromCSV(filePath);
     } else {
-      extractedData = { error: 'Unsupported file format' };
+      extractedData = { warning: 'Unsupported file format, skipping extraction' };
     }
 
+    // Save document record in DB
     const newDocument = new VendorDocument({
       vendorId: req.vendorId,
       fileName: req.file.filename,
-      filePath: req.file.path,
-      uploadDate: new Date(),
+      filePath,
       documentType,
     });
 
@@ -190,7 +206,7 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
 
     res.status(200).json({
       message: '✅ File uploaded and processed successfully.',
-      filePath: req.file.path,
+      filePath,
       documentType,
       extractedData,
     });
@@ -201,12 +217,12 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 Fetch Vendor Profile Route
+// 🔹 Vendor Profile
 // ----------------------------------------------
 router.get('/profile', vendorAuth, async (req, res) => {
   try {
+    // We have req.vendorId from vendorAuth
     const vendor = await Vendor.findById(req.vendorId).select('-password');
-
     if (!vendor) {
       return res.status(404).json({ message: '⚠ Vendor not found.' });
     }
@@ -219,20 +235,37 @@ router.get('/profile', vendorAuth, async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 Fetch Vendor Listings Route
+// 🔹 Fetch Vendor’s Uploaded Files
 // ----------------------------------------------
-router.get('/listings', vendorAuth, async (req, res) => {
+router.get('/uploaded-files', vendorAuth, async (req, res) => {
   try {
-    const listings = await VendorListing.find({ vendorId: req.vendorId });
-    if (!listings || listings.length === 0) {
-      return res.status(404).json({ message: '⚠ No listings found.' });
+    const files = await VendorDocument.find({ vendorId: req.vendorId });
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: '⚠ No uploaded files found for this vendor.' });
     }
-    res.status(200).json({ listings });
+    res.status(200).json({ files });
   } catch (error) {
-    console.error('❌ Error fetching vendor listings:', error.message);
+    console.error('❌ Error fetching vendor files:', error.message);
+    res.status(500).json({ message: '❌ Internal server error.', error: error.message });
+  }
+});
+
+// ----------------------------------------------
+// 🔹 (Optional) Fetch Recent Vendor Activity
+// ----------------------------------------------
+router.get('/recent-activity', vendorAuth, async (req, res) => {
+  try {
+    // Example placeholder data or retrieve from a logs collection
+    const recentActivity = [
+      { description: 'Uploaded a file', date: new Date().toISOString() },
+      { description: 'Edited a machine listing', date: new Date().toISOString() },
+    ];
+
+    res.status(200).json({ activities: recentActivity });
+  } catch (error) {
+    console.error('❌ Error fetching vendor activity:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });
   }
 });
 
 export default router;
-# Save

@@ -1,5 +1,5 @@
 import express from 'express';
-import { QuoteRequest } from '../models/QuoteRequest.js';
+import QuoteRequest from '../models/QuoteRequest.js'; // ✅ Correct for default export
 import Vendor from '../models/Vendor.js'; // A model representing vendors
 import userAuth from '../middleware/userAuth.js'; // Authentication middleware
 

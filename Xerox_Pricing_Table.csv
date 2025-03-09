@@ -1,0 +1,11 @@
+Manufacturer,Model,Speed,Description,Cost,Installation,Profit Margin,Min Volume,Max Volume,Total Machine Cost
+Xerox,VersaLink C400,36ppm,A4 Colour Printer,£700.00,250,200,5000,10000,"£1,150.00"
+Xerox,VersaLink C500,45ppm,A4 Colour Printer,£850.00,250,250,10000,15000,"£1,350.00"
+Xerox,VersaLink C405,36ppm,A4 Colour Multifunctional Device,£750.00,250,225,4000,8000,"£1,225.00"
+Xerox,VersaLink C505,45ppm,A4 Colour Multifunctional Device,£900.00,275,275,6001,13000,"£1,475.00"
+Xerox,AltaLink C8030,30ppm,A3 Colour Multifunctional Device,"£3,000.00",275,300,13001,20000,"£3,575.00"
+Xerox,AltaLink C8035,35ppm,A3 Colour Multifunctional Device,"£3,500.00",275,325,20001,30000,"£4,100.00"
+Xerox,AltaLink C8045,45ppm,SRA3 Colour Multifunctional Device,"£4,200.00",300,350,30001,40000,"£4,850.00"
+Xerox,AltaLink C8055,55ppm,SRA3 Colour Multifunctional Device,"£4,800.00",300,375,40001,50000,"£5,475.00"
+Xerox,AltaLink C8070,70ppm,SRA3 Colour Multifunctional Device,"£6,500.00",350,400,50001,60000,"£7,250.00"
+Xerox,AltaLink C8100,100ppm,SRA3 Colour Multifunctional Device,"£9,000.00",400,500,60001,70000,"£9,900.00"

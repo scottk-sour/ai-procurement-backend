@@ -49,15 +49,9 @@ export const requestQuotes = async (req, res) => {
     }
 
     // --- Build Dynamic Filter Criteria ---
-    // NOTE: Adjust these conditions based on your Vendor schema.
-    // Here we drop the outdated "machines.0" condition and add dynamic criteria.
     const filterCriteria = {
       services: "Photocopiers",
       status: "active",
-      // Uncomment or add additional conditions if your vendor schema supports these fields:
-      // basePrice: { $lte: Number(userRequirements.max_lease_price) },
-      // minSpeed: { $gte: Number(userRequirements.min_speed) },
-      // supportedFunctions: { $all: userRequirements.required_functions },
     };
     console.log("Filter criteria for vendor matching:", JSON.stringify(filterCriteria, null, 2));
 
@@ -161,7 +155,8 @@ ${JSON.stringify(vendors.slice(0, 10), null, 2)}
 };
 
 /**
- * Fetch quotes for a specific user and return full vendor details.
+ * Fetch quotes for a specific user and return the FULL quotes from the database,
+ * so the front end sees companyName, min_speed, colour, etc.
  */
 export const getUserQuotes = async (req, res) => {
   try {
@@ -169,22 +164,16 @@ export const getUserQuotes = async (req, res) => {
     if (!userId) {
       return res.status(400).json({ message: "Missing userId" });
     }
-    // Fetch quotes for the user
+
+    // Fetch all quotes for this user directly from QuoteRequest
     const quotes = await QuoteRequest.find({ userId }).lean();
     if (!quotes.length) {
       return res.status(200).json({ quotes: [] });
     }
     console.log("📡 Retrieved Quotes:", JSON.stringify(quotes, null, 2));
 
-    // Extract vendor emails from the preferredVendor field in quotes
-    const vendorEmails = quotes.flatMap(q => q.preferredVendor.split(", "));
-    // Fetch full vendor details using their emails
-    const vendors = await Vendor.find({ email: { $in: vendorEmails } })
-      .lean()
-      .select("name price rating location serviceLevel responseTime yearsInBusiness support");
-    console.log("✅ Matched Vendors from Database:", JSON.stringify(vendors, null, 2));
-
-    return res.status(200).json({ quotes: vendors });
+    // Return the full array of quotes (without overwriting with vendor stubs)
+    return res.status(200).json({ quotes });
   } catch (error) {
     console.error("❌ Error retrieving user quotes:", error.message);
     return res.status(500).json({ error: "Internal Server Error", details: error.message });

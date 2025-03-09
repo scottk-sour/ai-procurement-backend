@@ -80,7 +80,7 @@ router.get('/auth/verify', async (req, res) => {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    res.json({ authenticated: true, userId: decoded.userId });
+    res.json({ authenticated: true, userId: decoded.userId, role: user.role });
   } catch (error) {
     console.error('Token verification error:', error.message);
     res.status(401).json({ message: 'Invalid or expired token' });
@@ -88,10 +88,10 @@ router.get('/auth/verify', async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 User Registration Route
+// 🔹 User Registration Route (Updated for Vendors)
 // ----------------------------------------------
 router.post('/signup', async (req, res) => {
-  const { name, email, password, company } = req.body;
+  const { name, email, password, company, role = 'vendor' } = req.body; // Default to 'vendor' for vendors
 
   if (!name || !email || !password) {
     return res.status(400).json({ message: '⚠ Name, email, and password are required.' });
@@ -104,7 +104,7 @@ router.post('/signup', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = new User({ name, email, password: hashedPassword, company });
+    const newUser = new User({ name, email, password: hashedPassword, company, role });
     await newUser.save();
 
     res.status(201).json({ message: '✅ User registered successfully.' });
@@ -115,7 +115,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // ----------------------------------------------
-// 🔹 User Login Route
+// 🔹 User Login Route (Updated for Vendors)
 // ----------------------------------------------
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -130,9 +130,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: '❌ Invalid email or password.' });
     }
 
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '4h' });
+    const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '4h' });
+    // Optionally store the token in the user document for persistence
+    user.token = token; // Store token in MongoDB (optional, for persistence or refresh)
+    await user.save();
 
-    res.json({ token, userId: user._id, message: '✅ Login successful.' });
+    res.json({ 
+      token, 
+      userId: user._id, 
+      message: '✅ Login successful.', 
+      role: user.role 
+    });
   } catch (error) {
     console.error('❌ Error during user login:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });

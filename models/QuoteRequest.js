@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const quoteRequestSchema = new mongoose.Schema(
   {
@@ -14,10 +14,11 @@ const quoteRequestSchema = new mongoose.Schema(
     max_lease_price: { type: Number, required: true },
     required_functions: { type: [String], required: true },
     additional_notes: { type: String },
-    status: { type: String, default: 'Pending' },
+    status: { type: String, default: "Pending" },
     preferredVendor: { type: String },
   },
   { timestamps: true }
 );
 
-export const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);
+const QuoteRequest = mongoose.model("QuoteRequest", quoteRequestSchema);
+export default QuoteRequest;  // ✅ Using default export

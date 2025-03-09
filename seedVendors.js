@@ -149,3 +149,4 @@ const seedVendors = async () => {
 
 // Run the seed function
 seedVendors();
+

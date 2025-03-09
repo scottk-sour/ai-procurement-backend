@@ -110,12 +110,11 @@ vendorSchema.pre('save', function (next) {
   next();
 });
 
-// Instance method to get active services
+// Instance methods...
 vendorSchema.methods.getActiveServices = function () {
   return this.services.filter((service) => validServices.includes(service));
 };
 
-// Instance method to add an uploaded file
 vendorSchema.methods.addUpload = async function (fileName, filePath, fileType) {
   if (!['pdf', 'csv', 'excel', 'image'].includes(fileType)) {
     throw new Error('Invalid file type.');
@@ -129,7 +128,6 @@ vendorSchema.methods.addUpload = async function (fileName, filePath, fileType) {
   await this.save();
 };
 
-// Instance method to remove an uploaded file by its ID
 vendorSchema.methods.removeUpload = async function (fileId) {
   this.uploads = this.uploads.filter(
     (upload) => upload._id.toString() !== fileId
@@ -137,13 +135,11 @@ vendorSchema.methods.removeUpload = async function (fileId) {
   await this.save();
 };
 
-// Instance method to add a machine listing
 vendorSchema.methods.addMachine = async function (machineData) {
   this.machines.push(machineData);
   await this.save();
 };
 
-// Instance method to remove a machine by its ID
 vendorSchema.methods.removeMachine = async function (machineId) {
   this.machines = this.machines.filter(
     (machine) => machine._id.toString() !== machineId
@@ -151,5 +147,7 @@ vendorSchema.methods.removeMachine = async function (machineId) {
   await this.save();
 };
 
-const Vendor = mongoose.model('Vendor', vendorSchema);
+// Use existing model if it exists, otherwise create a new one
+const Vendor = mongoose.models.Vendor || mongoose.model('Vendor', vendorSchema);
+
 export default Vendor;

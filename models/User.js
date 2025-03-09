@@ -24,9 +24,13 @@ const userSchema = new mongoose.Schema({
   }, // Optional company field
   role: { 
     type: String, 
-    enum: ['user', 'admin'], 
+    enum: ['user', 'vendor', 'admin'], 
     default: 'user' 
-  }, // User role with default to 'user'
+  }, // User role with default to 'user' (updated to include 'vendor' for consistency)
+  token: { 
+    type: String, 
+    default: null 
+  }, // Add token field for persistence (optional, can store JWT or null)
   createdAt: { 
     type: Date, 
     default: Date.now 
