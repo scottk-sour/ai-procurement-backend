@@ -1,16 +1,15 @@
-// File: routes/vendorUploads.js
 import express from "express";
 import multer from "multer";
 import fs from "fs";
 import csv from "csv-parser";
 import vendorAuth from "../middleware/vendorAuth.js";
 import Vendor from "../models/Vendor.js";
-import Machine from "../models/Machine.js";
+import CopierListing from "../models/CopierListing.js";
 
 const router = express.Router();
-router.use(vendorAuth); // Ensure vendor is authenticated
+router.use(vendorAuth);
 
-// ✅ Configure Multer for File Uploads
+// 🔧 Multer Storage Config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = "uploads/vendors/others/";
@@ -25,124 +24,151 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "text/csv") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only CSV files are allowed"), false);
+    }
+  },
+});
 
-// ✅ **Upload Route: Save File to Vendor and Process CSV**
+/**
+ * POST /api/vendors/upload
+ * Upload and parse CSV, insert into CopierListing
+ */
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      console.log("⚠ No file uploaded.");
-      return res.status(400).json({ message: "⚠ No file uploaded." });
-    }
-
+    if (!req.file) return res.status(400).json({ message: "⚠ No file uploaded." });
     const vendorId = req.vendor?._id;
-    if (!vendorId) {
-      console.log("⚠ Unauthorized: Vendor ID missing.");
-      return res.status(401).json({ message: "⚠ Unauthorized: Vendor ID missing." });
-    }
+    if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
 
-    console.log("🔍 Authenticated Vendor ID:", vendorId);
     const vendor = await Vendor.findById(vendorId);
-    if (!vendor) {
-      console.log("⚠ Vendor not found.");
-      return res.status(404).json({ message: "⚠ Vendor not found." });
-    }
+    if (!vendor) return res.status(404).json({ message: "⚠ Vendor not found." });
 
-    const filePath = req.file.path.replace(/\\/g, "/"); // Normalize file path
+    const filePath = req.file.path.replace(/\\/g, "/");
     const fileName = req.file.filename;
-    console.log("📂 File uploaded successfully:", fileName);
 
-    // ✅ **Step 1: Immediately Save File to Vendor’s `uploads` in MongoDB**
     await Vendor.updateOne(
       { _id: vendor._id },
-      { $push: { uploads: {
-          fileName: fileName,
-          filePath: filePath,
-          fileType: "csv",
-          uploadDate: new Date()
-      }}}
-    );    
+      {
+        $push: {
+          uploads: {
+            fileName,
+            filePath,
+            fileType: "csv",
+            uploadDate: new Date(),
+          },
+        },
+      }
+    );
 
-    console.log(`✅ File uploaded and stored in MongoDB for Vendor: ${vendor.email}`);
+    const listingsData = [];
 
-    // ✅ **Step 2: Parse CSV and Extract Machines**
-    const machinesData = [];
     fs.createReadStream(filePath)
       .pipe(csv())
       .on("data", (row) => {
-        console.log("📌 Parsed row:", row);
+        const listing = {
+          vendor: vendorId,
+          model: row.Model || "Unknown Model",
+          buyInPrice: parseFloat(row.BuyInPrice) || 0,
+          costPerCopy: {
+            mono: [
+              {
+                volumeRange: "0-5000",
+                price: parseFloat(row.CostPerCopyMono_0_5000) || 0,
+              },
+              {
+                volumeRange: "5001-10000",
+                price: parseFloat(row.CostPerCopyMono_5001_10000) || 0,
+              },
+            ],
+            colour: [
+              {
+                volumeRange: "0-2000",
+                price: parseFloat(row.CostPerCopyColour_0_2000) || 0,
+              },
+              {
+                volumeRange: "2001-5000",
+                price: parseFloat(row.CostPerCopyColour_2001_5000) || 0,
+              },
+            ],
+          },
+          extraTrays: parseInt(row.ExtraTrays) || 0,
+          paperCut: parseFloat(row.PaperCut) || 0,
+          followMePrint: parseFloat(row.FollowMePrint) || 0,
+          bookletFinisher: parseFloat(row.BookletFinisher) || 0,
+          tonerCollection: parseFloat(row.TonerCollection) || 0,
+          leaseOptions: [
+            {
+              termMonths: 36,
+              leasePercentage: parseFloat(row.LeasePercentage_36) || 0,
+            },
+            {
+              termMonths: 60,
+              leasePercentage: parseFloat(row.LeasePercentage_60) || 0,
+            },
+          ],
+          isRefurbished: (row.IsRefurbished || "").toLowerCase() === "true",
+          refurbishedPricing: {
+            buyInPrice: parseFloat(row.RefurbBuyInPrice) || 0,
+            costPerCopyMono: parseFloat(row.RefurbMonoCostPerCopy) || 0,
+            costPerCopyColour: parseFloat(row.RefurbColourCostPerCopy) || 0,
+          },
+          vendorMarginType: row.VendorMarginType || "percentage",
+          vendorMarginValue: parseFloat(row.VendorMarginValue) || 0,
+        };
 
-        // ✅ Ensure required fields exist
-        if (!row.model || !row.type || !row.lease_cost) {
-          console.warn("⚠ Skipping row due to missing fields:", row);
-          return;
-        }
-
-        machinesData.push({
-          vendorId, // ✅ Link machine to vendor
-          model: row.model.trim(),
-          type: row.type.trim(),
-          mono_cpc: row.mono_cpc ? parseFloat(row.mono_cpc) : 0,
-          color_cpc: row.color_cpc ? parseFloat(row.color_cpc) : 0,
-          lease_cost: parseFloat(row.lease_cost) || 0,
-          services: row.services ? row.services.trim() : "Unknown",
-          provider: row.provider ? row.provider.trim() : "Unknown",
-        });
+        if (listing.model !== "Unknown Model") listingsData.push(listing);
       })
       .on("end", async () => {
         try {
-          console.log("✅ Parsed Machines:", machinesData);
-
-          if (machinesData.length === 0) {
-            console.log("⚠ No valid machines found in CSV.");
-            return res.status(400).json({ message: "⚠ No valid machines found in CSV." });
+          if (listingsData.length === 0) {
+            return res.status(400).json({ message: "⚠ No valid listings found in CSV." });
           }
 
-          // ✅ Store machines in the Machines collection
-          await Machine.insertMany(machinesData);
-
-          console.log("💾 Machines successfully saved.");
+          await CopierListing.insertMany(listingsData);
           res.status(201).json({
-            message: "✅ File processed successfully and saved to vendor uploads.",
-            machines: machinesData,
+            message: "✅ File processed and listings saved.",
+            listings: listingsData,
           });
-
         } catch (dbError) {
-          console.error("❌ Database error:", dbError);
           res.status(500).json({
-            message: "❌ Database error while saving machines.",
+            message: "❌ Error saving to database.",
             error: dbError.message,
           });
         }
       })
       .on("error", (parseError) => {
-        console.error("❌ CSV parsing error:", parseError);
         res.status(500).json({
-          message: "❌ Error processing CSV file.",
+          message: "❌ CSV parsing error.",
           error: parseError.message,
         });
       });
-
   } catch (error) {
-    console.error("❌ File upload error:", error.message);
-    res.status(500).json({
-      message: "❌ Error uploading file.",
-      error: error.message,
-    });
+    res.status(500).json({ message: "❌ File upload error.", error: error.message });
   }
 });
 
-// ✅ **Get Machines for a Vendor**
-router.get("/machines", vendorAuth, async (req, res) => {
+/**
+ * GET /api/vendors/listings
+ * Retrieve all listings for the authenticated vendor
+ */
+router.get("/listings", async (req, res) => {
   try {
-    const machines = await Machine.find({ vendorId: req.vendor?._id }).lean();
-    if (machines.length === 0) {
-      return res.status(404).json({ message: "⚠ No machines found for this vendor." });
+    const vendorId = req.vendor?._id;
+    if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
+
+    const listings = await CopierListing.find({ vendor: vendorId }).lean();
+    if (!listings.length) {
+      return res.status(404).json({ message: "⚠ No listings found for this vendor." });
     }
-    res.status(200).json(machines);
+
+    res.status(200).json(listings);
   } catch (error) {
-    console.error("❌ Error fetching machines:", error);
-    res.status(500).json({ message: "❌ Internal server error." });
+    res.status(500).json({ message: "❌ Internal server error.", error: error.message });
   }
 });
 

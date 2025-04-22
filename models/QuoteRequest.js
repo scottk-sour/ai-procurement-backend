@@ -14,6 +14,10 @@ const quoteRequestSchema = new mongoose.Schema(
     max_lease_price: { type: Number, required: true },
     required_functions: { type: [String], required: true },
     additional_notes: { type: String },
+    monthlyVolume: {
+      mono: { type: Number, required: true },
+      colour: { type: Number, required: true }
+    },
     status: { type: String, default: "Pending" },
     preferredVendor: { type: String },
   },
@@ -21,4 +25,4 @@ const quoteRequestSchema = new mongoose.Schema(
 );
 
 const QuoteRequest = mongoose.model("QuoteRequest", quoteRequestSchema);
-export default QuoteRequest;  // ✅ Using default export
+export default QuoteRequest;

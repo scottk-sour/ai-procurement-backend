@@ -1,5 +1,4 @@
 // controllers/UserController.js
-
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
@@ -58,12 +57,16 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: '❌ Invalid email or password' });
     }
 
-    // Generate a JWT token with the userId in its payload
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '4h' });
+    // Generate a JWT token with the userId, email, and role; expiration set to 30 days.
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, role: 'user' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
     res.json({ token, userId: user._id, message: '✅ Login successful' });
   } catch (error) {
-    console.error('❌ Error during user login:', error.message);
+    console.error('❌ Error during user login:', error.stack);
     res.status(500).json({ message: '❌ Internal server error' });
   }
 };
@@ -74,7 +77,7 @@ export const login = async (req, res) => {
  */
 export const getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.userId);
+    const user = await User.findById(req.userId).select('-password'); // Exclude password for security
     if (!user) {
       return res.status(404).json({ message: '⚠ User not found' });
     }
@@ -96,7 +99,6 @@ export const uploadFile = async (req, res) => {
   const documentType = req.body.documentType || 'others';
 
   try {
-    // Assumes authentication middleware sets req.userId
     const user = await User.findById(req.userId);
     if (!user) return res.status(404).json({ message: '⚠ User not found' });
 
@@ -126,7 +128,6 @@ export const uploadFile = async (req, res) => {
  */
 export const getUploadedFiles = async (req, res) => {
   try {
-    // Assumes req.userId is set by authentication middleware
     const files = await UserDocument.find({ userId: req.userId });
     res.status(200).json({ files });
   } catch (error) {
@@ -140,7 +141,6 @@ export const getUploadedFiles = async (req, res) => {
  */
 export const getRecentActivity = async (req, res) => {
   try {
-    // This is a hard-coded example; in a real application, you'd likely pull this from a database or activity log.
     const recentActivity = [
       { description: 'Uploaded a document', date: new Date().toISOString() },
       { description: 'Requested a quote', date: new Date().toISOString() },
@@ -153,5 +153,29 @@ export const getRecentActivity = async (req, res) => {
       message: '❌ Internal Server Error',
       details: error.message,
     });
+  }
+};
+
+/**
+ * Get User Savings
+ * NEW: Returns dummy savings data for the user.
+ */
+export const getUserSavings = async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    // Replace this dummy data with actual savings calculation logic
+    const dummySavings = {
+      estimatedMonthlySavings: 42.50,
+      estimatedAnnualSavings: 510.00
+    };
+
+    return res.status(200).json(dummySavings);
+  } catch (error) {
+    console.error('❌ Error fetching user savings:', error.message);
+    return res.status(500).json({ message: '❌ Internal server error' });
   }
 };

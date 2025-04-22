@@ -8,8 +8,8 @@ import mongoose from 'mongoose';
 import csvParser from 'csv-parser';
 import { body, validationResult } from 'express-validator';
 import vendorAuth from '../middleware/vendorAuth.js';
-import Vendor from '../models/Vendor.js';
-import Machine from '../models/Machine.js'; // ✅ Ensure Machine model exists
+import Vendor from "../models/Vendor.js";
+import Machine from '../models/Machine.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Listing from '../models/Listing.js';
 import Order from '../models/Order.js';
@@ -86,6 +86,55 @@ router.post(
 );
 
 // ----------------------------------------------
+// ✅ Vendor Login Route (New)
+// ----------------------------------------------
+router.post(
+  '/login',
+  [
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('password').notEmpty().withMessage('Password is required'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    try {
+      // Find vendor by email
+      const vendor = await Vendor.findOne({ email }).lean();
+      if (!vendor) {
+        return res.status(401).json({ message: 'Invalid email or password.' });
+      }
+
+      // Check password
+      const isMatch = await bcrypt.compare(password, vendor.password);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid email or password.' });
+      }
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { vendorId: vendor._id, role: 'vendor' },
+        process.env.JWT_SECRET,
+        { expiresIn: '4h' }
+      );
+
+      res.status(200).json({
+        message: 'Login successful',
+        token,
+        vendor: { id: vendor._id, email: vendor.email, company: vendor.company },
+      });
+    } catch (error) {
+      console.error('Error during vendor login:', error.stack);
+      res.status(500).json({ message: 'Internal server error.' });
+    }
+  }
+);
+
+// ----------------------------------------------
 // ✅ Vendor Listings Routes
 // ----------------------------------------------
 router.get('/listings', vendorAuth, async (req, res) => {
@@ -138,7 +187,6 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
 
     console.log("📂 Processing CSV file:", filePath);
 
-    // ✅ Read and parse the CSV file
     fs.createReadStream(filePath)
       .pipe(csvParser())
       .on('data', (row) => {
@@ -146,7 +194,7 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
 
         if (row.model && row.type && row.lease_cost) {
           machinesData.push({
-            vendorId: vendor._id, // ✅ Link to vendor
+            vendorId: vendor._id,
             model: row.model.trim(),
             type: row.type.trim(),
             mono_cpc: row.mono_cpc ? parseFloat(row.mono_cpc) : 0,

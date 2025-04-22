@@ -53,7 +53,7 @@ mongoose
   .connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000, // Prevent hanging if DB is unreachable
+    serverSelectionTimeoutMS: 5000,
   })
   .then(() => console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`))
   .catch((err) => {
@@ -66,14 +66,9 @@ app.get('/', (req, res) => {
   res.send('🚀 TendorAI Backend is Running!');
 });
 
-// ----------------------------------------------
 // Import and Register API Routes
-// ----------------------------------------------
 import authRoutes from './routes/authRoutes.js';
-
-// IMPORTANT: Replace or merge your old vendorRoutes with the new one that has signup/login
 import vendorRoutes from './routes/vendorRoutes.js';
-
 import vendorListingsRoutes from './routes/vendorListings.js';
 import vendorProductRoutes from './routes/vendorProductRoutes.js';
 import userRoutes from './routes/userRoutes.js';
@@ -81,49 +76,36 @@ import adminRoutes from './routes/adminRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
 import submitRequestRoutes from './routes/submitRequestRoutes.js';
 import vendorUploadsRoutes from './routes/vendorUploads.js';
-
-// Newly Added Routes
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
+import copierQuoteRoutes from './routes/copierQuoteRoutes.js'; // NEW ROUTE
 
-// ----------------------------------------------
 // Mount the routes
-// ----------------------------------------------
 app.use('/api/auth', authRoutes);
-
-// If your new vendorRoutes covers all vendor logic (signup, login, etc.),
-// you can keep or remove vendorListingsRoutes and vendorProductRoutes as needed.
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
-
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
 app.use('/api/uploads', vendorUploadsRoutes);
-
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// ----------------------------------------------
 // 404 Handler for Unknown Routes
-// ----------------------------------------------
 app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
-// ----------------------------------------------
 // Global Error Handler
-// ----------------------------------------------
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message);
   res.status(500).json({ message: '❌ Internal server error', error: err.message });
 });
 
-// ----------------------------------------------
 // Start Server After MongoDB is Connected
-// ----------------------------------------------
 mongoose.connection.once('open', () => {
   const server = app.listen(Number(PORT), (err) => {
     if (err) {
@@ -151,8 +133,8 @@ mongoose.connection.once('open', () => {
     });
   };
 
-  process.on('SIGINT', shutdown);   // Handle Ctrl+C
-  process.on('SIGTERM', shutdown);  // Handle termination signals
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
   process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err.message);
     shutdown();

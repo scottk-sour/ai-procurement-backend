@@ -1,6 +1,6 @@
 import express from 'express';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt'; // Kept for potential future use
+import jwt from 'jsonwebtoken'; // Kept for verify route
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -8,22 +8,20 @@ import dotenv from 'dotenv';
 import User from '../models/User.js';
 import UserDocument from '../models/UserDocument.js';
 import userAuth from '../middleware/userAuth.js';
-import { extractFromPDF, extractFromCSV } from '../utils/fileProcessor.js';
+import { extractFromPDF, extractFromCSV, extractFromExcel } from '../utils/fileProcessor.js';
+import { login, signup } from '../controllers/userController.js';
 
 dotenv.config();
 
 const router = express.Router();
 const { JWT_SECRET } = process.env;
 
-// ✅ Ensure JWT_SECRET is set in .env
 if (!JWT_SECRET) {
   console.error("❌ ERROR: Missing JWT_SECRET in environment variables.");
   process.exit(1);
 }
 
-// ----------------------------------------------
-// 🔹 Configure Multer for File Uploads
-// ----------------------------------------------
+// Configure Multer for File Uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const documentType = req.body.documentType || 'others';
@@ -62,19 +60,16 @@ const upload = multer({
   },
 });
 
-// ----------------------------------------------
-// 🔹 User Token Verification Route
-// ----------------------------------------------
+// User Token Verification Route
 router.get('/auth/verify', async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1]; // Extract token from "Bearer <token>"
+    const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
       return res.status(401).json({ message: 'No token provided' });
     }
 
-    // Verify token using your JWT secret
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.userId); // Adjust based on your token payload
+    const user = await User.findById(decoded.userId);
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid token' });
@@ -87,69 +82,42 @@ router.get('/auth/verify', async (req, res) => {
   }
 });
 
-// ----------------------------------------------
-// 🔹 User Registration Route (Updated for Vendors)
-// ----------------------------------------------
+// User Registration Route (Override default role to "user")
 router.post('/signup', async (req, res) => {
-  const { name, email, password, company, role = 'vendor' } = req.body; // Default to 'vendor' for vendors
-
-  if (!name || !email || !password) {
-    return res.status(400).json({ message: '⚠ Name, email, and password are required.' });
-  }
-
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: '⚠ User already exists.' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const newUser = new User({ name, email, password: hashedPassword, company, role });
-    await newUser.save();
-
-    res.status(201).json({ message: '✅ User registered successfully.' });
-  } catch (error) {
-    console.error('❌ Error registering user:', error.message);
-    res.status(500).json({ message: '❌ Internal server error.', error: error.message });
-  }
+  const { name, email, password, company, role = 'user' } = req.body;
+  req.body.role = 'user'; // Force user role
+  return signup(req, res);
 });
 
-// ----------------------------------------------
-// 🔹 User Login Route (Updated for Vendors)
-// ----------------------------------------------
+// User Login Route (Override role to "user" if needed)
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  // Delegate to UserController.js login
+  await login(req, res);
+  // Note: Role is set in UserController.js as 'user'
+});
 
-  if (!email || !password) {
-    return res.status(400).json({ message: '⚠ Email and password are required.' });
-  }
-
+// NEW: Fetch User Savings Route
+router.get('/savings', userAuth, async (req, res) => {
   try {
-    const user = await User.findOne({ email });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ message: '❌ Invalid email or password.' });
+    const { userId } = req.query;
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
     }
 
-    const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '4h' });
-    // Optionally store the token in the user document for persistence
-    user.token = token; // Store token in MongoDB (optional, for persistence or refresh)
-    await user.save();
+    // Dummy savings data; replace with actual calculation logic as needed
+    const dummySavings = {
+      estimatedMonthlySavings: 42.50,
+      estimatedAnnualSavings: 510.00
+    };
 
-    res.json({ 
-      token, 
-      userId: user._id, 
-      message: '✅ Login successful.', 
-      role: user.role 
-    });
+    return res.status(200).json(dummySavings);
   } catch (error) {
-    console.error('❌ Error during user login:', error.message);
-    res.status(500).json({ message: '❌ Internal server error.', error: error.message });
+    console.error('Error fetching user savings:', error.message);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
 
-// ----------------------------------------------
-// 🔹 User File Upload Route with AI Processing
-// ----------------------------------------------
+// User File Upload Route with AI Processing
 router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: '⚠ No file uploaded or invalid file type.' });
@@ -165,11 +133,10 @@ router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
       return res.status(404).json({ message: '⚠ User not found.' });
     }
 
-    // Process the uploaded file based on its type
     if (req.file.mimetype === 'application/pdf') {
       extractedData = await extractFromPDF(filePath);
     } else if (req.file.mimetype.includes('spreadsheetml') || req.file.mimetype.includes('excel')) {
-      extractedData = extractFromExcel(filePath);
+      extractedData = await extractFromExcel(filePath);
     } else if (req.file.mimetype.includes('csv')) {
       extractedData = await extractFromCSV(filePath);
     } else {
@@ -198,17 +165,13 @@ router.post('/upload', userAuth, upload.single('file'), async (req, res) => {
   }
 });
 
-// ----------------------------------------------
-// 🔹 Fetch User Profile Route
-// ----------------------------------------------
+// Fetch User Profile Route
 router.get('/profile', userAuth, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-password');
-
     if (!user) {
       return res.status(404).json({ message: '⚠ User not found.' });
     }
-
     res.status(200).json({ user });
   } catch (error) {
     console.error('❌ Error fetching user profile:', error.message);
@@ -216,14 +179,12 @@ router.get('/profile', userAuth, async (req, res) => {
   }
 });
 
-// ----------------------------------------------
-// 🔹 Fetch Uploaded Files Route
-// ----------------------------------------------
+// Fetch Uploaded Files Route
 router.get('/uploaded-files', userAuth, async (req, res) => {
   try {
     const files = await UserDocument.find({ userId: req.userId });
     if (!files || files.length === 0) {
-      return res.status(404).json({ message: '⚠ No uploaded files found.' });
+      return res.status(200).json({ files: [], message: 'No uploaded files found.' });
     }
     res.status(200).json({ files });
   } catch (error) {
@@ -232,16 +193,13 @@ router.get('/uploaded-files', userAuth, async (req, res) => {
   }
 });
 
-// ----------------------------------------------
-// 🔹 Fetch Recent Activity Route
-// ----------------------------------------------
+// Fetch Recent Activity Route
 router.get('/recent-activity', userAuth, async (req, res) => {
   try {
     const recentActivity = [
       { description: 'Uploaded a document', date: new Date().toISOString() },
       { description: 'Requested a quote', date: new Date().toISOString() },
     ];
-
     res.status(200).json({ activities: recentActivity });
   } catch (error) {
     console.error('❌ Error fetching recent activity:', error.message);
