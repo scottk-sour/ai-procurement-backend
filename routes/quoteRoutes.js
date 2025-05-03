@@ -1,228 +1,283 @@
-// C:\Users\pmeth\Projects\ai-procurement-backend\routes\quoteRoutes.js
-import express from "express";
-import Quote from "../models/QuoteRequest.js";
-import Listing from "../models/Listing.js";
-import Vendor from "../models/Vendor.js";
-import userAuth from "../middleware/userAuth.js";
-import { OpenAI } from "openai";
+import express from 'express';
+import QuoteRequest from '../models/QuoteRequest.js';
+import Listing from '../models/Listing.js';
+import Vendor from '../models/Vendor.js';
+import userAuth from '../middleware/userAuth.js';
+import { OpenAI } from 'openai';
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Get all quotes for a user
-router.get("/user", async (req, res) => {
+router.get('/user', async (req, res) => {
   try {
     const { userId } = req.query;
     if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+      return res.status(400).json({ message: 'User ID is required' });
     }
-    const quotes = await Quote.find({ userId });
-    console.log("📡 Retrieved Quotes:", quotes.length, "quotes found");
+    const quotes = await QuoteRequest.find({ userId }).lean();
+    console.log('📡 Retrieved Quotes:', quotes.length, 'quotes found');
     res.status(200).json(quotes);
   } catch (error) {
-    console.error("Error fetching quotes:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error('Error fetching quotes:', error.message);
+    res.status(500).json({ message: 'Server error', details: error.message });
   }
 });
 
 // Create a new quote request and return three quotes
-router.post("/request", userAuth, async (req, res) => {
+router.post('/request', userAuth, async (req, res) => {
   try {
     let userRequirements, userId;
 
-    if (req.headers["content-type"]?.includes("multipart/form-data")) {
-      userRequirements = JSON.parse(req.body.userRequirements);
-      userId = req.body.userId || req.userId;
+    // Handle multipart/form-data or JSON body
+    if (req.headers['content-type']?.includes('multipart/form-data')) {
+      userRequirements = JSON.parse(req.body.userRequirements || '{}');
+      userId = req.body.userId || req.user.id;
     } else {
       userRequirements = req.body;
-      userId = req.body.userId || req.userId;
+      userId = req.body.userId || req.user.id;
     }
 
     if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+      return res.status(400).json({ message: 'User ID is required' });
     }
 
-    // Save the quote request
-    const quote = new Quote({
+    // Validate required fields
+    if (!userRequirements.serviceType) {
+      return res.status(400).json({ message: 'Service type is required' });
+    }
+
+    // Map user requirements to schema fields
+    const quoteData = {
       userId,
-      serviceType: userRequirements.serviceType || "Photocopiers",
-      companyName: userRequirements.companyName,
-      industryType: userRequirements.industryType,
-      numEmployees: userRequirements.numEmployees,
-      numOfficeLocations: userRequirements.numLocations,
-      multipleFloors: userRequirements.multiFloor,
-      colour: userRequirements.colour,
-      min_speed: userRequirements.min_speed,
-      max_lease_price: userRequirements.max_lease_price,
-      monthlyPrintVolume: userRequirements.monthlyPrintVolume,
-      annualPrintVolume: userRequirements.annualPrintVolume,
-      monthlyColorVolume: userRequirements.monthlyColorVolume,
-      monthlyMonoVolume: userRequirements.monthlyMonoVolume,
-      currentColorCPC: userRequirements.currentColorCPC,
-      currentMonoCPC: userRequirements.currentMonoCPC,
-      quarterlyLeaseCost: userRequirements.quarterlyLeaseCost,
-      leasingCompany: userRequirements.leasingCompany,
-      serviceProvider: userRequirements.serviceProvider,
-      contractStartDate: userRequirements.contractStartDate,
-      contractEndDate: userRequirements.contractEndDate,
-      additionalServices: userRequirements.additionalServices || [],
-      paysForScanning: userRequirements.paysForScanning,
-      required_functions: userRequirements.required_functions || [],
-      status: "In Progress",
+      serviceType: userRequirements.serviceType || 'Photocopiers',
+      companyName: userRequirements.companyName || undefined,
+      industryType: userRequirements.industryType || undefined,
+      numEmployees: parseInt(userRequirements.numEmployees) || undefined,
+      numOfficeLocations: parseInt(userRequirements.numLocations) || undefined,
+      multipleFloors: userRequirements.multiFloor === true || userRequirements.multiFloor === 'Yes' || false,
+      colour: userRequirements.colour || undefined,
+      type: userRequirements.type || undefined,
+      minSpeed: parseInt(userRequirements.min_speed) || undefined,
+      price: parseInt(userRequirements.max_lease_price) || undefined,
+      monthlyVolume: {
+        mono: parseInt(userRequirements.monthlyVolume?.mono || userRequirements.monthlyMonoVolume) || 0,
+        colour: parseInt(userRequirements.monthlyVolume?.colour || userRequirements.monthlyColorVolume) || 0,
+      },
+      monthlyPrintVolume: parseInt(userRequirements.monthlyPrintVolume) || undefined,
+      annualPrintVolume: parseInt(userRequirements.annualPrintVolume) || undefined,
+      currentColourCPC: parseFloat(userRequirements.currentColorCPC) || undefined,
+      currentMonoCPC: parseFloat(userRequirements.currentMonoCPC) || undefined,
+      quarterlyLeaseCost: parseFloat(userRequirements.quarterlyLeaseCost) || undefined,
+      leasingCompany: userRequirements.leasingCompany || undefined,
+      serviceProvider: userRequirements.serviceProvider || undefined,
+      contractStartDate: userRequirements.contractStartDate
+        ? new Date(userRequirements.contractStartDate)
+        : undefined,
+      contractEndDate: userRequirements.contractEndDate
+        ? new Date(userRequirements.contractEndDate)
+        : undefined,
+      additionalServices: Array.isArray(userRequirements.additionalServices)
+        ? userRequirements.additionalServices
+        : [],
+      paysForScanning: userRequirements.paysForScanning === true || userRequirements.paysForScanning === 'Yes' || false,
+      requiredFunctions: Array.isArray(userRequirements.required_functions)
+        ? userRequirements.required_functions
+        : [],
+      preference: userRequirements.preference || undefined,
+      status: 'In Progress',
       createdAt: new Date(),
       updatedAt: new Date(),
-      preferredVendor: "", // Will be set after vendor selection
-    });
+      matchedVendors: [],
+      preferredVendor: '',
+    };
 
     // Filter vendors based on user requirements
     const filterCriteria = {
-      services: "Photocopiers",
-      status: "active",
-      minSpeed: { $gte: Number(userRequirements.min_speed) || 0 },
-      price: { $lte: Number(userRequirements.max_lease_price) || Infinity },
+      services: quoteData.serviceType,
+      status: 'active',
     };
-    if (userRequirements.colour) filterCriteria.colour = userRequirements.colour;
-    if (userRequirements.required_functions?.length) {
-      filterCriteria.requiredFunctions = { $all: userRequirements.required_functions };
+    if (quoteData.minSpeed) filterCriteria.minSpeed = { $gte: quoteData.minSpeed };
+    if (quoteData.price) filterCriteria.price = { $lte: quoteData.price * 1.1 }; // 10% buffer
+    if (quoteData.colour) filterCriteria.colour = quoteData.colour;
+    if (quoteData.requiredFunctions?.length) {
+      filterCriteria.requiredFunctions = { $all: quoteData.requiredFunctions };
     }
-    if (userRequirements.monthlyPrintVolume) {
-      filterCriteria.dutyCycle = { $gte: Number(userRequirements.monthlyPrintVolume) * 1.2 };
+    if (quoteData.monthlyVolume.mono || quoteData.monthlyVolume.colour) {
+      const totalVolume = (quoteData.monthlyVolume.mono || 0) + (quoteData.monthlyVolume.colour || 0);
+      filterCriteria.dutyCycle = { $gte: totalVolume * 1.2 };
     }
-    console.log("Filter criteria:", filterCriteria);
+    if (quoteData.industryType) filterCriteria.industries = quoteData.industryType;
 
+    console.log('Filter criteria:', filterCriteria);
+    const allVendors = await Vendor.find().lean();
+    console.log('All vendors:', allVendors.map((v) => v.name));
     const vendors = await Vendor.find(filterCriteria).lean();
-    console.log(`Found ${vendors.length} vendors`);
+    console.log(`Found ${vendors.length} vendors`, vendors.map((v) => v.name));
 
-    if (!vendors.length) {
-      quote.status = "Failed";
-      await quote.save();
-      return res.status(200).json({ recommendedVendors: [], message: "No vendors found." });
-    }
+    // Create quote request
+    const quote = new QuoteRequest(quoteData);
 
-    // Use OpenAI to select top 3 vendors with the new prompt
-    const prompt = `
-      You are an AI procurement expert selecting the best Photocopier vendors.
-      User Requirements: ${JSON.stringify(userRequirements, null, 2)}
-      Available Vendors: ${JSON.stringify(vendors.slice(0, 10), null, 2)}
-      Select 3 vendors based on:
-      - Competitive pricing (max $${userRequirements.max_lease_price})
-      - Adequate speed (min ${userRequirements.min_speed})
-      - Required functions (${userRequirements.required_functions?.join(", ") || "none"})
-      - Vendor reputation and service quality
-      - Long-term value for the user's industry (${userRequirements.industryType})
-      Output JSON: {"vendorEmails": ["email1", "email2", "email3"]}
-    `;
+    await quote.save();
+
+    // Use OpenAI to select top 3 vendors
     let recommendedVendors = [];
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-      });
-      const content = completion.choices[0].message.content.trim();
-      console.log("AI Response:", content);
-      const parsed = JSON.parse(content);
-      recommendedVendors = parsed.vendorEmails || [];
-    } catch (error) {
-      console.error("AI error:", error.message);
+    if (vendors.length > 0) {
+      const prompt = `
+        You are an AI procurement expert selecting the best Photocopier vendors.
+        User Requirements: ${JSON.stringify(quoteData, null, 2)}
+        Available Vendors: ${JSON.stringify(
+          vendors.slice(0, 10).map((v) => ({
+            id: v._id,
+            name: v.name,
+            email: v.email,
+            minSpeed: v.minSpeed,
+            price: v.price,
+            colour: v.colour,
+            requiredFunctions: v.requiredFunctions,
+            dutyCycle: v.dutyCycle,
+            industries: v.industries,
+          })),
+          null,
+          2
+        )}
+        Select 3 vendors based on:
+        - Competitive pricing (max £${quoteData.price || 'N/A'})
+        - Adequate speed (min ${quoteData.minSpeed || 'N/A'} ppm)
+        - Required functions (${quoteData.requiredFunctions?.join(', ') || 'none'})
+        - Vendor reputation and service quality
+        - Long-term value for the user's industry (${quoteData.industryType || 'N/A'})
+        - User preference for ${quoteData.preference || 'cost'}
+        Output JSON: {"vendorIds": ["id1", "id2", "id3"]}
+      `;
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+        });
+        const content = completion.choices[0].message.content.trim();
+        console.log('AI Response:', content);
+        const parsed = JSON.parse(content);
+        recommendedVendors = parsed.vendorIds || [];
+      } catch (error) {
+        console.error('AI error:', error.message);
+      }
     }
 
-    // Fallback to top 3 if AI fails
-    if (recommendedVendors.length < 3) {
-      recommendedVendors = vendors.slice(0, 3).map(v => v.email);
+    // Fallback to top 3 vendors if AI fails or no vendors selected
+    if (recommendedVendors.length < 3 && vendors.length > 0) {
+      recommendedVendors = vendors.slice(0, 3).map((v) => v._id.toString());
     }
 
     // Update quote with selected vendors
-    quote.preferredVendor = recommendedVendors.join(", ");
+    quote.preferredVendor = recommendedVendors.join(', ');
+    quote.matchedVendors = recommendedVendors;
     await quote.save();
-    console.log("📡 New Quote Created with Vendors:", quote);
+    console.log('📡 New Quote Created with Vendors:', quote);
 
-    // Return the three quotes
+    // Prepare response with vendor details
+    const vendorDetails = vendors
+      .filter((v) => recommendedVendors.includes(v._id.toString()))
+      .map((v) => ({
+        vendorId: v._id,
+        name: v.name,
+        email: v.email,
+      }));
+
     res.status(201).json({
-      message: "Quote request created successfully",
+      message: 'Quote request created successfully',
       quote,
-      recommendedVendors, // Array of 3 vendor emails
+      recommendedVendors: vendorDetails,
     });
   } catch (error) {
-    console.error("Error creating quote:", error);
-    res.status(500).json({ message: "Server error while creating quote" });
+    console.error('Error creating quote:', JSON.stringify(error, null, 2));
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      console.error('Validation errors:', messages);
+      return res.status(400).json({ message: 'Validation failed', details: messages });
+    }
+    res.status(500).json({ message: 'Server error while creating quote', details: error.message });
   }
 });
 
 // Get vendor quotes by manufacturer from MongoDB listings
-router.post("/ai/recommendations", userAuth, async (req, res) => {
+router.post('/ai/recommendations', userAuth, async (req, res) => {
   try {
     const { userId, manufacturer } = req.body;
     if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+      return res.status(400).json({ message: 'User ID is required' });
     }
-    const latestQuote = await Quote.findOne({ userId }).sort({ createdAt: -1 });
+    const latestQuote = await QuoteRequest.findOne({ userId }).sort({ createdAt: -1 });
     if (!latestQuote) {
-      return res.status(404).json({ message: "No quotes found for this user" });
+      return res.status(404).json({ message: 'No quotes found for this user' });
     }
     const query = {
-      speed: { $gte: latestQuote.min_speed || 0 },
-      price: { $lte: latestQuote.max_lease_price || Infinity },
-      required_functions: { $all: latestQuote.required_functions || [] },
+      speed: { $gte: latestQuote.minSpeed || 0 },
+      price: { $lte: latestQuote.price || Infinity },
+      requiredFunctions: { $all: latestQuote.requiredFunctions || [] },
     };
     if (manufacturer) query.brand = manufacturer;
     if (latestQuote.colour) query.colour = latestQuote.colour;
     if (latestQuote.type) query.type = latestQuote.type;
-    if (latestQuote.monthlyPrintVolume) query.dutyCycle = { $gte: latestQuote.monthlyPrintVolume * 1.2 };
-    if (latestQuote.currentColorCPC) query.colorCPC = { $lte: latestQuote.currentColorCPC };
+    if (latestQuote.monthlyVolume.mono || latestQuote.monthlyVolume.colour) {
+      const totalVolume = (latestQuote.monthlyVolume.mono || 0) + (latestQuote.monthlyVolume.colour || 0);
+      query.dutyCycle = { $gte: totalVolume * 1.2 };
+    }
+    if (latestQuote.currentColourCPC) query.colourCPC = { $lte: latestQuote.currentColourCPC };
     if (latestQuote.currentMonoCPC) query.monoCPC = { $lte: latestQuote.currentMonoCPC };
 
     const vendorQuotes = await Listing.find(query)
-      .populate("vendor", "name email")
+      .populate('vendor', 'name email')
       .limit(3);
-    console.log(`📡 Fetching ${manufacturer || "any"} vendor recommendations for userId:`, userId);
-    console.log("🧠 Matched Vendor Quotes:", vendorQuotes);
+    console.log(`📡 Fetching ${manufacturer || 'any'} vendor recommendations for userId:`, userId);
+    console.log('🧠 Matched Vendor Quotes:', vendorQuotes);
 
     if (vendorQuotes.length === 0) {
-      return res.status(404).json({ message: `No matching ${manufacturer || "vendor"} quotes found` });
+      return res.status(404).json({ message: `No matching ${manufacturer || 'vendor'} quotes found` });
     }
     const recommendations = vendorQuotes.map((v) => ({
-      vendor: v.vendor?.name || "Unknown Vendor",
+      vendor: v.vendor?.name || 'Unknown Vendor',
       price: v.price,
       speed: v.speed,
-      website: v.website || "N/A",
+      website: v.website || 'N/A',
       brand: v.brand,
       type: v.type,
       colour: v.colour,
       monoCPC: v.monoCPC,
-      colorCPC: v.colorCPC,
+      colourCPC: v.colourCPC,
     }));
     res.status(200).json(recommendations);
   } catch (error) {
-    console.error("Error fetching vendor recommendations:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error('Error fetching vendor recommendations:', error.message);
+    res.status(500).json({ message: 'Server error', details: error.message });
   }
 });
 
 // Handle user selecting a vendor quote
-router.post("/request-selected", userAuth, async (req, res) => {
+router.post('/request-selected', userAuth, async (req, res) => {
   try {
-    console.log("🔍 Received request-selected API call with data:", req.body);
+    console.log('🔍 Received request-selected API call with data:', req.body);
     if (!req.body.selectedVendors || !Array.isArray(req.body.selectedVendors)) {
       return res.status(400).json({ message: "Invalid request: 'selectedVendors' is required and must be an array." });
     }
     const { selectedVendors, quoteId } = req.body;
     if (!quoteId) {
-      return res.status(400).json({ message: "Quote ID is required" });
+      return res.status(400).json({ message: 'Quote ID is required' });
     }
-    const updatedQuote = await Quote.findByIdAndUpdate(
+    const updatedQuote = await QuoteRequest.findByIdAndUpdate(
       quoteId,
-      { preferredVendor: selectedVendors[0], status: "Vendor Selected" },
+      { preferredVendor: selectedVendors[0], status: 'Vendor Selected' },
       { new: true }
     );
     if (!updatedQuote) {
-      return res.status(404).json({ message: "Quote not found" });
+      return res.status(404).json({ message: 'Quote not found' });
     }
-    console.log("✅ Quote updated successfully:", updatedQuote);
-    return res.status(200).json({ message: "Selected vendor(s) updated successfully!", updatedQuote });
+    console.log('✅ Quote updated successfully:', updatedQuote);
+    return res.status(200).json({ message: 'Selected vendor(s) updated successfully!', updatedQuote });
   } catch (error) {
-    console.error("❌ Error processing request-selected:", error);
-    return res.status(500).json({ message: "Internal Server Error" });
+    console.error('❌ Error processing request-selected:', error.message);
+    res.status(500).json({ message: 'Internal Server Error', details: error.message });
   }
 });
 

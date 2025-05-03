@@ -14,11 +14,11 @@ const vendorProductSchema = new mongoose.Schema({
   totalMachineCost: { type: Number, required: true },
   costPerCopy: {
     A4Mono: { type: Number, required: true },
-    A4Color: { type: Number, required: true },
+    A4Colour: { type: Number, required: true },
     A3Mono: { type: Number, required: true },
-    A3Color: { type: Number, required: true },
+    A3Colour: { type: Number, required: true },
     SRA3Mono: { type: Number, required: true },
-    SRA3Color: { type: Number, required: true },
+    SRA3Colour: { type: Number, required: true },
   },
   auxiliaries: [
     {

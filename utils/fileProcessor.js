@@ -1,128 +1,146 @@
 import fs from 'fs';
-import pdfParse from 'pdf-parse';
-import csvParser from 'csv-parser';
+import path from 'path';
+import { PDFExtract } from 'pdf.js-extract';
 import xlsx from 'xlsx';
+import csv from 'csv-parser';
 
-// ✅ Extract Data from PDF
+const pdfExtract = new PDFExtract();
+
+/**
+ * Parse a PDF file and extract its text
+ */
 export const extractFromPDF = async (filePath) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ ERROR: File not found: ${filePath}`);
-      return { error: 'File not found' };
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const pdfData = await pdfParse(fileBuffer);
-    const text = pdfData.text;
-
-    const leaseEndDateMatch =
-      text.match(/Lease End Date:\s*(\d{2}\/\d{2}\/\d{4})/i) ||
-      text.match(/End Date:\s*(\d{2}\/\d{2}\/\d{4})/i);
-    const leaseEndDate = leaseEndDateMatch ? leaseEndDateMatch[1] : 'Not found';
-
-    const paymentMatch = text.match(/Monthly Payment:\s*£?([\d,]+(?:\.\d{2})?)/i);
-    const monthlyPayment = paymentMatch
-      ? parseFloat(paymentMatch[1].replace(',', ''))
-      : 0;
-
-    const settlementCost = calculateSettlementCost(leaseEndDate, monthlyPayment);
-
-    return { leaseEndDate, monthlyPayment, settlementCost };
-  } catch (error) {
-    console.error('❌ Error processing PDF:', error.message);
-    return { error: 'Failed to process PDF' };
-  }
+  const data = await pdfExtract.extract(filePath, {});
+  return data.pages.map(p => p.content.map(i => i.str).join(' ')).join('\n');
 };
 
-// ✅ Extract Data from CSV
+/**
+ * Parse a CSV file and extract rows
+ */
 export const extractFromCSV = (filePath) => {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ ERROR: File not found: ${filePath}`);
-      return reject({ error: 'File not found' });
-    }
-
     const results = [];
     fs.createReadStream(filePath)
-      .pipe(csvParser())
-      .on('data', (data) => results.push(data))
-      .on('end', () => {
-        const leaseEndDate =
-          results[0]?.['Lease End Date'] ||
-          results[0]?.['End Date'] ||
-          'Not found';
-        const monthlyPayment = results[0]?.['Monthly Payment']
-          ? parseFloat(results[0]['Monthly Payment'])
-          : 0;
-
-        const settlementCost = calculateSettlementCost(leaseEndDate, monthlyPayment);
-
-        resolve({ leaseEndDate, monthlyPayment, settlementCost });
-      })
-      .on('error', (error) => {
-        console.error('❌ Error processing CSV:', error.message);
-        reject({ error: 'Failed to process CSV file' });
-      });
+      .pipe(csv())
+      .on('data', data => results.push(data))
+      .on('end', () => resolve(results))
+      .on('error', error => reject(error));
   });
 };
 
-// ✅ Extract Data from Excel (New)
+/**
+ * Parse an Excel file and extract rows
+ */
 export const extractFromExcel = (filePath) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ ERROR: File not found: ${filePath}`);
-      return { error: 'File not found' };
-    }
-
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = xlsx.utils.sheet_to_json(sheet);
-
-    const leaseEndDate =
-      data[0]?.['Lease End Date'] ||
-      data[0]?.['End Date'] ||
-      'Not found';
-
-    const monthlyPayment = data[0]?.['Monthly Payment']
-      ? parseFloat(data[0]['Monthly Payment'])
-      : 0;
-
-    const settlementCost = calculateSettlementCost(leaseEndDate, monthlyPayment);
-
-    return { leaseEndDate, monthlyPayment, settlementCost };
-  } catch (error) {
-    console.error('❌ Error processing Excel:', error.message);
-    return { error: 'Failed to process Excel file' };
-  }
+  const workbook = xlsx.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  return xlsx.utils.sheet_to_json(worksheet);
 };
 
-// ✅ Function to Calculate Settlement Cost
-const calculateSettlementCost = (leaseEndDate, monthlyPayment) => {
-  if (leaseEndDate === 'Not found' || monthlyPayment === 0) {
-    return {
-      leaseEndDate: 'Missing in document',
-      monthlyPayment: 'Missing in document',
-      settlementCost: 'No lease data available',
+/**
+ * Utility class for processing uploaded files (PDF, Excel, CSV)
+ */
+export class FileProcessor {
+  static async parsePdf(filePath) {
+    return extractFromPDF(filePath);
+  }
+
+  static parseExcel(filePath) {
+    return extractFromExcel(filePath);
+  }
+
+  static parseCSV(filePath) {
+    return extractFromCSV(filePath);
+  }
+
+  static extractContractInfo(content) {
+    const contractInfo = {
+      leaseCost: null,
+      monoCPC: null,
+      colourCPC: null,
+      startDate: null,
+      endDate: null,
+      machineModel: null,
+      leasingCompany: null
     };
+
+    const leaseCostMatch = content.match(/(?:quarterly|monthly|annual)?\s*(?:lease|payment|cost)[\s:]*[\u00A3$\u20AC]?\s*([0-9,]+\.[0-9]{2})/i);
+    if (leaseCostMatch) contractInfo.leaseCost = parseFloat(leaseCostMatch[1].replace(/,/g, ''));
+
+    const monoCPCMatch = content.match(/(?:mono|black|b&w|b\/w)[\s\w]*(?:cost per copy|cpc|cost per page)[\s:]*[\u00A3$\u20AC]?\s*([0-9]+\.[0-9]{2,5})/i);
+    if (monoCPCMatch) contractInfo.monoCPC = parseFloat(monoCPCMatch[1]);
+
+    const colourCPCMatch = content.match(/(?:color|colour)[\s\w]*(?:cost per copy|cpc|cost per page)[\s:]*[\u00A3$\u20AC]?\s*([0-9]+\.[0-9]{2,5})/i);
+    if (colourCPCMatch) contractInfo.colourCPC = parseFloat(colourCPCMatch[1]);
+
+    const startDateMatch = content.match(/(?:contract|lease)[\s\w]*(?:start|begin|commence)[\s:]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
+    if (startDateMatch) contractInfo.startDate = startDateMatch[1];
+
+    const endDateMatch = content.match(/(?:contract|lease)[\s\w]*(?:end|expiry|terminate)[\s:]*([0-9]{1,2}[\/\-.][0-9]{1,2}[\/\-.][0-9]{2,4})/i);
+    if (endDateMatch) contractInfo.endDate = endDateMatch[1];
+
+    const modelMatch = content.match(/(?:model|machine|device)[\s:]*([A-Za-z0-9\-]+\s[A-Za-z0-9\-]+)/i);
+    if (modelMatch) contractInfo.machineModel = modelMatch[1].trim();
+
+    const companyMatch = content.match(/(?:leasing company|financed by|provided by)[\s:]*([A-Za-z\s&]+)(?:Ltd\.?|Limited|Inc\.?|Corporation)?/i);
+    if (companyMatch) contractInfo.leasingCompany = companyMatch[1].trim();
+
+    return contractInfo;
   }
 
-  try {
-    const leaseEnd = new Date(leaseEndDate);
-    const today = new Date();
-
-    const remainingMonths =
-      (leaseEnd.getFullYear() - today.getFullYear()) * 12 +
-      (leaseEnd.getMonth() - today.getMonth());
-
-    if (remainingMonths <= 0) {
-      return 'Lease already ended';
+  static calculateSettlementCost(endDate, monthlyPayment) {
+    if (!endDate || !monthlyPayment) return 'No lease data available';
+    try {
+      const leaseEnd = new Date(endDate);
+      const today = new Date();
+      const months = (leaseEnd.getFullYear() - today.getFullYear()) * 12 + (leaseEnd.getMonth() - today.getMonth());
+      if (months <= 0) return 'Lease already ended';
+      return `£${Math.round(months * monthlyPayment * 0.8)}`;
+    } catch {
+      return 'Error in calculation';
     }
-
-    const settlementCost = Math.round(remainingMonths * monthlyPayment * 0.8);
-    return `£${settlementCost}`;
-  } catch (error) {
-    console.error('❌ Error calculating settlement cost:', error.message);
-    return 'Error in calculation';
   }
-};
+
+  static async processFile(filePath) {
+    try {
+      if (!fs.existsSync(filePath)) throw new Error('File not found');
+      const ext = path.extname(filePath).toLowerCase();
+      let content = '';
+      let contractInfo = {};
+
+      if (ext === '.pdf') {
+        content = await this.parsePdf(filePath);
+      } else if (ext === '.xlsx' || ext === '.xls') {
+        const data = this.parseExcel(filePath);
+        content = JSON.stringify(data);
+      } else if (ext === '.csv') {
+        const data = await this.parseCSV(filePath);
+        content = JSON.stringify(data);
+      } else {
+        throw new Error(`Unsupported file type: ${ext}`);
+      }
+
+      contractInfo = this.extractContractInfo(content);
+      const settlementCost = this.calculateSettlementCost(contractInfo.endDate, contractInfo.leaseCost);
+
+      return {
+        filePath,
+        fileType: ext.substring(1),
+        rawContent: content,
+        contractInfo,
+        settlementCost
+      };
+    } catch (error) {
+      return {
+        filePath,
+        fileType: path.extname(filePath).substring(1),
+        error: error.message,
+        contractInfo: {},
+        settlementCost: 'Unavailable'
+      };
+    }
+  }
+}
+
+export default FileProcessor;

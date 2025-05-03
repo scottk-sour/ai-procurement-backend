@@ -1,4 +1,6 @@
-import 'dotenv/config'; // Load environment variables
+// Load environment variables early
+import 'dotenv/config';
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -7,66 +9,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Handle __dirname in ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ✅ Corrected to named import
+import { VendorRecommendationService } from './services/vendorRecommendationService.js';
 
-// Validate Required Environment Variables
-const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
-if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
-  console.error(
-    '❌ ERROR: Missing required environment variables (MONGODB_URI, JWT_SECRET, or OPENAI_API_KEY)'
-  );
-  process.exit(1);
-}
-
-// Initialize Express App
-const app = express();
-
-// Middleware Setup
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
-app.use(express.json({ limit: '10mb' })); // Parse JSON payloads
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev')); // Log HTTP requests
-
-// Debugging Middleware: Log Incoming Requests
-app.use((req, res, next) => {
-  console.log(`🔍 Incoming Request: ${req.method} ${req.url}`);
-  if (req.method !== 'GET' && !req.is('application/json')) {
-    console.warn('⚠ Warning: Request does not have Content-Type: application/json');
-  }
-  next();
-});
-
-// Ensure 'uploads' directory exists and serve it as static files
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-app.use('/uploads', express.static(uploadsDir));
-
-// Fix Mongoose Deprecation Warning
-mongoose.set('strictQuery', false);
-
-// Connect to MongoDB
-mongoose
-  .connect(MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-  })
-  .then(() => console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`))
-  .catch((err) => {
-    console.error('❌ MongoDB Connection Error:', err.message);
-    process.exit(1);
-  });
-
-// Health Check Route
-app.get('/', (req, res) => {
-  res.send('🚀 TendorAI Backend is Running!');
-});
-
-// Import and Register API Routes
+// Routes
 import authRoutes from './routes/authRoutes.js';
 import vendorRoutes from './routes/vendorRoutes.js';
 import vendorListingsRoutes from './routes/vendorListings.js';
@@ -78,9 +24,41 @@ import submitRequestRoutes from './routes/submitRequestRoutes.js';
 import vendorUploadsRoutes from './routes/vendorUploads.js';
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
-import copierQuoteRoutes from './routes/copierQuoteRoutes.js'; // NEW ROUTE
+import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 
-// Mount the routes
+// Handle __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Validate Environment Variables
+const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
+if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
+  console.error('❌ Missing required environment variables (MONGODB_URI, JWT_SECRET, OPENAI_API_KEY)');
+  process.exit(1);
+}
+
+// Initialize Express App
+const app = express();
+
+// Middleware Setup
+app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
+
+app.use((req, res, next) => {
+  console.log(`🔍 ${req.method} ${req.url}`);
+  next();
+});
+
+// Ensure 'uploads' directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
@@ -94,7 +72,12 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// 404 Handler for Unknown Routes
+// Health Check
+app.get('/', (req, res) => {
+  res.send('🚀 TendorAI Backend is Running!');
+});
+
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
@@ -102,45 +85,57 @@ app.use((req, res) => {
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message);
-  res.status(500).json({ message: '❌ Internal server error', error: err.message });
+  res.status(500).json({ message: '❌ Internal Server Error', error: err.message });
 });
 
-// Start Server After MongoDB is Connected
-mongoose.connection.once('open', () => {
-  const server = app.listen(Number(PORT), (err) => {
-    if (err) {
-      console.error('❌ Failed to start server:', err.message);
-      if (err.code === 'EADDRINUSE') {
-        console.log('⚠ Port 5000 is in use. Trying port 5001...');
-        app.listen(5001, () => {
-          console.log(`🚀 Server is running on http://localhost:5001`);
-        });
-      }
-      return;
-    }
-    console.log(`🚀 Server is running on http://localhost:${PORT}`);
-  });
-
-  // Graceful Shutdown Handling
-  const shutdown = () => {
-    console.log('\n🛑 Shutting down server...');
-    server.close(() => {
-      console.log('✅ Server closed');
-      mongoose.connection.close(false, () => {
-        console.log('✅ MongoDB connection closed');
-        process.exit(0);
-      });
+// Connect to MongoDB and Start Server
+async function startServer() {
+  try {
+    mongoose.set('strictQuery', false);
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
     });
-  };
+    console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
 
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-  process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err.message);
-    shutdown();
-  });
-  process.on('unhandledRejection', (reason) => {
-    console.error('❌ Unhandled Rejection:', reason);
-    shutdown();
-  });
-});
+    // Preload Vendor Products
+    try {
+      await VendorRecommendationService.loadVendorProductsFromCSV();
+      console.log('✅ VendorRecommendationService initialized');
+    } catch (err) {
+      console.error('❌ Failed to initialise Vendor Recommendation Service:', err.message);
+    }
+
+    const server = app.listen(Number(PORT), () => {
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
+    });
+
+    const shutdown = () => {
+      console.log('\n🛑 Shutting down...');
+      server.close(() => {
+        mongoose.connection.close(false, () => {
+          console.log('✅ MongoDB connection closed');
+          process.exit(0);
+        });
+      });
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    process.on('uncaughtException', (err) => {
+      console.error('❌ Uncaught Exception:', err.message);
+      shutdown();
+    });
+    process.on('unhandledRejection', (reason) => {
+      console.error('❌ Unhandled Rejection:', reason);
+      shutdown();
+    });
+
+  } catch (err) {
+    console.error('❌ Failed to connect to MongoDB:', err.message);
+    process.exit(1);
+  }
+}
+
+startServer();

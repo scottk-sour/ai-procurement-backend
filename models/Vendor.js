@@ -20,7 +20,7 @@ const machineSchema = new mongoose.Schema({
   model: { type: String, required: true, trim: true },
   type: { type: String, required: true, enum: ['A3', 'A4'], trim: true },
   mono_cpc: { type: Number, required: true },
-  color_cpc: { type: Number, required: true },
+  colour_cpc: { type: Number, required: true },  // British spelling
   lease_cost: { type: Number, required: true },
   services: { type: String, trim: true, default: '' },
   provider: { type: String, required: true, trim: true },

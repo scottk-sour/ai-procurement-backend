@@ -1,4 +1,3 @@
-// File: routes/vendorRoutes.js
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -7,7 +6,12 @@ import multer from 'multer';
 import path from 'path';
 import { parse } from 'csv-parse';
 import fs from 'fs';
+import rateLimit from 'express-rate-limit';
+import { isValidObjectId } from 'mongoose'; // Added for userId validation
 import Vendor from '../models/Vendor.js';
+import VendorActivity from '../models/VendorActivity.js';
+import CopierQuoteRequest from '../models/CopierQuoteRequest.js';
+import { getVendorRecommendations } from '../services/VendorRecommendationService.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 
 dotenv.config();
@@ -19,6 +23,25 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
+// Rate Limiting
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: 'Too many login attempts. Please try again later.',
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: 'Too many signup attempts. Please try again later.',
+});
+
+const recommendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Allow 10 requests per 15 minutes
+  message: 'Too many recommendation requests. Please try again later.',
+});
+
 // Set up multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -29,10 +52,25 @@ const storage = multer.diskStorage({
     cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
-const upload = multer({ storage });
+
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ['.pdf', '.csv', '.xlsx', '.xls', '.png', '.jpg', '.jpeg'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedTypes.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Allowed types: PDF, CSV, Excel, PNG, JPG, JPEG'), false);
+  }
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
 
 // Vendor Registration (Signup)
-router.post('/signup', async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
   try {
     const { name, email, password, company, services = ['Photocopiers'] } = req.body;
     if (!name || !email || !password || !company) {
@@ -51,8 +89,17 @@ router.post('/signup', async (req, res) => {
       services,
       uploads: [],
       machines: [],
+      status: 'active',
     });
     await newVendor.save();
+
+    // Log activity
+    await VendorActivity.create({
+      vendorId: newVendor._id,
+      type: 'signup',
+      description: 'Vendor account created',
+    });
+
     res.status(201).json({ message: '✅ Vendor registered successfully.' });
   } catch (error) {
     console.error('❌ Error registering vendor:', error.message);
@@ -61,7 +108,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // Vendor Login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -76,13 +123,22 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: '❌ Invalid email or password.' });
     }
     const token = jwt.sign(
-      { vendorId: vendor._id, email: vendor.email },
+      { vendorId: vendor._id.toString(), email: vendor.email, role: 'vendor' },
       JWT_SECRET,
       { expiresIn: '4h' }
     );
+
+    // Log activity
+    await VendorActivity.create({
+      vendorId: vendor._id,
+      type: 'login',
+      description: 'Vendor logged in',
+    });
+
     res.json({
       token,
-      vendorId: vendor._id,
+      vendorId: vendor._id.toString(),
+      vendorName: vendor.name,
       message: '✅ Vendor login successful.',
     });
   } catch (error) {
@@ -96,17 +152,17 @@ router.get('/auth/verify', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
+      return res.status(401).json({ message: '⚠ No token provided.' });
     }
     const decoded = jwt.verify(token, JWT_SECRET);
-    const vendor = await Vendor.findById(decoded.vendorId);
+    const vendor = await Vendor.findById(decoded.vendorId).select('-password');
     if (!vendor) {
-      return res.status(401).json({ message: 'Invalid token' });
+      return res.status(401).json({ message: '⚠ Invalid token.' });
     }
-    res.json({ authenticated: true, vendorId: vendor._id });
+    res.json({ authenticated: true, vendorId: vendor._id, vendorName: vendor.name });
   } catch (error) {
-    console.error('Vendor token verification error:', error.message);
-    res.status(401).json({ message: 'Invalid or expired token' });
+    console.error('❌ Vendor token verification error:', error.message);
+    res.status(401).json({ message: '⚠ Invalid or expired token.' });
   }
 });
 
@@ -127,11 +183,14 @@ router.get('/profile', vendorAuth, async (req, res) => {
 // Fetch Vendor’s Uploaded Files
 router.get('/uploaded-files', vendorAuth, async (req, res) => {
   try {
+    const { page = 1, limit = 10 } = req.query;
     const vendor = await Vendor.findById(req.vendorId);
     if (!vendor || !vendor.uploads || vendor.uploads.length === 0) {
       return res.status(404).json({ message: '⚠ No uploaded files found for this vendor.' });
     }
-    res.status(200).json({ files: vendor.uploads });
+    const startIndex = (page - 1) * limit;
+    const files = vendor.uploads.slice(startIndex, startIndex + parseInt(limit));
+    res.status(200).json({ files });
   } catch (error) {
     console.error('❌ Error fetching vendor files:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });
@@ -141,11 +200,12 @@ router.get('/uploaded-files', vendorAuth, async (req, res) => {
 // Fetch Recent Vendor Activity
 router.get('/recent-activity', vendorAuth, async (req, res) => {
   try {
-    const recentActivity = [
-      { description: 'Uploaded a file', date: new Date().toISOString() },
-      { description: 'Edited a machine listing', date: new Date().toISOString() },
-    ];
-    res.status(200).json({ activities: recentActivity });
+    const { page = 1, limit = 10 } = req.query;
+    const activities = await VendorActivity.find({ vendorId: req.vendorId })
+      .sort({ date: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+    res.status(200).json({ activities });
   } catch (error) {
     console.error('❌ Error fetching vendor activity:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });
@@ -170,126 +230,128 @@ router.post('/upload', vendorAuth, upload.single('file'), async (req, res) => {
     };
 
     const machines = [];
-    fs.createReadStream(filePath)
-      .pipe(parse({ columns: true, trim: true }))
-      .on('data', (row) => {
-        let machine = {};
-        // New4/Ricoh/Ascari/SIT format
-        if (row.model && row.lease_cost) {
-          machine = {
-            model: row.model,
-            type: row.type,
-            mono_cpc: parseFloat(row.mono_cpc) || 0,
-            color_cpc: parseFloat(row.color_cpc) || 0,
-            lease_cost: parseFloat(row.lease_cost) || 0,
-            services: row.services || 'Photocopiers',
-            provider: row.provider || 'Unknown',
-          };
-        }
-        // Sharp format
-        else if (row.Model && (row['Total Machine Cost'] || row.Cost)) {
-          machine = {
-            model: row.Model,
-            type: row.Description && (row.Description.includes('A3') || row.Description.includes('SRA3')) ? 'A3' : 'A4',
-            mono_cpc: 0, // Sharp CSV lacks this; assume 0 or adjust
-            color_cpc: row.Description && row.Description.includes('Colour') ? parseFloat(row.Cost?.replace(/[^0-9.]/g, '')) / 1000 || 0 : 0, // Rough estimate
-            lease_cost: parseFloat(row['Total Machine Cost']?.replace(/[^0-9.]/g, '')) || parseFloat(row.Cost?.replace(/[^0-9.]/g, '')) || 0,
-            services: 'Photocopiers',
-            provider: row.Manufacturer || 'Sharp',
-          };
-        }
-        if (Object.keys(machine).length > 0) {
-          machines.push(machine);
-        }
-      })
-      .on('end', async () => {
-        try {
-          const vendor = await Vendor.findByIdAndUpdate(
-            vendorId,
-            {
-              $push: {
-                uploads: fileData,
-                machines: { $each: machines },
-              },
-            },
-            { new: true }
-          );
-
-          if (!vendor) {
-            return res.status(404).json({ message: '⚠ Vendor not found.' });
+    if (fileData.fileType === 'csv') {
+      fs.createReadStream(filePath)
+        .pipe(parse({ columns: true, trim: true }))
+        .on('data', (row) => {
+          let machine = {};
+          if (row.model && row.lease_cost) {
+            machine = {
+              model: row.model,
+              type: row.type,
+              mono_cpc: parseFloat(row.mono_cpc) || 0,
+              color_cpc: parseFloat(row.color_cpc) || 0,
+              lease_cost: parseFloat(row.lease_cost) || 0,
+              services: row.services || 'Photocopiers',
+              provider: row.provider || 'Unknown',
+            };
+          } else if (row.Model && (row['Total Machine Cost'] || row.Cost)) {
+            machine = {
+              model: row.Model,
+              type: row.Description && (row.Description.includes('A3') || row.Description.includes('SRA3')) ? 'A3' : 'A4',
+              mono_cpc: 0,
+              color_cpc: row.Description && row.Description.includes('Colour') ? parseFloat(row.Cost?.replace(/[^0-9.]/g, '')) / 1000 || 0 : 0,
+              lease_cost: parseFloat(row['Total Machine Cost']?.replace(/[^0-9.]/g, '')) || parseFloat(row.Cost?.replace(/[^0-9.]/g, '')) || 0,
+              services: 'Photocopiers',
+              provider: row.Manufacturer || 'Sharp',
+            };
           }
+          if (Object.keys(machine).length > 0) {
+            machines.push(machine);
+          }
+        })
+        .on('end', async () => {
+          try {
+            const vendor = await Vendor.findByIdAndUpdate(
+              vendorId,
+              {
+                $push: {
+                  uploads: fileData,
+                  machines: { $each: machines },
+                },
+              },
+              { new: true }
+            );
 
-          res.status(200).json({
-            message: '✅ File uploaded successfully.',
-            file: fileData,
-            machinesAdded: machines.length,
-          });
+            if (!vendor) {
+              return res.status(404).json({ message: '⚠ Vendor not found.' });
+            }
 
-          fs.unlink(filePath, (err) => {
-            if (err) console.error('❌ Error deleting file:', err);
-          });
-        } catch (error) {
-          console.error('❌ Error saving vendor data:', error.message);
-          res.status(500).json({ message: '❌ Internal server error.', error: error.message });
-        }
-      })
-      .on('error', (error) => {
-        console.error('❌ CSV parsing error:', error.message);
-        res.status(500).json({ message: '❌ Error parsing CSV.', error: error.message });
+            await VendorActivity.create({
+              vendorId,
+              type: 'upload',
+              description: `Uploaded file: ${originalname}`,
+            });
+
+            res.status(200).json({
+              message: '✅ File uploaded successfully.',
+              file: fileData,
+              machinesAdded: machines.length,
+            });
+          } catch (error) {
+            console.error('❌ Error saving vendor data:', error.message);
+            res.status(500).json({ message: '❌ Internal server error.', error: error.message });
+          }
+        })
+        .on('error', (error) => {
+          console.error('❌ CSV parsing error:', error.message);
+          res.status(500).json({ message: '❌ Error parsing CSV.', error: error.message });
+        });
+    } else {
+      const vendor = await Vendor.findByIdAndUpdate(
+        vendorId,
+        { $push: { uploads: fileData } },
+        { new: true }
+      );
+
+      if (!vendor) {
+        return res.status(404).json({ message: '⚠ Vendor not found.' });
+      }
+
+      await VendorActivity.create({
+        vendorId,
+        type: 'upload',
+        description: `Uploaded file: ${originalname}`,
       });
+
+      res.status(200).json({
+        message: '✅ File uploaded successfully.',
+        file: fileData,
+      });
+    }
   } catch (error) {
-    console.error('❌ Error uploading file:', error.message);
+    console.error('❌ Error handling file upload:', error.message);
     res.status(500).json({ message: '❌ Internal server error.', error: error.message });
   }
 });
 
-// Search Quotes Route - One Machine Per Vendor
-router.get('/search-quotes', async (req, res) => {
+// ✅ NEW AI-Driven Vendor Recommendation Endpoint
+router.get('/recommend', recommendLimiter, async (req, res) => {
   try {
-    const { type, maxLeaseCost, minMonoCpc, minColorCpc } = req.query;
-    const quotes = await Vendor.aggregate([
-      { $unwind: "$machines" }, // Flatten machines array
-      {
-        $match: {
-          "machines.type": type || { $exists: true },
-          "machines.lease_cost": { $lte: parseFloat(maxLeaseCost) || Infinity },
-          "machines.mono_cpc": { $gte: parseFloat(minMonoCpc) || 0 },
-          "machines.color_cpc": { $gte: parseFloat(minColorCpc) || 0 },
-        },
-      },
-      { $sort: { "machines.lease_cost": 1 } }, // Sort within each vendor
-      {
-        $group: {
-          _id: "$_id", // Group by vendor
-          company: { $first: "$company" },
-          machine: { $first: "$$ROOT.machines" }, // Take cheapest machine per vendor
-          vendorId: { $first: "$_id" },
-        },
-      },
-      {
-        $project: {
-          vendorId: "$vendorId",
-          company: "$company",
-          model: "$machine.model",
-          type: "$machine.type",
-          leaseCost: "$machine.lease_cost",
-          monoCpc: "$machine.mono_cpc",
-          colorCpc: "$machine.color_cpc",
-          provider: "$machine.provider",
-        },
-      },
-      { $limit: 3 }, // Limit to 3 different vendors
-    ]);
-
-    if (!quotes.length) {
-      return res.status(404).json({ message: '⚠ No matching quotes found.' });
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ message: '⚠ Missing userId in query.' });
+    }
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ message: '⚠ Invalid userId format.' });
     }
 
-    res.status(200).json({ quotes });
+    const quotes = await CopierQuoteRequest.find({ userId }).sort({ createdAt: -1 });
+
+    if (!quotes.length) {
+      return res.status(404).json({ message: '⚠ No quote requests found for this user.' });
+    }
+
+    const recommendations = await getVendorRecommendations(quotes, userId);
+
+    console.log(`✅ Recommendations fetched for userId: ${userId}`); // Added logging
+
+    res.status(200).json({ recommendations });
   } catch (error) {
-    console.error('❌ Error searching quotes:', error.message);
-    res.status(500).json({ message: '❌ Internal server error.', error: error.message });
+    console.error('❌ Error in /recommend endpoint:', error.message);
+    res.status(500).json({ message: '❌ Failed to get AI recommendations.', error: error.message });
   }
 });
 
+// Export router
 export default router;
