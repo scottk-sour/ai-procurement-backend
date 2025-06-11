@@ -1,47 +1,23 @@
+// routes/vendorUploadRoutes.js
 import express from "express";
-import multer from "multer";
 import fs from "fs";
 import csv from "csv-parser";
 import vendorAuth from "../middleware/vendorAuth.js";
+import upload from "../middleware/csvUpload.js";
 import Vendor from "../models/Vendor.js";
 import CopierListing from "../models/CopierListing.js";
 
 const router = express.Router();
 router.use(vendorAuth);
 
-// 🔧 Multer Storage Config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = "uploads/vendors/others/";
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueFilename = `${Date.now()}-${file.originalname.replace(/\s+/g, "_")}`;
-    cb(null, uniqueFilename);
-  },
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "text/csv") {
-      cb(null, true);
-    } else {
-      cb(new Error("Only CSV files are allowed"), false);
-    }
-  },
-});
-
 /**
  * POST /api/vendors/upload
- * Upload and parse CSV, insert into CopierListing
+ * Upload and parse CSV, insert listings into DB
  */
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "⚠ No file uploaded." });
+
     const vendorId = req.vendor?._id;
     if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
 
@@ -76,24 +52,12 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           buyInPrice: parseFloat(row.BuyInPrice) || 0,
           costPerCopy: {
             mono: [
-              {
-                volumeRange: "0-5000",
-                price: parseFloat(row.CostPerCopyMono_0_5000) || 0,
-              },
-              {
-                volumeRange: "5001-10000",
-                price: parseFloat(row.CostPerCopyMono_5001_10000) || 0,
-              },
+              { volumeRange: "0-5000", price: parseFloat(row.CostPerCopyMono_0_5000) || 0 },
+              { volumeRange: "5001-10000", price: parseFloat(row.CostPerCopyMono_5001_10000) || 0 },
             ],
             colour: [
-              {
-                volumeRange: "0-2000",
-                price: parseFloat(row.CostPerCopyColour_0_2000) || 0,
-              },
-              {
-                volumeRange: "2001-5000",
-                price: parseFloat(row.CostPerCopyColour_2001_5000) || 0,
-              },
+              { volumeRange: "0-2000", price: parseFloat(row.CostPerCopyColour_0_2000) || 0 },
+              { volumeRange: "2001-5000", price: parseFloat(row.CostPerCopyColour_2001_5000) || 0 },
             ],
           },
           extraTrays: parseInt(row.ExtraTrays) || 0,
@@ -102,14 +66,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
           bookletFinisher: parseFloat(row.BookletFinisher) || 0,
           tonerCollection: parseFloat(row.TonerCollection) || 0,
           leaseOptions: [
-            {
-              termMonths: 36,
-              leasePercentage: parseFloat(row.LeasePercentage_36) || 0,
-            },
-            {
-              termMonths: 60,
-              leasePercentage: parseFloat(row.LeasePercentage_60) || 0,
-            },
+            { termMonths: 36, leasePercentage: parseFloat(row.LeasePercentage_36) || 0 },
+            { termMonths: 60, leasePercentage: parseFloat(row.LeasePercentage_60) || 0 },
           ],
           isRefurbished: (row.IsRefurbished || "").toLowerCase() === "true",
           refurbishedPricing: {

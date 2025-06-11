@@ -1,9 +1,9 @@
+// models/Vendor.js
 import mongoose from 'mongoose';
+import bcrypt from 'bcrypt';
 
-// Define valid services
 const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
 
-// Define file schema for uploaded files
 const fileSchema = new mongoose.Schema({
   fileName: { type: String, required: true, trim: true },
   filePath: { type: String, required: true, trim: true },
@@ -15,61 +15,42 @@ const fileSchema = new mongoose.Schema({
   uploadDate: { type: Date, default: Date.now },
 });
 
-// Define machine schema for vendor product listings
 const machineSchema = new mongoose.Schema({
   model: { type: String, required: true, trim: true },
   type: { type: String, required: true, enum: ['A3', 'A4'], trim: true },
   mono_cpc: { type: Number, required: true },
-  colour_cpc: { type: Number, required: true },  // British spelling
+  color_cpc: { type: Number, required: true },
   lease_cost: { type: Number, required: true },
   services: { type: String, trim: true, default: '' },
   provider: { type: String, required: true, trim: true },
 });
 
-// Define vendor schema
 const vendorSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: [true, 'Name is required'],
-      trim: true,
-    },
-    company: {
-      type: String,
-      required: [true, 'Company name is required'],
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
+    company: { type: String, required: true, trim: true },
     email: {
       type: String,
-      required: [true, 'Email is required'],
+      required: true,
       unique: true,
       trim: true,
       match: [/.+@.+\..+/, 'Please provide a valid email address'],
       index: true,
     },
-    password: {
-      type: String,
-      required: [true, 'Password is required'],
-    },
+    password: { type: String, required: true },
     services: {
       type: [String],
-      required: [true, 'At least one service must be provided'],
+      required: true,
       validate: {
-        validator: function (services) {
-          return services.every((service) => validServices.includes(service));
+        validator: function(arr) {
+          return arr.every((service) => validServices.includes(service));
         },
-        message:
-          'Invalid service(s) provided. Allowed services are CCTV, Photocopiers, IT, and Telecoms.',
+        message: 'Invalid service(s). Allowed: CCTV, Photocopiers, IT, Telecoms.',
       },
     },
-    // A Map to store pricing per service (if needed)
-    pricing: {
-      type: Map,
-      of: Number, // e.g., { "CCTV": 500, "Photocopiers": 1000 }
-    },
-    uploads: [fileSchema], // Array of uploaded file metadata
-    machines: [machineSchema], // Array of machine/product listings
-    // Additional fields for quote comparison
+    pricing: { type: Map, of: Number },
+    uploads: { type: [fileSchema], default: [] },
+    machines: { type: [machineSchema], default: [] },
     location: { type: String, trim: true, default: '' },
     contactInfo: {
       phone: {
@@ -79,10 +60,9 @@ const vendorSchema = new mongoose.Schema(
       },
       address: { type: String, trim: true, default: '' },
     },
-    // Extra fields that the UI will display (if not provided, defaults will show "Not Available")
     price: { type: Number, default: 0 },
     serviceLevel: { type: String, default: '' },
-    responseTime: { type: Number, default: 0 }, // in hours
+    responseTime: { type: Number, default: 0 },
     yearsInBusiness: { type: Number, default: 0 },
     support: { type: String, default: '' },
     rating: {
@@ -91,63 +71,21 @@ const vendorSchema = new mongoose.Schema(
       min: [0, 'Rating cannot be less than 0'],
       max: [5, 'Rating cannot exceed 5'],
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
+    status: {
+      type: String,
+      default: 'active',
+      enum: ['active', 'inactive', 'suspended'],
     },
+    createdAt: { type: Date, default: Date.now },
   },
   { timestamps: true }
 );
 
-// Pre-save Hook for basic validations
-vendorSchema.pre('save', function (next) {
-  if (!this.services || this.services.length === 0) {
-    return next(new Error('At least one service must be provided.'));
-  }
-  if (this.rating < 0 || this.rating > 5) {
-    return next(new Error('Rating must be between 0 and 5.'));
-  }
-  next();
-});
-
-// Instance methods...
-vendorSchema.methods.getActiveServices = function () {
-  return this.services.filter((service) => validServices.includes(service));
+// ✅ Password comparison method (used during login)
+vendorSchema.methods.comparePassword = function(candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
 };
 
-vendorSchema.methods.addUpload = async function (fileName, filePath, fileType) {
-  if (!['pdf', 'csv', 'excel', 'image'].includes(fileType)) {
-    throw new Error('Invalid file type.');
-  }
-  this.uploads.push({
-    fileName,
-    filePath,
-    fileType,
-    uploadDate: new Date(),
-  });
-  await this.save();
-};
-
-vendorSchema.methods.removeUpload = async function (fileId) {
-  this.uploads = this.uploads.filter(
-    (upload) => upload._id.toString() !== fileId
-  );
-  await this.save();
-};
-
-vendorSchema.methods.addMachine = async function (machineData) {
-  this.machines.push(machineData);
-  await this.save();
-};
-
-vendorSchema.methods.removeMachine = async function (machineId) {
-  this.machines = this.machines.filter(
-    (machine) => machine._id.toString() !== machineId
-  );
-  await this.save();
-};
-
-// Use existing model if it exists, otherwise create a new one
+// ✅ Export model
 const Vendor = mongoose.models.Vendor || mongoose.model('Vendor', vendorSchema);
-
 export default Vendor;

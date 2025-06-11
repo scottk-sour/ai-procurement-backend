@@ -1,40 +1,49 @@
 // middleware/userAuth.js
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import dotenv from 'dotenv';
 
-const userAuth = async (req, res, next) => {
+dotenv.config();
+
+const { JWT_SECRET } = process.env;
+if (!JWT_SECRET) {
+  console.error('❌ JWT_SECRET must be defined in environment variables.');
+  process.exit(1);
+}
+
+/**
+ * Middleware to protect routes for authenticated users.
+ * Verifies Bearer token, loads user, and attaches to req.
+ */
+export default async function userAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ message: 'Access denied. Malformed token.' });
+  }
+
   try {
-    // Check for the Authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'No token provided, authorization denied.' });
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.userId || decoded.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Invalid token payload' });
     }
 
-    // Extract the token from the Authorization header
-    const token = authHeader.split(' ')[1];
-
-    // Verify the token using the secret key
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded || !decoded.userId) {
-      return res.status(403).json({ message: 'Invalid token, authorization denied.' });
-    }
-
-    // Check if the user exists in the database
-    const user = await User.findById(decoded.userId).select('-password'); // Exclude password field
+    const user = await User.findById(userId).select('-password -__v').lean();
     if (!user) {
-      return res.status(404).json({ message: 'User not found, authorization denied.' });
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    // Attach user details to the request object
-    req.userId = user._id; // User ID from the database
-    req.user = user; // Optionally attach the full user object for further use
-
-    // Proceed to the next middleware or route handler
+    req.user = user;
+    req.userId = user._id.toString();
     next();
   } catch (err) {
-    console.error('Token verification failed:', err.message);
-    res.status(401).json({ message: 'Invalid or expired token.' });
+    console.error('❌ Authentication error:', err);
+    const msg = err.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid or expired token';
+    return res.status(401).json({ message: msg });
   }
-};
-
-export default userAuth;
+}

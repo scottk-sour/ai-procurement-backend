@@ -6,7 +6,12 @@ import dotenv from "dotenv";
 // ✅ Load environment variables
 dotenv.config();
 
-const MONGO_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/ai-procurement";
+const MONGO_URI = process.env.MONGODB_URI;
+
+if (!MONGO_URI) {
+    console.error("❌ MONGODB_URI is not defined in your .env file");
+    process.exit(1);
+}
 
 // ✅ Connect to MongoDB
 const connectDB = async () => {
@@ -85,7 +90,6 @@ const importCSV = async () => {
         .on("end", async () => {
             try {
                 if (records.length > 0) {
-                    // ✅ Remove Duplicates Before Importing
                     const existingVendor = await Vendor.findOne({ email: "new4@vendor.com" });
 
                     if (existingVendor) {

@@ -1,11 +1,27 @@
-const mongoose = require('mongoose');
-const Vendor = require('./models/Vendor'); // Adjust the path to your Vendor model
+// Load environment variables
+import 'dotenv/config';
+import mongoose from 'mongoose';
+import Vendor from './models/Vendor.js'; // Adjust the path if needed
 
-// Connect to your MongoDB database
-mongoose.connect('mongodb://localhost:27017/your-database-name', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// Connect to MongoDB Atlas
+const connectToMongo = async () => {
+  try {
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+      throw new Error('❌ MONGODB_URI not found in .env file');
+    }
+
+    console.log(`🧩 Connecting to MongoDB URI: ${uri}`);
+    await mongoose.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('✅ Connected to MongoDB Atlas');
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    process.exit(1);
+  }
+};
 
 // Sample vendor data
 const vendors = [
@@ -13,7 +29,7 @@ const vendors = [
     name: 'ABC Security Solutions',
     company: 'ABC Security Solutions Ltd',
     email: 'abcsecurity@example.com',
-    password: 'hashed_password', // Use hashed passwords in real-world applications
+    password: 'hashed_password',
     services: ['CCTV', 'IT'],
     pricing: { CCTV: 500, IT: 300 },
     uploads: ['/uploads/abc_catalog.pdf'],
@@ -131,22 +147,26 @@ const vendors = [
   },
 ];
 
-// Function to seed vendors
+// Seed function
 const seedVendors = async () => {
   try {
-    // Clear existing vendors (optional)
+    await connectToMongo();
+
+    console.log('🧹 Clearing existing vendors...');
     await Vendor.deleteMany();
 
-    // Insert the sample vendor data
+    console.log('📦 Seeding vendor data...');
     await Vendor.insertMany(vendors);
-    console.log('Vendors seeded successfully!');
-  } catch (error) {
-    console.error('Error seeding vendors:', error.message);
+
+    console.log('✅ Vendor seeding complete.');
+  } catch (err) {
+    console.error('❌ Error seeding vendors:', err.message);
   } finally {
-    mongoose.connection.close(); // Close the database connection
+    mongoose.connection.close(() => {
+      console.log('🔌 MongoDB connection closed.');
+    });
   }
 };
 
-// Run the seed function
+// Execute
 seedVendors();
-

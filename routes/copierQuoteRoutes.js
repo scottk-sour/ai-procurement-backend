@@ -1,8 +1,8 @@
 import express from 'express';
-import multer  from 'multer';
-import path    from 'path';
+import multer from 'multer';
+import path from 'path';
 import { fileURLToPath } from 'url';
-import fs      from 'fs';
+import fs from 'fs';
 import {
   submitCopierQuoteRequest,
   getMatchedVendors,
@@ -10,13 +10,13 @@ import {
   getVendorQuoteRequests,
   updateQuoteStatus
 } from '../controllers/copierQuoteController.js';
-import userAuth   from '../middleware/userAuth.js';
+import userAuth from '../middleware/userAuth.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Storage config with dynamic folder, filter & size limit
+// --- Multer Storage Configuration ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '../uploads');
@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random()*1e9);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
   }
 });
@@ -33,15 +33,15 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    const allowed = ['.pdf','.xlsx','.xls','.csv'];
+    const allowed = ['.pdf', '.xlsx', '.xls', '.csv'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) return cb(null, true);
     cb(new Error('Invalid file type; only PDF, Excel & CSV allowed.'));
   },
-  limits: { fileSize: 10*1024*1024 }
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// Routes with auth and multiple endpoints
+// --- Routes ---
 router.post(
   '/request',
   userAuth,
@@ -50,8 +50,12 @@ router.post(
 );
 
 router.get('/matched-vendors/:requestId', userAuth, getMatchedVendors);
-router.get('/user-quotes',                 userAuth, getUserCopierQuotes);
-router.get('/vendor-quotes',               vendorAuth, getVendorQuoteRequests);
-router.put('/status/:requestId',                         updateQuoteStatus);
+router.get('/user-quotes', userAuth, getUserCopierQuotes);
+
+// ✅ These two serve similar functions, for clarity or future frontend refactor
+router.get('/vendor-quotes', vendorAuth, getVendorQuoteRequests);
+router.get('/supplier-quotes', vendorAuth, getVendorQuoteRequests); // ✅ This is what fixes the 404
+
+router.put('/status/:requestId', updateQuoteStatus);
 
 export default router;

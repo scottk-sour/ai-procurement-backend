@@ -9,8 +9,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ✅ Corrected to named import
-import { VendorRecommendationService } from './services/vendorRecommendationService.js';
+// Services (AI Recommendation Engine)
+import AIRecommendationEngine from './services/aiRecommendationEngine.js';
 
 // Routes
 import authRoutes from './routes/authRoutes.js';
@@ -21,7 +21,7 @@ import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
 import submitRequestRoutes from './routes/submitRequestRoutes.js';
-import vendorUploadsRoutes from './routes/vendorUploads.js';
+import vendorUploadRoutes from './routes/vendorUploadRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
@@ -30,12 +30,21 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Validate Environment Variables
-const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
+// ✅ Validate Environment Variables
+const {
+  PORT = 5000,
+  MONGODB_URI,
+  JWT_SECRET,
+  OPENAI_API_KEY
+} = process.env;
+
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   console.error('❌ Missing required environment variables (MONGODB_URI, JWT_SECRET, OPENAI_API_KEY)');
   process.exit(1);
 }
+
+// ✅ Log which database URI is used
+console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
 // Initialize Express App
 const app = express();
@@ -58,7 +67,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Routes
+// Route Mounting
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
@@ -67,7 +76,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
-app.use('/api/uploads', vendorUploadsRoutes);
+app.use('/api/uploads', vendorUploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
@@ -77,18 +86,18 @@ app.get('/', (req, res) => {
   res.send('🚀 TendorAI Backend is Running!');
 });
 
-// 404 Handler
+// 404 Fallback
 app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('❌ Global Error:', err.message);
+  console.error('❌ Global Error:', err.message, err.stack);
   res.status(500).json({ message: '❌ Internal Server Error', error: err.message });
 });
 
-// Connect to MongoDB and Start Server
+// ✅ MongoDB Connection + Server Start
 async function startServer() {
   try {
     mongoose.set('strictQuery', false);
@@ -99,13 +108,7 @@ async function startServer() {
     });
     console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
 
-    // Preload Vendor Products
-    try {
-      await VendorRecommendationService.loadVendorProductsFromCSV();
-      console.log('✅ VendorRecommendationService initialized');
-    } catch (err) {
-      console.error('❌ Failed to initialise Vendor Recommendation Service:', err.message);
-    }
+    console.log('ℹ️ AIRecommendationEngine ready (no preloading required)');
 
     const server = app.listen(Number(PORT), () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
@@ -124,16 +127,15 @@ async function startServer() {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     process.on('uncaughtException', (err) => {
-      console.error('❌ Uncaught Exception:', err.message);
+      console.error('❌ Uncaught Exception:', err.message, err.stack);
       shutdown();
     });
     process.on('unhandledRejection', (reason) => {
       console.error('❌ Unhandled Rejection:', reason);
       shutdown();
     });
-
   } catch (err) {
-    console.error('❌ Failed to connect to MongoDB:', err.message);
+    console.error('❌ Failed to connect to MongoDB:', err.message, err.stack);
     process.exit(1);
   }
 }

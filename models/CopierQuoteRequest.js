@@ -1,29 +1,45 @@
 import mongoose from 'mongoose';
 
+// Reusable sub-schema for uploaded files with metadata
+const fileSchema = new mongoose.Schema({
+  originalName: { type: String, required: true, trim: true },
+  storageName: { type: String, required: true, trim: true },
+  filePath: { type: String, required: true, trim: true },
+  fileType: { type: String, required: true },
+  fileSize: { type: Number },
+  uploadedBy: { type: mongoose.Schema.Types.ObjectId, refPath: 'uploadedByType' },
+  uploadedByType: { type: String, enum: ['User', 'Vendor', 'Admin'] },
+  uploadDate: { type: Date, default: Date.now },
+  description: { type: String }
+});
+
+// Main quote request schema
 const copierQuoteRequestSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   companyName: { type: String, required: true },
   industryType: { type: String },
+
   contractStartDate: { type: Date },
   contractEndDate: { type: Date },
   financeCompany: { type: String },
   quarterlyPayment: { type: Number },
 
-  invoices: [String], // File paths for uploaded invoices
+  // Uploaded documents (e.g. contracts, invoices)
+  uploadedFiles: [fileSchema],
 
-  // Costs per copy (in pence or appropriate unit)
+  // Costs per copy (mono and colour)
   costPerCopy: {
     mono: { type: Number },
     colour: { type: Number }
   },
 
-  // Monthly print volumes split by mono and colour
+  // Monthly print volumes
   monthlyVolume: {
     mono: { type: Number },
     colour: { type: Number }
   },
 
-  // Details about potential machines for comparison
+  // Machine details for each location or type
   machineDetails: [{
     model: { type: String },
     isA3: { type: Boolean },
@@ -39,30 +55,30 @@ const copierQuoteRequestSchema = new mongoose.Schema({
   colourPrinters: { type: Number },
   reasonForUse: { type: String },
 
-  // Current machine details and costs
+  // Current setup info
   currentMachinePurchased: { type: Boolean },
   currentInkSpend: { type: Number },
   cartridgeChangeFrequency: { type: String },
   isServiced: { type: Boolean },
-  addedServices: [String],
+  addedServices: [{ type: String }],
 
-  // User preferences for the quote
+  // Preferences
   preference: {
     likeForLike: { type: Boolean },
     newModel: { type: Boolean },
     refurbished: { type: Boolean }
   },
 
-  // Additional priorities, e.g., ['eco-friendly', 'speed']
-  priorities: [String],
+  priorities: [{ type: String }], // e.g., ['eco-friendly', 'low-cost']
 
-  // Location preferences for the service
   locationPreference: {
-    type: { type: String }, // 'local' or 'national'
+    type: {
+      type: String,
+      enum: ['local', 'national']
+    },
     radiusMiles: { type: Number }
   },
 
-  // AI recommendation type for matching machines
   aiRecommendationType: {
     type: String,
     enum: ['like-for-like', 'optimised'],
@@ -73,3 +89,4 @@ const copierQuoteRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export default mongoose.model('CopierQuoteRequest', copierQuoteRequestSchema);
+

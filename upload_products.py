@@ -1,8 +1,8 @@
 from pymongo import MongoClient
 import pandas as pd
 
-# Connect to MongoDB
-client = MongoClient("mongodb://localhost:27017/")
+# Connect to MongoDB Atlas
+client = MongoClient("mongodb+srv://kinder1975sd:Seren2010@cluster0.mpjodzz.mongodb.net/ai-procurement?retryWrites=true&w=majority")
 db = client["ai-procurement"]
 collection = db["vendorproducts"]
 
