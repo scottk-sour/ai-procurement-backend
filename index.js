@@ -49,13 +49,14 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 // Initialize Express App
 const app = express();
 
-// ✅ Improved CORS Setup for Local + Render Frontend
+// ✅ CORS Setup for Local + Live + OnRender Frontend
 app.use(cors({
   origin: [
     'http://localhost:3000',
-    'https://tendorai-frontend.onrender.com' // 🔁 Replace with your actual frontend URL if different
+    'https://tendorai-frontend.onrender.com',
+    'https://www.tendorai.com' // ✅ Live domain
   ],
-  credentials: true,
+  credentials: true
 }));
 
 // Middleware Setup
