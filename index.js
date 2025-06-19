@@ -54,7 +54,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'https://tendorai-frontend.onrender.com',
-    'https://www.tendorai.com' // ✅ Live domain
+    'https://www.tendorai.com'
   ],
   credentials: true
 }));
