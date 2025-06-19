@@ -49,7 +49,7 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 // Initialize Express App
 const app = express();
 
-// ✅ Robust CORS Setup for Live, Dev, and Render
+// ✅ CORS Middleware (Final Fix)
 const allowedOrigins = [
   'http://localhost:3000',
   'https://tendorai-frontend.onrender.com',
@@ -65,7 +65,9 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Middleware Setup
