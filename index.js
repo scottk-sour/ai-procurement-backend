@@ -49,13 +49,22 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 // Initialize Express App
 const app = express();
 
-// ✅ CORS Setup for Local + Live + OnRender Frontend
+// ✅ Robust CORS Setup for Live, Dev, and Render
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://tendorai-frontend.onrender.com',
+  'https://www.tendorai.com'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://tendorai-frontend.onrender.com',
-    'https://www.tendorai.com'
-  ],
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`❌ CORS Blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
