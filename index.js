@@ -47,16 +47,20 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
 const app = express();
 
-// ✅ CORS config
+// ✅ FIXED CORS config - Frontend should be on different port
 const allowedOrigins = [
-  'http://localhost:3000',
+  'http://localhost:3000', // React dev server
+  'http://127.0.0.1:3000', // Alternative localhost
   'https://tendorai-frontend.onrender.com',
   'https://www.tendorai.com',
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`❌ CORS Blocked: ${origin}`);
@@ -68,20 +72,11 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// ✅ Always handle OPTIONS early
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    return res.sendStatus(204);
-  }
-  next();
-});
-
-// Enable CORS
+// Enable CORS first
 app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -89,7 +84,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 app.use((req, res, next) => {
-  console.log(`🔍 ${req.method} ${req.url}`);
+  console.log(`🔍 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
@@ -105,7 +100,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
-app.use('/api/users', userRoutes);
+app.use('/api/users', userRoutes); // ✅ This should handle /api/users/login
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
@@ -116,18 +111,33 @@ app.use('/api/copier-quotes', copierQuoteRoutes);
 
 // Health check
 app.get('/', (req, res) => {
-  res.send('🚀 TendorAI Backend is Running!');
+  res.json({ 
+    message: '🚀 TendorAI Backend is Running!',
+    timestamp: new Date().toISOString(),
+    cors: 'enabled'
+  });
 });
 
 // 404 fallback
 app.use((req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Global Error:', err.message, err.stack);
-  res.status(500).json({ message: '❌ Internal Server Error', error: err.message });
+  console.error('❌ Global Error:', err.message);
+  console.error('Stack:', err.stack);
+  
+  // Don't expose internal errors in production
+  const message = process.env.NODE_ENV === 'production' 
+    ? 'Internal Server Error' 
+    : err.message;
+    
+  res.status(500).json({ 
+    message: '❌ Internal Server Error', 
+    error: message 
+  });
 });
 
 // Connect to DB and start server
@@ -145,6 +155,7 @@ async function startServer() {
 
     const server = app.listen(Number(PORT), () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
+      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
     });
 
     const shutdown = () => {
