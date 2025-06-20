@@ -43,13 +43,11 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   process.exit(1);
 }
 
-// ✅ Log which database URI is used
 console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
-// Initialize Express App
 const app = express();
 
-// ✅ CORS Middleware (Final Fix)
+// ✅ CORS Setup
 const allowedOrigins = [
   'http://localhost:3000',
   'https://tendorai-frontend.onrender.com',
@@ -70,10 +68,11 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
-app.use(cors(corsOptions));
-
-// ✅ Fix for OPTIONS preflight requests
+// ✅ Fix for OPTIONS preflight requests (MUST be above all routes)
 app.options('*', cors(corsOptions));
+
+// ✅ Enable CORS globally
+app.use(cors(corsOptions));
 
 // Middleware Setup
 app.use(express.json({ limit: '10mb' }));
