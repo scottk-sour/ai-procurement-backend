@@ -26,20 +26,20 @@ import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 
-// Handle __dirname in ES Modules
+// __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Validate Environment Variables
+// Validate required environment variables
 const {
   PORT = 5000,
   MONGODB_URI,
   JWT_SECRET,
-  OPENAI_API_KEY
+  OPENAI_API_KEY,
 } = process.env;
 
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
-  console.error('❌ Missing required environment variables (MONGODB_URI, JWT_SECRET, OPENAI_API_KEY)');
+  console.error('❌ Missing required environment variables');
   process.exit(1);
 }
 
@@ -47,11 +47,11 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
 const app = express();
 
-// ✅ CORS Setup
+// ✅ CORS config
 const allowedOrigins = [
   'http://localhost:3000',
   'https://tendorai-frontend.onrender.com',
-  'https://www.tendorai.com'
+  'https://www.tendorai.com',
 ];
 
 const corsOptions = {
@@ -65,16 +65,14 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// ✅ Fix for OPTIONS preflight requests (MUST be above all routes)
+// ✅ Must be at the top BEFORE other middleware
 app.options('*', cors(corsOptions));
-
-// ✅ Enable CORS globally
 app.use(cors(corsOptions));
 
-// Middleware Setup
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -84,14 +82,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Ensure 'uploads' directory exists
+// Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Route Mounting
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
@@ -105,23 +103,23 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// Health Check
+// Health check
 app.get('/', (req, res) => {
   res.send('🚀 TendorAI Backend is Running!');
 });
 
-// 404 Fallback
+// 404 fallback
 app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
-// Global Error Handler
+// Global error handler
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message, err.stack);
   res.status(500).json({ message: '❌ Internal Server Error', error: err.message });
 });
 
-// ✅ MongoDB Connection + Server Start
+// Connect to DB and start server
 async function startServer() {
   try {
     mongoose.set('strictQuery', false);
@@ -130,8 +128,8 @@ async function startServer() {
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
     });
-    console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
 
+    console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
     console.log('ℹ️ AIRecommendationEngine ready (no preloading required)');
 
     const server = app.listen(Number(PORT), () => {
