@@ -56,7 +56,7 @@ const allowedOrigins = [
   'https://www.tendorai.com'
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -68,7 +68,12 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
+
+// ✅ Fix for OPTIONS preflight requests
+app.options('*', cors(corsOptions));
 
 // Middleware Setup
 app.use(express.json({ limit: '10mb' }));
