@@ -129,6 +129,7 @@ async function startServer() {
 
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
+      console.log(`🔧 Raw process.env.PORT: ${process.env.PORT || 'Not set'}`); // Added for debugging
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
