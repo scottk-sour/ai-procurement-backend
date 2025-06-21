@@ -48,8 +48,6 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 const app = express();
 
 // —— SIMPLIFIED CORS ————————————————————————————————————————
-// Reflects back the incoming Origin header, allowing any frontend
-// (localhost, Vercel domains, your custom domain, Postman, etc.)
 app.use(cors({
   origin: true,
   credentials: true,
@@ -122,8 +120,9 @@ async function startServer() {
     console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
     console.log('ℹ️ AIRecommendationEngine ready');
 
-    const server = app.listen(Number(PORT), () => {
-      console.log(`🚀 Server running at http://localhost:${PORT}`);
+    // ✅ Use dynamic port for Render
+    const server = app.listen(process.env.PORT || 5000, () => {
+      console.log(`🚀 Server running at http://localhost:${process.env.PORT || 5000}`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
