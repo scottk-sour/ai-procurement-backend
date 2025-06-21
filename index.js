@@ -47,76 +47,23 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
 const app = express();
 
-// ✅ UPDATED CORS config with better debugging and support
-const allowedOrigins = [
-  'http://localhost:3000', // React dev server
-  'http://127.0.0.1:3000', // Alternative localhost
-  'https://tendorai-frontend.onrender.com',
-  'https://www.tendorai.com',
-  'https://tendorai.com', // Add without www
-  // Add your actual Render frontend URL if different from above
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    console.log(`🔍 CORS Check - Origin: ${origin}`); // Add this for debugging
-    
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) {
-      console.log(`✅ CORS Allowed: No origin (likely same-origin or tool)`);
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS Allowed: ${origin}`);
-      callback(null, true);
-    } else {
-      console.warn(`❌ CORS Blocked: ${origin}`);
-      console.warn(`❌ Allowed origins: ${allowedOrigins.join(', ')}`);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
-    }
-  },
+// —— SIMPLIFIED CORS ————————————————————————————————————————
+// Reflects back the incoming Origin header, allowing any frontend
+// (localhost, Vercel domains, your custom domain, Postman, etc.)
+app.use(cors({
+  origin: true,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 200 // For legacy browser support
-};
-
-// Enable CORS first
-app.use(cors(corsOptions));
-
-// ✅ Handle preflight requests explicitly with better logging
-app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  console.log(`🔍 Preflight OPTIONS request from: ${origin}`);
-  console.log(`🔍 Preflight headers: ${JSON.stringify(req.headers)}`);
-  
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    console.log(`✅ Preflight response sent for: ${origin}`);
-    res.sendStatus(200);
-  } else {
-    console.warn(`❌ Preflight blocked for: ${origin}`);
-    res.sendStatus(403);
-  }
-});
+}));
+app.options('*', cors());
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Enhanced request logging
+// Simple request logging
 app.use((req, res, next) => {
-  console.log(`🔍 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
-  console.log(`🔍 Headers: ${JSON.stringify({
-    'content-type': req.headers['content-type'],
-    'authorization': req.headers.authorization ? 'Present' : 'None',
-    'user-agent': req.headers['user-agent']?.substring(0, 50) + '...'
-  })}`);
+  console.log(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
@@ -127,12 +74,12 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Routes
+// —— ROUTES —————————————————————————————————————————————————
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
-app.use('/api/users', userRoutes); // ✅ This should handle /api/users/login
+app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
@@ -141,43 +88,29 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// Health check with CORS headers
+// Health check
 app.get('/', (req, res) => {
-  // Ensure CORS headers are set for health check too
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  res.json({ 
+  res.json({
     message: '🚀 TendorAI Backend is Running!',
     timestamp: new Date().toISOString(),
-    cors: 'enabled',
-    allowedOrigins: allowedOrigins
   });
 });
 
 // 404 fallback
 app.use((req, res) => {
-  console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message);
-  console.error('Stack:', err.stack);
-  
-  // Don't expose internal errors in production
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'Internal Server Error' 
+  const safeMessage = process.env.NODE_ENV === 'production'
+    ? 'Internal Server Error'
     : err.message;
-    
-  res.status(500).json({ 
-    message: '❌ Internal Server Error', 
-    error: message 
-  });
+  res.status(500).json({ message: '❌ Internal Server Error', error: safeMessage });
 });
 
-// Connect to DB and start server
+// —— START SERVER —————————————————————————————————————————————————
 async function startServer() {
   try {
     mongoose.set('strictQuery', false);
@@ -186,13 +119,11 @@ async function startServer() {
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
     });
-
     console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
-    console.log('ℹ️ AIRecommendationEngine ready (no preloading required)');
+    console.log('ℹ️ AIRecommendationEngine ready');
 
     const server = app.listen(Number(PORT), () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
-      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
@@ -205,11 +136,10 @@ async function startServer() {
         });
       });
     };
-
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     process.on('uncaughtException', (err) => {
-      console.error('❌ Uncaught Exception:', err.message, err.stack);
+      console.error('❌ Uncaught Exception:', err);
       shutdown();
     });
     process.on('unhandledRejection', (reason) => {
@@ -217,7 +147,7 @@ async function startServer() {
       shutdown();
     });
   } catch (err) {
-    console.error('❌ Failed to connect to MongoDB:', err.message, err.stack);
+    console.error('❌ Failed to connect to MongoDB:', err);
     process.exit(1);
   }
 }
