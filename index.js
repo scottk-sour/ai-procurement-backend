@@ -47,44 +47,76 @@ console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
 
 const app = express();
 
-// ✅ FIXED CORS config - Frontend should be on different port
+// ✅ UPDATED CORS config with better debugging and support
 const allowedOrigins = [
   'http://localhost:3000', // React dev server
   'http://127.0.0.1:3000', // Alternative localhost
   'https://tendorai-frontend.onrender.com',
   'https://www.tendorai.com',
+  'https://tendorai.com', // Add without www
+  // Add your actual Render frontend URL if different from above
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    console.log(`🔍 CORS Check - Origin: ${origin}`); // Add this for debugging
+    
     // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log(`✅ CORS Allowed: No origin (likely same-origin or tool)`);
+      return callback(null, true);
+    }
     
     if (allowedOrigins.includes(origin)) {
+      console.log(`✅ CORS Allowed: ${origin}`);
       callback(null, true);
     } else {
       console.warn(`❌ CORS Blocked: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`❌ Allowed origins: ${allowedOrigins.join(', ')}`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200 // For legacy browser support
 };
 
 // Enable CORS first
 app.use(cors(corsOptions));
 
-// ✅ Handle preflight requests
-app.options('*', cors(corsOptions));
+// ✅ Handle preflight requests explicitly with better logging
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  console.log(`🔍 Preflight OPTIONS request from: ${origin}`);
+  console.log(`🔍 Preflight headers: ${JSON.stringify(req.headers)}`);
+  
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    console.log(`✅ Preflight response sent for: ${origin}`);
+    res.sendStatus(200);
+  } else {
+    console.warn(`❌ Preflight blocked for: ${origin}`);
+    res.sendStatus(403);
+  }
+});
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
+// Enhanced request logging
 app.use((req, res, next) => {
   console.log(`🔍 ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
+  console.log(`🔍 Headers: ${JSON.stringify({
+    'content-type': req.headers['content-type'],
+    'authorization': req.headers.authorization ? 'Present' : 'None',
+    'user-agent': req.headers['user-agent']?.substring(0, 50) + '...'
+  })}`);
   next();
 });
 
@@ -109,12 +141,17 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// Health check
+// Health check with CORS headers
 app.get('/', (req, res) => {
+  // Ensure CORS headers are set for health check too
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
   res.json({ 
     message: '🚀 TendorAI Backend is Running!',
     timestamp: new Date().toISOString(),
-    cors: 'enabled'
+    cors: 'enabled',
+    allowedOrigins: allowedOrigins
   });
 });
 
@@ -156,6 +193,7 @@ async function startServer() {
     const server = app.listen(Number(PORT), () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
       console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
+      console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
     const shutdown = () => {
