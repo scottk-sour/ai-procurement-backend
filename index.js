@@ -26,40 +26,40 @@ import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 
-// __dirname for ES modules
+// __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Validate required environment variables
-const {
-  PORT = 5000,
-  MONGODB_URI,
-  JWT_SECRET,
-  OPENAI_API_KEY,
-} = process.env;
-
+// Check required env vars
+const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   console.error('❌ Missing required environment variables');
   process.exit(1);
 }
 
-console.log(`🧩 Connecting to MongoDB URI: ${MONGODB_URI}`);
-
+// Setup Express app
 const app = express();
 
-// —— SIMPLIFIED CORS ————————————————————————————————————————
+// ✅ FIXED CORS – only allow your live frontend domains
+const allowedOrigins = ['https://www.tendorai.com', 'https://tendorai.com'];
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('❌ CORS not allowed from this origin: ' + origin));
+    }
+  },
   credentials: true,
 }));
 app.options('*', cors());
 
-// Middleware
+// Middlewares
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Simple request logging
+// Log requests and origin
 app.use((req, res, next) => {
   console.log(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
   next();
@@ -67,12 +67,10 @@ app.use((req, res, next) => {
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use('/uploads', express.static(uploadsDir));
 
-// —— ROUTES —————————————————————————————————————————————————
+// ROUTES
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/vendors/listings', vendorListingsRoutes);
@@ -108,7 +106,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: '❌ Internal Server Error', error: safeMessage });
 });
 
-// —— START SERVER —————————————————————————————————————————————————
+// Start server
 async function startServer() {
   try {
     mongoose.set('strictQuery', false);
@@ -120,9 +118,8 @@ async function startServer() {
     console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
     console.log('ℹ️ AIRecommendationEngine ready');
 
-    // ✅ Use dynamic port for Render
-    const server = app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Server running at http://localhost:${process.env.PORT || 5000}`);
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Server running at http://localhost:${PORT}`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
 
