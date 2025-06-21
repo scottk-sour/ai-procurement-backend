@@ -9,7 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Services (AI Recommendation Engine)
+// Services
 import AIRecommendationEngine from './services/aiRecommendationEngine.js';
 
 // Routes
@@ -30,44 +30,53 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Check required env vars
+// Check environment variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
   console.error('❌ Missing required environment variables');
   process.exit(1);
 }
 
-// Setup Express app
+// Express app
 const app = express();
 
-// ✅ FIXED CORS – only allow your live frontend domains
-const allowedOrigins = ['https://www.tendorai.com', 'https://tendorai.com'];
+// ✅ CORS CONFIG — allow both live and local dev origins
+const allowedOrigins = [
+  'https://www.tendorai.com',
+  'https://tendorai.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
 app.use(cors({
-  origin: (origin, callback) => {
+  origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('❌ CORS not allowed from this origin: ' + origin));
+      console.log(`❌ CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
 }));
 app.options('*', cors());
 
-// Middlewares
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Log requests and origin
+// Request logger
 app.use((req, res, next) => {
   console.log(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
-// Ensure uploads directory exists
+// Ensure /uploads folder exists
 const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 app.use('/uploads', express.static(uploadsDir));
 
 // ROUTES
@@ -97,7 +106,7 @@ app.use((req, res) => {
   res.status(404).json({ message: '❌ Route Not Found' });
 });
 
-// Global error handler
+// Error handler
 app.use((err, req, res, next) => {
   console.error('❌ Global Error:', err.message);
   const safeMessage = process.env.NODE_ENV === 'production'
@@ -132,6 +141,7 @@ async function startServer() {
         });
       });
     };
+
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     process.on('uncaughtException', (err) => {
