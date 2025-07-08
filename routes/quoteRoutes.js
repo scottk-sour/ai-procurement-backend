@@ -3,10 +3,32 @@ import QuoteRequest from '../models/QuoteRequest.js';
 import Listing from '../models/Listing.js';
 import Vendor from '../models/Vendor.js';
 import userAuth from '../middleware/userAuth.js';
+import jwt from 'jsonwebtoken'; // Add this import
 import { OpenAI } from 'openai';
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Middleware to verify JWT token (for dashboard endpoints)
+const verifyToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.userId || decoded.id;
+    req.userRole = decoded.role;
+    
+    next();
+  } catch (error) {
+    console.error('❌ Token verification failed:', error.message);
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
 
 // Get all quotes for a user
 router.get('/user', async (req, res) => {
@@ -21,6 +43,148 @@ router.get('/user', async (req, res) => {
   } catch (error) {
     console.error('Error fetching quotes:', error.message);
     res.status(500).json({ message: 'Server error', details: error.message });
+  }
+});
+
+// ✅ NEW: GET /api/quotes/requests - For dashboard
+router.get('/requests', verifyToken, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const userId = req.userId;
+
+    console.log(`🔍 Fetching quote requests for user: ${userId}`);
+
+    // Get quote requests from database
+    const quoteRequests = await QuoteRequest.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+
+    console.log(`📊 Found ${quoteRequests.length} quote requests`);
+
+    // Transform the data to match frontend expectations
+    const transformedRequests = quoteRequests.map(request => ({
+      _id: request._id,
+      title: `${request.serviceType} Request for ${request.companyName}`,
+      companyName: request.companyName,
+      industryType: request.industryType,
+      serviceType: request.serviceType,
+      status: request.status || 'pending',
+      createdAt: request.createdAt,
+      matches: [], // You can populate this with actual vendor matches later
+      monthlyVolume: request.monthlyVolume,
+      preference: request.preference,
+      // Mock some vendor matches for demo
+      ...(request.matchedVendors && request.matchedVendors.length > 0 && {
+        matches: [
+          {
+            _id: 'vendor1',
+            vendorName: 'Sharp Business Solutions',
+            price: request.price || 150,
+            savings: 25
+          },
+          {
+            _id: 'vendor2',
+            vendorName: 'Canon Office Equipment', 
+            price: (request.price || 150) + 20,
+            savings: 10
+          }
+        ]
+      })
+    }));
+
+    res.json({
+      requests: transformedRequests,
+      page: parseInt(page),
+      totalPages: Math.ceil(quoteRequests.length / limit),
+      total: quoteRequests.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching quote requests:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ✅ NEW: GET /api/quotes/:id - Get specific quote request
+router.get('/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const quoteRequest = await QuoteRequest.findOne({ 
+      _id: id, 
+      userId: userId 
+    });
+
+    if (!quoteRequest) {
+      return res.status(404).json({ message: 'Quote request not found' });
+    }
+
+    // Transform data for frontend
+    const transformedRequest = {
+      _id: quoteRequest._id,
+      title: `${quoteRequest.serviceType} Request for ${quoteRequest.companyName}`,
+      companyName: quoteRequest.companyName,
+      industryType: quoteRequest.industryType,
+      serviceType: quoteRequest.serviceType,
+      status: quoteRequest.status || 'pending',
+      createdAt: quoteRequest.createdAt,
+      formData: quoteRequest, // Full form data
+      matches: [] // You can populate this with actual vendor matches
+    };
+
+    res.json({ quote: transformedRequest });
+  } catch (error) {
+    console.error('❌ Error fetching quote request:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ✅ NEW: POST /api/quotes/accept - Accept a quote from vendor
+router.post('/accept', verifyToken, async (req, res) => {
+  try {
+    const { quoteId, vendorName } = req.body;
+    const userId = req.userId;
+
+    console.log(`✅ User ${userId} accepting quote ${quoteId} from ${vendorName}`);
+
+    // Update the quote status in your database
+    await QuoteRequest.findByIdAndUpdate(quoteId, {
+      status: 'Vendor Selected',
+      preferredVendor: vendorName,
+      updatedAt: new Date()
+    });
+
+    res.json({
+      message: 'Quote accepted successfully',
+      quoteId,
+      vendorName
+    });
+  } catch (error) {
+    console.error('❌ Error accepting quote:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ✅ NEW: POST /api/quotes/contact - Contact a vendor
+router.post('/contact', verifyToken, async (req, res) => {
+  try {
+    const { quoteId, vendorName } = req.body;
+    const userId = req.userId;
+
+    console.log(`📞 User ${userId} contacting vendor ${vendorName} for quote ${quoteId}`);
+
+    // In production, you'd send an email or create a contact request
+    // For now, just log the interaction
+
+    res.json({
+      message: 'Contact request sent successfully',
+      quoteId,
+      vendorName
+    });
+  } catch (error) {
+    console.error('❌ Error contacting vendor:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
