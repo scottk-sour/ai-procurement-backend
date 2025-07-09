@@ -40,26 +40,57 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
 // Express app
 const app = express();
 
-// ✅ CORS CONFIG — allow both live and local dev origins
+// ✅ CORS CONFIG — FIXED to include your Vercel frontend URL
 const allowedOrigins = [
   'https://www.tendorai.com',
   'https://tendorai.com',
   'http://localhost:3000',
-  'http://127.0.0.1:3000'
+  'http://127.0.0.1:3000',
+  // Add your Vercel frontend URL
+  'https://ai-procurement-frontend-4idr176ta-scotts-projects-19a8a91e.vercel.app'
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (mobile apps, curl requests, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      console.log(`✅ CORS allowed: ${origin}`);
       callback(null, true);
     } else {
-      console.log(`❌ CORS blocked: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      // Allow all Vercel preview URLs for development
+      if (origin.includes('vercel.app')) {
+        console.log(`✅ CORS allowed (Vercel preview): ${origin}`);
+        callback(null, true);
+      } else {
+        console.log(`❌ CORS blocked: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 app.options('*', cors());
+
+// Global error handler for CORS errors
+app.use((error, req, res, next) => {
+  if (error.message === 'Not allowed by CORS') {
+    console.log(`❌ Global Error: ${error.message}`);
+    console.log(`❌ Stack trace: ${error.stack}`);
+    return res.status(403).json({
+      error: 'CORS Error',
+      message: 'This origin is not allowed to access this resource',
+      origin: req.headers.origin || 'unknown',
+      allowedOrigins: allowedOrigins
+    });
+  }
+  next(error);
+});
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
@@ -104,6 +135,11 @@ app.get('/api/test-dashboard', async (req, res) => {
       status: 'All systems operational',
       environment: process.env.NODE_ENV || 'development',
       mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+      corsConfig: {
+        allowedOrigins: allowedOrigins,
+        vercelPreviewSupport: true,
+        credentialsEnabled: true
+      },
       availableEndpoints: [
         { category: 'User Management', path: '/api/users/recent-activity', method: 'GET', status: 'Available', description: 'Get user recent activity' },
         { category: 'User Management', path: '/api/users/uploaded-files', method: 'GET', status: 'Available', description: 'Get user uploaded files' },
@@ -157,6 +193,10 @@ app.get('/', (req, res) => {
     status: 'healthy',
     environment: process.env.NODE_ENV || 'development',
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    corsConfig: {
+      allowedOrigins: allowedOrigins,
+      vercelPreviewSupport: true
+    },
     features: [
       'AI-powered vendor matching',
       'Quote request management', 
