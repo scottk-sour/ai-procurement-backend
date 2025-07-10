@@ -1,9 +1,8 @@
-// routes/userRoutes.js
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import QuoteRequest from '../models/QuoteRequest.js'; // Add this import
+import QuoteRequest from '../models/QuoteRequest.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -57,22 +56,22 @@ router.post('/signup', validateRequestBody(['name', 'email', 'password']), async
     const { name, email, password, company } = req.body;
     
     console.log('🔍 POST /api/users/signup – Origin:', req.headers.origin);
-    console.log('🧪 Plain password before hashing:', password);
+    console.log('🧪 Signup attempt for email:', email);
     
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('🔐 Hashed password to save:', hashedPassword);
+    console.log('🔐 Password hashed successfully');
 
     // Create new user
     const newUser = new User({ 
       name, 
-      email, 
+      email: email.toLowerCase(), 
       password: hashedPassword, 
       company: company || '',
       role: 'user' 
@@ -80,7 +79,6 @@ router.post('/signup', validateRequestBody(['name', 'email', 'password']), async
     
     await newUser.save();
     console.log('✅ User saved:', email);
-    console.log('📦 Full user object after save:', newUser);
 
     res.status(201).json({ 
       message: 'User registered successfully',
@@ -103,18 +101,25 @@ router.post('/login', validateRequestBody(['email', 'password']), async (req, re
     const { email, password } = req.body;
     
     console.log('🔍 POST /api/users/login – Origin:', req.headers.origin);
+    console.log('🔍 Login attempt for email:', email);
     
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
+    console.log('✅ User found, checking password...');
+    
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.log('❌ Invalid password for user:', email);
       return res.status(401).json({ message: 'Invalid email or password' });
     }
+
+    console.log('✅ Password valid, generating token...');
 
     // Create token
     const token = jwt.sign(
@@ -140,6 +145,7 @@ router.post('/login', validateRequestBody(['email', 'password']), async (req, re
     });
   } catch (error) {
     console.error('❌ User login error:', error.message);
+    console.error('❌ Full error:', error);
     res.status(500).json({ 
       message: 'Failed to login', 
       error: error.message 
@@ -172,7 +178,7 @@ router.get('/profile', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: GET /api/users/recent-activity
+// ✅ GET /api/users/recent-activity
 router.get('/recent-activity', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -217,7 +223,7 @@ router.get('/recent-activity', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: GET /api/users/uploaded-files
+// ✅ GET /api/users/uploaded-files
 router.get('/uploaded-files', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -249,7 +255,7 @@ router.get('/uploaded-files', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: GET /api/users/notifications
+// ✅ GET /api/users/notifications
 router.get('/notifications', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
@@ -293,7 +299,7 @@ router.get('/notifications', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: PATCH /api/users/notifications/:id/read
+// ✅ PATCH /api/users/notifications/:id/read
 router.patch('/notifications/:id/read', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -311,7 +317,7 @@ router.patch('/notifications/:id/read', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: POST /api/users/upload (file upload endpoint)
+// ✅ POST /api/users/upload (file upload endpoint)
 router.post('/upload', verifyToken, async (req, res) => {
   try {
     const userId = req.userId;

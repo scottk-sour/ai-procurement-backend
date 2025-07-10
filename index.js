@@ -45,35 +45,20 @@ const allowedOrigins = [
   'https://www.tendorai.com',
   'https://tendorai.com',
   'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  // Add your Vercel frontend URL
-  'https://ai-procurement-frontend-4idr176ta-scotts-projects-19a8a91e.vercel.app'
+  'http://127.0.0.1:3000'
 ];
 
+// TEMPORARY DEVELOPMENT CORS - Allows all origins
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl requests, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS allowed: ${origin}`);
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      // Allow all Vercel preview URLs for development
-      if (origin.includes('vercel.app')) {
-        console.log(`✅ CORS allowed (Vercel preview): ${origin}`);
-        callback(null, true);
-      } else {
-        console.log(`❌ CORS blocked: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
-      }
+      console.log(`❌ CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 app.options('*', cors());
 
