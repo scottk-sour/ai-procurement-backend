@@ -1,5 +1,8 @@
 // Updated VendorProduct.js to match your matrix structure
 import mongoose from 'mongoose';
+import OpenAI from 'openai';  // Add this import for embedding generation
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const AuxiliarySchema = new mongoose.Schema({
   item: { type: String, required: true },
@@ -100,7 +103,10 @@ const vendorProductSchema = new mongoose.Schema({
     inStock: { type: Boolean, default: true },
     leadTime: { type: Number, default: 14 }, // days
     installationWindow: { type: Number, default: 7 } // days
-  }
+  },
+
+  // New: Embedding for semantic matching
+  embedding: { type: [Number], default: [] }  // Vector embedding array
 }, { 
   timestamps: true,
   // Add virtual for backward compatibility
@@ -109,7 +115,7 @@ const vendorProductSchema = new mongoose.Schema({
 });
 
 // Middleware to auto-calculate fields
-vendorProductSchema.pre('save', function(next) {
+vendorProductSchema.pre('save', async function(next) {
   // Auto-calculate total machine cost if not provided
   if (this.costs && this.costs.machineCost && this.costs.installation && this.costs.profitMargin) {
     this.costs.totalMachineCost = this.costs.machineCost + this.costs.installation + this.costs.profitMargin;
@@ -146,6 +152,21 @@ vendorProductSchema.pre('save', function(next) {
       } else if (this.paperSizes.primary === 'A3') {
         this.paperSizes.supported.push('A4');
       }
+    }
+  }
+
+  // New: Generate embedding if relevant fields changed
+  if (this.isModified('description') || this.isModified('features') || this.isModified('model')) {
+    try {
+      const text = `${this.model} ${this.description || ''} ${this.features?.join(' ') || ''}`;
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-large',
+        input: text
+      });
+      this.embedding = response.data[0].embedding;
+    } catch (error) {
+      console.error('Error generating embedding for product:', error);
+      // Continue without embedding if fails
     }
   }
   

@@ -1,5 +1,7 @@
-// models/QuoteRequest.js
 import mongoose from 'mongoose';
+import OpenAI from 'openai';  // Add this import for embedding generation
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const quoteRequestSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -35,6 +37,29 @@ const quoteRequestSchema = new mongoose.Schema({
   preferredVendor: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+
+  // New: Embedding for semantic matching (from description, requiredFunctions, etc.)
+  embedding: { type: [Number], default: [] }  // Vector embedding array
+});
+
+// Middleware to auto-generate embedding on save/update
+quoteRequestSchema.pre('save', async function(next) {
+  // Generate embedding if relevant fields changed
+  if (this.isModified('requiredFunctions') || this.isModified('preference') || this.isModified('additionalServices')) {
+    try {
+      const text = `${this.preference || ''} ${this.requiredFunctions?.join(' ') || ''} ${this.additionalServices?.join(' ') || ''}`;
+      const response = await openai.embeddings.create({
+        model: 'text-embedding-3-large',
+        input: text
+      });
+      this.embedding = response.data[0].embedding;
+    } catch (error) {
+      console.error('Error generating embedding for quote request:', error);
+      // Continue without embedding if fails
+    }
+  }
+  
+  next();
 });
 
 export default mongoose.model('QuoteRequest', quoteRequestSchema);

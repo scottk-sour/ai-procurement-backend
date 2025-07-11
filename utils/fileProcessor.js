@@ -3,8 +3,10 @@ import path from 'path';
 import { PDFExtract } from 'pdf.js-extract';
 import xlsx from 'xlsx';
 import csv from 'csv-parser';
+import OpenAI from 'openai';  // Add this import for LLM extraction
 
 const pdfExtract = new PDFExtract();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
  * Parse a PDF file and extract its text
@@ -54,7 +56,8 @@ export class FileProcessor {
     return extractFromCSV(filePath);
   }
 
-  static extractContractInfo(content) {
+  // Original regex-based extraction (renamed for fallback)
+  static regexExtractContractInfo(content) {
     const contractInfo = {
       leaseCost: null,
       monoCPC: null,
@@ -62,7 +65,8 @@ export class FileProcessor {
       startDate: null,
       endDate: null,
       machineModel: null,
-      leasingCompany: null
+      leasingCompany: null,
+      frequency: 'monthly'  // Default
     };
 
     const leaseCostMatch = content.match(/(?:quarterly|monthly|annual)?\s*(?:lease|payment|cost)[\s:]*[\u00A3$\u20AC]?\s*([0-9,]+\.[0-9]{2})/i);
@@ -89,14 +93,34 @@ export class FileProcessor {
     return contractInfo;
   }
 
-  static calculateSettlementCost(endDate, monthlyPayment) {
-    if (!endDate || !monthlyPayment) return 'No lease data available';
+  static async extractContractInfo(content) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an expert at extracting contract details from invoices or leases. Output only JSON with keys: leaseCost (number), monoCPC (number), colourCPC (number), startDate (string YYYY-MM-DD), endDate (string YYYY-MM-DD), machineModel (string), leasingCompany (string), frequency (string: monthly/quarterly/annual). Use null if not found.' },
+          { role: 'user', content: `Extract from: ${content.substring(0, 4000)}` }  // Truncate to avoid token limits
+        ],
+        response_format: { type: 'json_object' }
+      });
+      return JSON.parse(response.choices[0].message.content);
+    } catch (error) {
+      console.error('LLM extraction failed, falling back to regex:', error);
+      return this.regexExtractContractInfo(content);
+    }
+  }
+
+  static calculateSettlementCost(endDate, leaseCost, frequency = 'monthly') {
+    if (!endDate || !leaseCost) return 'No lease data available';
     try {
       const leaseEnd = new Date(endDate);
       const today = new Date();
-      const months = (leaseEnd.getFullYear() - today.getFullYear()) * 12 + (leaseEnd.getMonth() - today.getMonth());
-      if (months <= 0) return 'Lease already ended';
-      return `£${Math.round(months * monthlyPayment * 0.8)}`;
+      let monthsLeft = (leaseEnd.getFullYear() - today.getFullYear()) * 12 + (leaseEnd.getMonth() - today.getMonth());
+      if (monthsLeft <= 0) return 'Lease already ended';
+      if (frequency === 'quarterly') monthsLeft /= 3;
+      if (frequency === 'annual') monthsLeft /= 12;
+      const settlement = monthsLeft * leaseCost * 0.8;  // 20% discount assumption
+      return `£${Math.round(settlement)} (estimated for ${frequency} payments)`;
     } catch {
       return 'Error in calculation';
     }
@@ -121,8 +145,8 @@ export class FileProcessor {
         throw new Error(`Unsupported file type: ${ext}`);
       }
 
-      contractInfo = this.extractContractInfo(content);
-      const settlementCost = this.calculateSettlementCost(contractInfo.endDate, contractInfo.leaseCost);
+      contractInfo = await this.extractContractInfo(content);
+      const settlementCost = this.calculateSettlementCost(contractInfo.endDate, contractInfo.leaseCost, contractInfo.frequency);
 
       return {
         filePath,

@@ -18,19 +18,34 @@ const openai = new OpenAI({
 
 const tokenizer = new natural.WordTokenizer();
 
+// Cosine similarity helper function (added for semantic matching)
+function cosineSimilarity(vecA, vecB) {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] ** 2;
+    normB += vecB[i] ** 2;
+  }
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 /**
  * Enhanced AI Recommendation Engine with proper volume and suitability matching
  */
 class AIRecommendationEngine {
   
   constructor() {
-    // Scoring weights for machine matching
+    // Scoring weights for machine matching (now dynamic, but with defaults)
     this.scoringWeights = {
       volumeMatch: 0.35,      // Most important - prevents oversizing
       costEfficiency: 0.25,   // Cost savings vs current
       speedSuitability: 0.20, // Speed appropriate for volume
       featureMatch: 0.15,     // Required features present
-      paperCompatibility: 0.05 // Paper size support (binary filter)
+      paperCompatibility: 0.05, // Paper size support (binary filter)
+      semanticMatch: 0.15     // New: For hybrid semantic scoring
     };
   }
 
@@ -127,9 +142,33 @@ class AIRecommendationEngine {
   }
 
   /**
+   * New: Calculate hybrid semantic score (content + collaborative)
+   */
+  static async calculateHybridScore(quoteRequest, product, prefs) {
+    try {
+      const requestText = `${quoteRequest.description || ''} ${quoteRequest.requiredFunctions?.join(' ') || ''}`;
+      const reqEmbedding = (await openai.embeddings.create({
+        model: 'text-embedding-3-large',
+        input: requestText
+      })).data[0].embedding;
+
+      const productEmbedding = product.embedding || []; // From schema
+      const similarity = cosineSimilarity(reqEmbedding, productEmbedding);
+
+      // Collaborative bonus from preferences
+      const collabBonus = prefs.preferredVendors?.includes(product.manufacturer) ? 0.15 : 0;
+
+      return similarity * 0.6 + collabBonus;
+    } catch (error) {
+      logger.error('Hybrid score error:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Calculate comprehensive machine suitability score
    */
-  static calculateSuitabilityScore(quoteRequest, product) {
+  static async calculateSuitabilityScore(quoteRequest, product, prefs) {
     const userVolume = (quoteRequest.monthlyVolume?.mono || 0) + (quoteRequest.monthlyVolume?.colour || 0);
     
     // Paper compatibility is a hard filter
@@ -167,15 +206,20 @@ class AIRecommendationEngine {
       };
     }
 
+    // New: Hybrid semantic score
+    const hybridScore = await this.calculateHybridScore(quoteRequest, product, prefs);
+
     // Calculate weighted total score
     const totalScore = (volumeScore * this.scoringWeights.volumeMatch) +
-                      (speedScore * this.scoringWeights.speedSuitability);
+                       (speedScore * this.scoringWeights.speedSuitability) +
+                       (hybridScore * this.scoringWeights.semanticMatch);
 
     return {
       score: totalScore,
       suitable: totalScore >= 0.4, // Minimum threshold for suitability
       volumeScore,
       speedScore,
+      hybridScore,
       reason: totalScore >= 0.4 ? 
         `Good fit for ${userVolume} pages/month usage` :
         `Below suitability threshold - volume or speed mismatch`
@@ -251,16 +295,41 @@ class AIRecommendationEngine {
   }
 
   /**
-   * Get user preference profile from feedback
+   * Get lease margin with support for array format
+   */
+  static getLeaseMargin(product, requestedTerm) {
+    let margin = 0.5; // Default
+    if (product.leaseTermsAndMargins) {
+      if (typeof product.leaseTermsAndMargins === 'string') {
+        const marginObj = this.parseLeaseTermsAndMargins(product.leaseTermsAndMargins);
+        margin = marginObj[requestedTerm] ?? marginObj[60] ?? 0.5;
+      } else if (Array.isArray(product.leaseTermsAndMargins)) {
+        const termOption = product.leaseTermsAndMargins.find(t => t.term === requestedTerm) ||
+                            product.leaseTermsAndMargins.find(t => t.term === 60) ||
+                            product.leaseTermsAndMargins[0];
+        margin = termOption?.margin || 0.5;
+      }
+    }
+    return margin;
+  }
+
+  /**
+   * Get user preference profile from feedback (enhanced with LLM for dynamic weights)
    */
   static async getUserPreferenceProfile(userId) {
     try {
       const feedback = await QuoteFeedback.find({ userId })
         .sort({ createdAt: -1 })
-        .limit(10);
+        .limit(20);
 
-      if (feedback.length === 0) {
-        return 'No specific preferences known; prioritize suitable volume match and cost efficiency.';
+      if (feedback.length < 5) {
+        return {
+          summary: 'No specific preferences known; prioritize suitable volume match and cost efficiency.',
+          preferredVendors: [],
+          costPriority: 0.5,
+          speedPriority: 0.5,
+          featurePriority: 0.5
+        };
       }
 
       const preferences = {
@@ -284,25 +353,36 @@ class AIRecommendationEngine {
         }
       });
 
-      let summary = '';
-      if (preferences.acceptedVendors.length > 0) {
-        summary += `User prefers vendors: ${[...new Set(preferences.acceptedVendors)].join(', ')}. `;
-      }
-      if (preferences.rejectedVendors.length > 0) {
-        summary += `User avoids vendors: ${[...new Set(preferences.rejectedVendors)].join(', ')}. `;
-      }
-      
-      const avgRating = preferences.ratings.length > 0 ? 
-        preferences.ratings.reduce((sum, r) => sum + r, 0) / preferences.ratings.length : 0;
-      
-      if (avgRating > 0) {
-        summary += `Average vendor rating: ${avgRating.toFixed(1)}/5. `;
-      }
+      // LLM summarization for priorities
+      const feedbackSummary = preferences.comments.join('\n');
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Analyze user feedback for preferences. Output JSON: {costPriority: 0-1, speedPriority: 0-1, featurePriority: 0-1, preferredVendors: array of strings, summary: string}' },
+          { role: 'user', content: feedbackSummary }
+        ],
+        response_format: { type: 'json_object' }
+      });
+      const aiPrefs = JSON.parse(response.choices[0].message.content);
 
-      return summary || 'Balance volume suitability, cost efficiency, and service quality.';
+      // Adjust weights dynamically
+      this.scoringWeights.costEfficiency = aiPrefs.costPriority * 0.4;
+      this.scoringWeights.speedSuitability = aiPrefs.speedPriority * 0.3;
+      this.scoringWeights.featureMatch = aiPrefs.featurePriority * 0.3;
+
+      // Add accepted/rejected
+      aiPrefs.preferredVendors = [...new Set(preferences.acceptedVendors)];
+
+      return aiPrefs;
     } catch (error) {
       logger.error('Error getting user preference profile:', { userId, error: error.message });
-      return 'Focus on volume-appropriate machines with good cost efficiency.';
+      return {
+        summary: 'Focus on volume-appropriate machines with good cost efficiency.',
+        preferredVendors: [],
+        costPriority: 0.5,
+        speedPriority: 0.5,
+        featurePriority: 0.5
+      };
     }
   }
 
@@ -340,22 +420,22 @@ class AIRecommendationEngine {
         }
       }
 
-      // 2. Get user preferences
+      // 2. Get user preferences (enhanced)
       const preferenceProfile = await this.getUserPreferenceProfile(userId);
 
-      // 3. Query suitable products with pre-filtering
+      // 3. Query suitable products with pre-filtering (enhanced with more fields)
       const queryFilter = {
-        // Volume pre-filtering: find machines that can handle the volume
+        volumeRange,  // Exact enum match for efficiency
+        'paperSizes.primary': requiredPaperSize,
+        'availability.inStock': true,  // Only in-stock
         maxVolume: { $gte: userVolume * 0.7 }, // At least 70% of user volume
         minVolume: { $lte: userVolume * 2 },   // Not more than 2x oversized
+        features: { $all: quoteRequest.requiredFunctions || [] },  // Match required features
       };
 
-      // Add paper size filter if specified
-      if (requiredPaperSize) {
-        queryFilter['paperSizes.supported'] = requiredPaperSize;
-      }
-
-      const vendorProducts = await VendorProduct.find(queryFilter).lean();
+      const vendorProducts = await VendorProduct.find(queryFilter)
+        .sort({ 'costs.totalMachineCost': 1 })  // Sort by cost ascending (adjustable)
+        .lean();
       
       logger.info(`Found ${vendorProducts.length} potentially suitable products`);
 
@@ -369,29 +449,13 @@ class AIRecommendationEngine {
       const requestedTerm = quoteRequest.leaseTermMonths || 60;
 
       for (const product of vendorProducts) {
-        // Calculate suitability score
-        const suitability = this.calculateSuitabilityScore(quoteRequest, product);
+        // Calculate suitability score (now async with hybrid)
+        const suitability = await this.calculateSuitabilityScore(quoteRequest, product, preferenceProfile);
         
         // Calculate lease costs
         let quarterlyLease = 0;
         try {
-          // Handle both old and new lease term formats
-          let margin = 0.5; // default
-          
-          if (product.leaseTermsAndMargins) {
-            if (typeof product.leaseTermsAndMargins === 'string') {
-              // Legacy string format
-              const marginObj = this.parseLeaseTermsAndMargins(product.leaseTermsAndMargins);
-              margin = marginObj[requestedTerm] ?? marginObj[60] ?? 0.5;
-            } else if (Array.isArray(product.leaseTermsAndMargins)) {
-              // New array format
-              const termOption = product.leaseTermsAndMargins.find(t => t.term === requestedTerm) ||
-                                product.leaseTermsAndMargins.find(t => t.term === 60) ||
-                                product.leaseTermsAndMargins[0];
-              margin = termOption?.margin || 0.5;
-            }
-          }
-
+          const margin = this.getLeaseMargin(product, requestedTerm);
           const salePrice = product.costs?.totalMachineCost || product.salePrice || 0;
           const totalLeaseValue = salePrice * (1 + margin);
           quarterlyLease = (totalLeaseValue / requestedTerm) * 3;
