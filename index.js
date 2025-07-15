@@ -40,10 +40,12 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
 // Express app
 const app = express();
 
-// ✅ CORS CONFIG — FIXED to include your Vercel frontend URL
+// ✅ CORS CONFIG — FIXED to include your Vercel frontend URLs
 const allowedOrigins = [
   'https://www.tendorai.com',
   'https://tendorai.com',
+  'https://ai-procurement-frontend.vercel.app',                              // ← Added Vercel custom domain
+  'https://ai-procurement-frontend-draw7m9gj-scotts-projects-19a8a91e.vercel.app', // ← Added Vercel deployment URL
   'http://localhost:3000',
   'http://127.0.0.1:3000'
 ];
