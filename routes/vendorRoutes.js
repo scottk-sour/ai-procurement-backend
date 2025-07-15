@@ -213,6 +213,123 @@ router.get('/recent-activity', vendorAuth, async (req, res) => {
   }
 });
 
+// ✅ NEW: Vendor notifications endpoint
+router.get('/notifications', vendorAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    
+    // For now, we'll create notifications from recent quote requests and activities
+    // You can expand this to use a dedicated Notification model later
+    
+    const vendor = await Vendor.findById(req.vendorId);
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
+
+    // Get recent quote requests that might be relevant to this vendor
+    const recentQuotes = await CopierQuoteRequest.find({
+      // You might want to filter based on vendor services/location/etc.
+      status: { $in: ['pending', 'active'] }
+    })
+    .sort({ createdAt: -1 })
+    .limit(10);
+
+    // Get recent vendor activities
+    const recentActivities = await VendorActivity.find({ vendorId: req.vendorId })
+      .sort({ date: -1 })
+      .limit(10);
+
+    // Create notifications array
+    const notifications = [];
+
+    // Add quote-based notifications
+    recentQuotes.forEach(quote => {
+      notifications.push({
+        id: `quote-${quote._id}`,
+        type: 'quote_opportunity',
+        title: 'New Quote Opportunity',
+        message: `New quote request for ${quote.copierType || 'equipment'} - ${quote.monthlyVolume || 'N/A'} pages/month`,
+        timestamp: quote.createdAt,
+        isRead: false,
+        priority: 'medium',
+        data: {
+          quoteId: quote._id,
+          companyName: quote.companyName,
+          location: quote.location
+        }
+      });
+    });
+
+    // Add activity-based notifications
+    recentActivities.forEach(activity => {
+      if (activity.type === 'login') return; // Skip login activities for notifications
+      
+      notifications.push({
+        id: `activity-${activity._id}`,
+        type: 'activity',
+        title: 'Account Activity',
+        message: activity.description,
+        timestamp: activity.date,
+        isRead: true, // Mark activities as read
+        priority: 'low',
+        data: {
+          activityType: activity.type
+        }
+      });
+    });
+
+    // Sort by timestamp and apply pagination
+    notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    const startIndex = (page - 1) * limit;
+    const paginatedNotifications = notifications.slice(startIndex, startIndex + parseInt(limit));
+
+    res.status(200).json({
+      success: true,
+      notifications: paginatedNotifications,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: notifications.length,
+        hasMore: startIndex + parseInt(limit) < notifications.length
+      },
+      stats: {
+        unreadCount: notifications.filter(n => !n.isRead).length,
+        totalCount: notifications.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching vendor notifications:', error.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error.',
+      error: error.message 
+    });
+  }
+});
+
+// ✅ NEW: Mark notification as read
+router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    
+    // In a real implementation, you'd update the notification in the database
+    // For now, we'll just return success
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as read',
+      notificationId
+    });
+  } catch (error) {
+    console.error('❌ Error marking notification as read:', error.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error.',
+      error: error.message 
+    });
+  }
+});
+
 // AI recommendations
 router.get('/recommend', recommendLimiter, async (req, res) => {
   try {
