@@ -1,149 +1,256 @@
-import { OpenAI } from "openai";
-import Vendor from "../models/Vendor.js";
-import QuoteRequest from "../models/QuoteRequest.js";
-import AIRecommendationEngine from "../services/AIRecommendationEngine.js";  // Import the enhanced engine
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import CopierQuoteRequest from '../models/CopierQuoteRequest.js';
+import VendorProduct from '../models/VendorProduct.js';
+import Vendor from '../models/Vendor.js';
+import AIRecommendationEngine from '../services/aiRecommendationEngine.js';
+import nodemailer from 'nodemailer';
 
 /**
- * Handles AI-based vendor recommendations for Photocopiers.
- * Expects multipart/form-data or JSON with "userRequirements" and "userId".
+ * Handles detailed copier quotation requests from users.
  */
-export const requestQuotes = async (req, res) => {
+export const submitCopierQuoteRequest = async (req, res) => {
   try {
-    console.log("🔥 Full Incoming Request Body:", req.body);
+    const data = req.body;
+    const invoiceFiles = req.files?.invoices || [];
+    const invoicePaths = invoiceFiles.map(file => file.path);
 
-    // Parse userRequirements and userId
-    let { userRequirements, userId } = req.body;
-    if (!userRequirements) {
-      return res.status(400).json({ message: "Missing `userRequirements` in request body." });
-    }
-    try {
-      userRequirements = JSON.parse(userRequirements);
-    } catch (error) {
-      return res.status(400).json({ message: "Invalid JSON format in `userRequirements`." });
-    }
-    console.log("🔵 Extracted userRequirements:", JSON.stringify(userRequirements, null, 2));
-
-    if (!userId) {
-      return res.status(400).json({ message: "Missing `userId` in request." });
+    if (!data.userId) {
+      return res.status(400).json({ message: 'Missing userId' });
     }
 
-    // Validate required fields
-    const requiredFields = [
-      "companyName",
-      "industryType",
-      "numEmployees",
-      "numLocations",
-      "multiFloor",
-      "colour",
-      "min_speed",
-      "max_lease_price",
-      "required_functions",
-    ];
-    const missingFields = requiredFields.filter((field) => !(field in userRequirements));
-    if (missingFields.length > 0) {
-      return res.status(400).json({ message: `Missing required fields: ${missingFields.join(", ")}` });
-    }
-
-    // Map userRequirements to QuoteRequest format (for engine compatibility)
-    const quoteRequestData = {
-      serviceType: userRequirements.serviceType || "Photocopiers",
-      companyName: userRequirements.companyName,
-      industryType: userRequirements.industryType,
-      numEmployees: Number(userRequirements.numEmployees),
-      numOfficeLocations: Number(userRequirements.numLocations),
-      multipleFloors: userRequirements.multiFloor === "Yes",
-      colour: userRequirements.colour,
-      minSpeed: Number(userRequirements.min_speed),  // Map to minSpeed if needed
-      price: Number(userRequirements.max_lease_price),  // Map max_lease_price to price
-      requiredFunctions: userRequirements.required_functions || [],
-      monthlyVolume: {
-        colour: Number(userRequirements.monthlyVolume?.colour) || 0,
-        mono: Number(userRequirements.monthlyVolume?.mono) || 0,
-      },
-      additionalServices: userRequirements.additional_notes ? [userRequirements.additional_notes] : [],  // Map notes to services if relevant
-      // Add other mappings as needed (e.g., type, leaseTermMonths)
-      type: userRequirements.type || "A3",  // Example fallback
-      leaseTermMonths: 60,  // Default or from userRequirements if available
-    };
-
-    // Use the enhanced AIRecommendationEngine to generate recommendations
-    console.log("🧠 Calling AIRecommendationEngine...");
-    const recommendations = await AIRecommendationEngine.generateRecommendations(quoteRequestData, userId, req.files?.invoices || []);  // Pass uploaded files if any (e.g., for contract analysis)
-
-    // Create and save a new QuoteRequest
-    const quoteRequest = new QuoteRequest({
-      userId,
-      ...quoteRequestData,
-      status: recommendations.length ? "In Progress" : "Failed",
-      preferredVendor: recommendations.map(rec => rec.vendorName).join(", "),
+    const copierRequest = new CopierQuoteRequest({
+      ...data,
+      invoices: invoicePaths,
+      userId: data.userId,
+      status: 'Pending'
     });
 
-    await quoteRequest.save();
-    console.log("✅ Quote Request Saved to Database:", quoteRequest._id);
+    await copierRequest.save();
 
-    if (!recommendations.length) {
-      return res.status(200).json({ recommendedVendors: [], message: "No vendors found for Photocopiers." });
-    }
+    // Generate vendor recommendations using the AI engine
+    const matchedVendors = await AIRecommendationEngine.generateRecommendations(
+      copierRequest,
+      data.userId,
+      invoicePaths
+    );
 
-    // Extract vendor emails or details from recommendations (engine returns full quotes)
-    const recommendedVendors = recommendations.map(rec => ({
-      email: rec.product.email || 'vendor@example.com',  // Adjust based on your Vendor schema
-      name: rec.vendorName,
-      model: rec.model,
-      savings: rec.savingsInfo.monthlySavings,
-      // Add more fields as needed
+    copierRequest.matchedVendors = (matchedVendors || []).map(vendor => ({
+      vendorId: vendor.vendorId || vendor._id,
+      score: vendor.score
     }));
 
-    // Update the QuoteRequest with the recommendations
-    quoteRequest.preferredVendor = recommendedVendors.map(v => v.name).join(", ");
-    await quoteRequest.save();
-    console.log("✅ Quote Request Updated with AI Recommendations:", quoteRequest._id);
+    copierRequest.status = 'Matched';
+    await copierRequest.save();
+
+    await notifyMatchedVendors(matchedVendors, copierRequest);
 
     return res.status(201).json({
-      message: "Quote request created successfully",
-      quote: quoteRequest,
-      recommendedVendors,
+      message: '✅ Copier quotation request submitted successfully.',
+      requestId: copierRequest._id,
+      matchedVendors
     });
   } catch (error) {
-    console.error("❌ Error in requestQuotes:", error);
-    return res.status(500).json({ error: "Server error while creating quote", details: error.message });
+    console.error('❌ Failed to submit copier quotation request:', error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 };
 
 /**
- * Fetch quotes for a specific user and return the FULL quotes from the database.
+ * Get matched vendors for a specific quotation request
  */
-export const getUserQuotes = async (req, res) => {
+export const getMatchedVendors = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!requestId) {
+      return res.status(400).json({ message: 'Missing requestId' });
+    }
+
+    const quoteRequest = await CopierQuoteRequest.findById(requestId);
+
+    if (!quoteRequest) {
+      return res.status(404).json({ message: 'Quotation request not found' });
+    }
+
+    if (!quoteRequest.matchedVendors || quoteRequest.matchedVendors.length === 0) {
+      const matchedVendors = await AIRecommendationEngine.generateRecommendations(
+        quoteRequest,
+        quoteRequest.userId,
+        quoteRequest.invoices || []
+      );
+
+      quoteRequest.matchedVendors = (matchedVendors || []).map(vendor => ({
+        vendorId: vendor.vendorId || vendor._id,
+        score: vendor.score
+      }));
+
+      quoteRequest.status = 'Matched';
+      await quoteRequest.save();
+
+      await notifyMatchedVendors(matchedVendors, quoteRequest);
+
+      return res.status(200).json({ matchedVendors });
+    }
+
+    const vendorIds = quoteRequest.matchedVendors.map(s => s.vendorId);
+    const vendors = await Vendor.find({ _id: { $in: vendorIds } }).lean();
+    const vendorProducts = await VendorProduct.find({ vendorId: { $in: vendorIds } }).lean();
+
+    const detailedMatches = quoteRequest.matchedVendors.map(match => {
+      const vendor = vendors.find(s => s._id.toString() === match.vendorId.toString());
+      const products = vendorProducts.filter(p => p.vendorId.toString() === match.vendorId.toString());
+      const bestProduct = products.length > 0 ? products[0] : null;
+
+      return {
+        vendorId: match.vendorId,
+        vendorName: vendor ? vendor.name : 'Unknown Vendor',
+        score: match.score,
+        product: bestProduct ? {
+          manufacturer: bestProduct.manufacturer,
+          model: bestProduct.model,
+          speed: bestProduct.speed,
+          description: bestProduct.description,
+          totalMachineCost: bestProduct.totalMachineCost,
+          costPerCopy: bestProduct.costPerCopy
+        } : null
+      };
+    });
+
+    return res.status(200).json({ matchedVendors: detailedMatches });
+  } catch (error) {
+    console.error('❌ Failed to get matched vendors:', error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+};
+
+/**
+ * Fetch all copier quotation requests for a user.
+ */
+export const getUserCopierQuotes = async (req, res) => {
   try {
     const { userId } = req.query;
     if (!userId) {
-      return res.status(400).json({ message: "Missing userId" });
+      return res.status(400).json({ message: 'Missing userId' });
     }
-    const quotes = await QuoteRequest.find({ userId }).lean();
-    if (!quotes.length) {
-      return res.status(200).json({ quotes: [] });
-    }
-    console.log("📡 Retrieved Quotes:", JSON.stringify(quotes, null, 2));
+    const quotes = await CopierQuoteRequest.find({ userId }).lean();
     return res.status(200).json({ quotes });
   } catch (error) {
-    console.error("❌ Error retrieving user quotes:", error.message);
-    return res.status(500).json({ error: "Internal Server Error", details: error.message });
+    console.error('❌ Failed to fetch copier quotations:', error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 };
 
 /**
- * Fetch pending quotes.
+ * Get vendor quotation requests
  */
-export const getPendingQuotes = async (req, res) => {
+export const getVendorQuoteRequests = async (req, res) => {
   try {
-    const quotes = await QuoteRequest.find({ status: "Pending" }).lean();
-    return res.status(200).json({ quotes });
+    const { vendorId } = req.query;
+
+    if (!vendorId) {
+      return res.status(400).json({ message: 'Missing vendorId' });
+    }
+
+    const quoteRequests = await CopierQuoteRequest.find({
+      'matchedVendors.vendorId': vendorId
+    }).lean();
+
+    return res.status(200).json({ quoteRequests });
   } catch (error) {
-    console.error("❌ Error retrieving pending quotes:", error.message);
-    return res.status(500).json({ error: "Internal Server Error", details: error.message });
+    console.error('❌ Failed to fetch vendor quotation requests:', error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 };
+
+/**
+ * Update quotation request status
+ */
+export const updateQuoteStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status } = req.body;
+
+    if (!requestId || !status) {
+      return res.status(400).json({ message: 'Missing requestId or status' });
+    }
+
+    const validStatuses = ['Pending', 'Matched', 'Accepted', 'Declined', 'Completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const updatedQuote = await CopierQuoteRequest.findByIdAndUpdate(
+      requestId,
+      { status },
+      { new: true }
+    );
+
+    if (!updatedQuote) {
+      return res.status(404).json({ message: 'Quotation request not found' });
+    }
+
+    return res.status(200).json({
+      message: 'Quotation status updated successfully',
+      quote: updatedQuote
+    });
+  } catch (error) {
+    console.error('❌ Failed to update quotation status:', error);
+    return res.status(500).json({ error: 'Internal Server Error', details: error.message });
+  }
+};
+
+/**
+ * Notify matched vendors about new quotation request
+ * In production, replace with a proper email notification.
+ */
+const notifyMatchedVendors = async (matchedVendors, quoteRequest) => {
+  try {
+    if (!matchedVendors || matchedVendors.length === 0) return true;
+    // Example email setup (replace with your SMTP config in production)
+    /*
+    const transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+    for (const vendor of matchedVendors) {
+      const mailOptions = {
+        from: process.env.SMTP_USER,
+        to: vendor.email, // you would need vendor emails from DB
+        subject: `New Quotation Request Matched - ${quoteRequest.companyName}`,
+        text: `You have been matched with a new quotation request from ${quoteRequest.companyName}. Please log in to your dashboard to view the details.`,
+      };
+      await transporter.sendMail(mailOptions);
+    }
+    */
+    // For dev, just log
+    for (const vendor of matchedVendors) {
+      console.log(`📧 Would email: ${vendor.vendorName || vendor.vendorId}`);
+      console.log(`Subject: New Quotation Request Matched - ${quoteRequest.companyName}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to notify vendors:', error);
+    return false;
+  }
+};
+
+/**
+ * Initialise the AI Recommendation Engine (if required on startup)
+ */
+export const initialiseVendorMatching = async () => {
+  try {
+    if (AIRecommendationEngine.loadVendorProductsFromCSV) {
+      await AIRecommendationEngine.loadVendorProductsFromCSV();
+      console.log('✅ AI Recommendation Engine initialised successfully');
+    }
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to initialise AI Recommendation Engine:', error);
+    return false;
+  }
+};
+
+initialiseVendorMatching().catch(console.error);                                                                                                   

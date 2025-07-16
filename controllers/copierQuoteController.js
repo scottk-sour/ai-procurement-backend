@@ -207,7 +207,7 @@ const notifyMatchedVendors = async (matchedVendors, quoteRequest) => {
     if (!matchedVendors || matchedVendors.length === 0) return true;
     // Example email setup (replace with your SMTP config in production)
     /*
-    const transporter = nodemailer.createTransport({
+    const transporter = nodemailer.createTransporter({
       host: process.env.SMTP_HOST,
       port: process.env.SMTP_PORT,
       auth: {
