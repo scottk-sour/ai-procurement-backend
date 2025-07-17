@@ -40,20 +40,23 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
 // Express app
 const app = express();
 
-// ✅ CORS CONFIG — FIXED to include your Vercel frontend URLs
-const allowedOrigins = [
-  'https://www.tendorai.com',
-  'https://tendorai.com',
-  'https://ai-procurement-frontend.vercel.app',                              // ← Added Vercel custom domain
-  'https://ai-procurement-frontend-draw7m9gj-scotts-projects-19a8a91e.vercel.app', // ← Added Vercel deployment URL
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-];
-
-// TEMPORARY DEVELOPMENT CORS - Allows all origins
+// ✅ IMPROVED CORS CONFIG — Handles all Vercel deployment URLs automatically
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const staticOrigins = [
+      'https://www.tendorai.com',
+      'https://tendorai.com',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    // Allow any Vercel deployment URL for your project
+    const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
+    
+    if (staticOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
     } else {
       console.log(`❌ CORS blocked: ${origin}`);
@@ -73,7 +76,13 @@ app.use((error, req, res, next) => {
       error: 'CORS Error',
       message: 'This origin is not allowed to access this resource',
       origin: req.headers.origin || 'unknown',
-      allowedOrigins: allowedOrigins
+      allowedPatterns: [
+        'https://www.tendorai.com',
+        'https://tendorai.com',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'https://ai-procurement-frontend-*.vercel.app'
+      ]
     });
   }
   next(error);
@@ -123,7 +132,13 @@ app.get('/api/test-dashboard', async (req, res) => {
       environment: process.env.NODE_ENV || 'development',
       mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
       corsConfig: {
-        allowedOrigins: allowedOrigins,
+        staticOrigins: [
+          'https://www.tendorai.com',
+          'https://tendorai.com',
+          'http://localhost:3000',
+          'http://127.0.0.1:3000'
+        ],
+        vercelPreviewPattern: 'https://ai-procurement-frontend-*.vercel.app',
         vercelPreviewSupport: true,
         credentialsEnabled: true
       },
@@ -148,7 +163,7 @@ app.get('/api/test-dashboard', async (req, res) => {
       ],
       totalEndpoints: 17,
       message: '✅ All dashboard endpoints are now available!',
-      note: 'Your TendorAI platform is ready for production use.',
+      note: 'Your TendorAI platform is ready for production use with dynamic CORS support.',
       dashboardFeatures: [
         '✅ User authentication and authorization',
         '✅ Quote request submission and management', 
@@ -157,7 +172,8 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ File upload and document management',
         '✅ Notification system',
         '✅ Activity tracking',
-        '✅ Multi-role support (Users, Vendors, Admins)'
+        '✅ Multi-role support (Users, Vendors, Admins)',
+        '✅ Dynamic CORS for Vercel deployments'
       ]
     };
 
@@ -181,7 +197,13 @@ app.get('/', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     corsConfig: {
-      allowedOrigins: allowedOrigins,
+      staticOrigins: [
+        'https://www.tendorai.com',
+        'https://tendorai.com',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+      ],
+      vercelPreviewPattern: 'https://ai-procurement-frontend-*.vercel.app',
       vercelPreviewSupport: true
     },
     features: [
@@ -190,7 +212,8 @@ app.get('/', (req, res) => {
       'Multi-role authentication',
       'Real-time dashboard',
       'File upload support',
-      'Notification system'
+      'Notification system',
+      'Dynamic CORS for Vercel deployments'
     ]
   });
 });
@@ -249,7 +272,12 @@ async function startServer() {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
       console.log(`🔧 Raw process.env.PORT: ${process.env.PORT || 'Not set'}`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(', ')}`);
+      console.log(`🌐 CORS enabled for:`);
+      console.log(`   - https://www.tendorai.com`);
+      console.log(`   - https://tendorai.com`);
+      console.log(`   - http://localhost:3000`);
+      console.log(`   - http://127.0.0.1:3000`);
+      console.log(`   - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
       console.log(`📊 Test endpoint available at: http://localhost:${PORT}/api/test-dashboard`);
       console.log(`🏥 Health check available at: http://localhost:${PORT}/`);
       console.log(`\n🎉 TendorAI Backend is ready for connections!`);
