@@ -106,16 +106,16 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// ROUTES
+// ROUTES - FIXED VENDOR UPLOAD ROUTES
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
+app.use('/api/vendors', vendorUploadRoutes); // ✅ FIXED: Changed from /api/uploads to /api/vendors
 app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
-app.use('/api/uploads', vendorUploadRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
@@ -159,11 +159,14 @@ app.get('/api/test-dashboard', async (req, res) => {
         { category: 'Authentication', path: '/api/users/signup', method: 'POST', status: 'Available', description: 'User registration' },
         { category: 'Vendors', path: '/api/vendors/verify', method: 'GET', status: 'Available', description: 'Verify vendor token' },
         { category: 'Vendors', path: '/api/vendors/login', method: 'POST', status: 'Available', description: 'Vendor login' },
-        { category: 'Vendors', path: '/api/vendors/signup', method: 'POST', status: 'Available', description: 'Vendor registration' }
+        { category: 'Vendors', path: '/api/vendors/signup', method: 'POST', status: 'Available', description: 'Vendor registration' },
+        { category: 'Vendor Upload', path: '/api/vendors/upload', method: 'POST', status: 'Available', description: 'Upload vendor products' },
+        { category: 'Vendor Upload', path: '/api/vendors/products', method: 'GET', status: 'Available', description: 'Get vendor products' },
+        { category: 'Vendor Upload', path: '/api/vendors/upload-template', method: 'GET', status: 'Available', description: 'Download upload template' }
       ],
-      totalEndpoints: 17,
-      message: '✅ All dashboard endpoints are now available!',
-      note: 'Your TendorAI platform is ready for production use with dynamic CORS support.',
+      totalEndpoints: 20,
+      message: '✅ All dashboard endpoints are now available including vendor upload!',
+      note: 'Your TendorAI platform is ready for production use with fixed vendor upload routing.',
       dashboardFeatures: [
         '✅ User authentication and authorization',
         '✅ Quote request submission and management', 
@@ -173,7 +176,8 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ Notification system',
         '✅ Activity tracking',
         '✅ Multi-role support (Users, Vendors, Admins)',
-        '✅ Dynamic CORS for Vercel deployments'
+        '✅ Dynamic CORS for Vercel deployments',
+        '✅ Vendor product upload system'
       ]
     };
 
@@ -213,7 +217,8 @@ app.get('/', (req, res) => {
       'Real-time dashboard',
       'File upload support',
       'Notification system',
-      'Dynamic CORS for Vercel deployments'
+      'Dynamic CORS for Vercel deployments',
+      'Vendor product upload system'
     ]
   });
 });
@@ -231,7 +236,7 @@ app.use((req, res) => {
       '/api/auth/* - Authentication routes',
       '/api/users/* - User management routes', 
       '/api/quotes/* - Quote management routes',
-      '/api/vendors/* - Vendor routes',
+      '/api/vendors/* - Vendor routes (including upload)',
       '/ - Health check'
     ]
   });
@@ -280,6 +285,7 @@ async function startServer() {
       console.log(`   - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
       console.log(`📊 Test endpoint available at: http://localhost:${PORT}/api/test-dashboard`);
       console.log(`🏥 Health check available at: http://localhost:${PORT}/`);
+      console.log(`📤 Vendor upload now available at: http://localhost:${PORT}/api/vendors/upload`);
       console.log(`\n🎉 TendorAI Backend is ready for connections!`);
     });
 
