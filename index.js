@@ -14,7 +14,7 @@ import AIRecommendationEngine from './services/aiRecommendationEngine.js';
 
 // Routes
 import authRoutes from './routes/authRoutes.js';
-import vendorRoutes from './routes/vendorRoutes.js';
+// REMOVED: import vendorRoutes from './routes/vendorRoutes.js';
 import vendorListingsRoutes from './routes/vendorListings.js';
 import vendorProductRoutes from './routes/vendorProductRoutes.js';
 import userRoutes from './routes/userRoutes.js';
@@ -106,10 +106,10 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// ROUTES - FIXED VENDOR UPLOAD ROUTES
+// ROUTES - UPDATED: Only use vendorUploadRoutes for all vendor functionality
 app.use('/api/auth', authRoutes);
-app.use('/api/vendors', vendorRoutes);
-app.use('/api/vendors', vendorUploadRoutes); // ✅ FIXED: Changed from /api/uploads to /api/vendors
+// REMOVED: app.use('/api/vendors', vendorRoutes);
+app.use('/api/vendors', vendorUploadRoutes); // ✅ This handles all vendor routes including upload
 app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
 app.use('/api/users', userRoutes);
@@ -166,7 +166,7 @@ app.get('/api/test-dashboard', async (req, res) => {
       ],
       totalEndpoints: 20,
       message: '✅ All dashboard endpoints are now available including vendor upload!',
-      note: 'Your TendorAI platform is ready for production use with fixed vendor upload routing.',
+      note: 'Your TendorAI platform is ready for production use with consolidated vendor routing.',
       dashboardFeatures: [
         '✅ User authentication and authorization',
         '✅ Quote request submission and management', 
