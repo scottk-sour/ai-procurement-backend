@@ -1,15 +1,337 @@
-// routes/vendorUploadRoutes.js
+// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload
 import express from "express";
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import fs from "fs";
 import path from "path";
+import rateLimit from 'express-rate-limit';
+import { isValidObjectId } from 'mongoose';
 import vendorAuth from "../middleware/vendorAuth.js";
 import upload from "../middleware/csvUpload.js";
 import Vendor from "../models/Vendor.js";
-import VendorProduct from "../models/VendorProduct.js"; // Updated to use VendorProduct
+import VendorProduct from "../models/VendorProduct.js";
+import VendorActivity from "../models/VendorActivity.js";
+import CopierQuoteRequest from "../models/CopierQuoteRequest.js";
 import CopierListing from "../models/CopierListing.js"; // Keep for backward compatibility
+import AIRecommendationEngine from "../services/aiRecommendationEngine.js";
 import { importVendorProducts, VendorUploadValidator } from "../controllers/vendorProductImportController.js";
 
 const router = express.Router();
+const { JWT_SECRET } = process.env;
+
+if (!JWT_SECRET) {
+  console.error('❌ ERROR: Missing JWT_SECRET in environment variables.');
+  process.exit(1);
+}
+
+// Rate limiters
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many login attempts. Please try again later.',
+});
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: 'Too many signup attempts. Please try again later.',
+});
+
+const recommendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many recommendation requests. Please try again later.',
+});
+
+// ===== VENDOR AUTHENTICATION ROUTES =====
+
+// Vendor signup
+router.post('/signup', signupLimiter, async (req, res) => {
+  try {
+    const { name, email, password, company, services = ['Photocopiers'] } = req.body;
+    if (!name || !email || !password || !company) {
+      return res.status(400).json({ message: 'Name, email, password, and company are required.' });
+    }
+    const existingVendor = await Vendor.findOne({ email });
+    if (existingVendor) return res.status(400).json({ message: 'Vendor already exists.' });
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const newVendor = new Vendor({
+      name,
+      email,
+      password: hashedPassword,
+      company,
+      services,
+      uploads: [],
+      machines: [],
+      status: 'active',
+    });
+    await newVendor.save();
+
+    await VendorActivity.create({
+      vendorId: newVendor._id,
+      type: 'signup',
+      description: 'Vendor account created',
+    });
+
+    res.status(201).json({ message: 'Vendor registered successfully.' });
+  } catch (error) {
+    console.error('❌ Error registering vendor:', error.message);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
+// Vendor login
+router.post('/login', loginLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+    const vendor = await Vendor.findOne({ email });
+    if (!vendor) return res.status(401).json({ message: 'Invalid email or password.' });
+
+    const isMatch = await bcrypt.compare(password, vendor.password);
+    if (!isMatch) return res.status(401).json({ message: 'Invalid email or password.' });
+
+    const token = jwt.sign(
+      { vendorId: vendor._id.toString(), email: vendor.email, role: 'vendor' },
+      JWT_SECRET,
+      { expiresIn: '4h' }
+    );
+
+    await VendorActivity.create({
+      vendorId: vendor._id,
+      type: 'login',
+      description: 'Vendor logged in',
+    });
+
+    res.json({
+      token,
+      vendorId: vendor._id.toString(),
+      vendorName: vendor.name,
+      message: 'Vendor login successful.',
+    });
+  } catch (error) {
+    console.error('❌ Error during vendor login:', error.message);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
+// Token verification
+router.get('/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'No token provided.' });
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded.vendorId) return res.status(401).json({ message: 'Invalid token payload.' });
+
+    const vendor = await Vendor.findById(decoded.vendorId).select('-password');
+    if (!vendor) return res.status(401).json({ message: 'Invalid token.' });
+
+    res.json({
+      message: 'Token is valid',
+      vendor: {
+        vendorId: vendor._id,
+        vendorName: vendor.name,
+        email: vendor.email,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Vendor token verification error:', error.message);
+    res.status(401).json({ message: 'Invalid or expired token.' });
+  }
+});
+
+// Vendor profile
+router.get('/profile', vendorAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId).select('-password');
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
+
+    res.status(200).json({
+      vendor: {
+        vendorId: vendor._id,
+        name: vendor.name,
+        email: vendor.email,
+        company: vendor.company,
+        services: vendor.services,
+        status: vendor.status,
+        uploads: vendor.uploads,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error fetching vendor profile:', error.message);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
+// Uploaded files
+router.get('/uploaded-files', vendorAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const vendor = await Vendor.findById(req.vendorId);
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
+
+    const startIndex = (page - 1) * limit;
+    const files = (vendor.uploads || []).slice(startIndex, startIndex + parseInt(limit));
+    res.status(200).json({ files });
+  } catch (error) {
+    console.error('❌ Error fetching vendor files:', error.message);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
+// Recent activity
+router.get('/recent-activity', vendorAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const activities = await VendorActivity.find({ vendorId: req.vendorId })
+      .sort({ date: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
+    res.status(200).json({ activities });
+  } catch (error) {
+    console.error('❌ Error fetching vendor activity:', error.message);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
+// Vendor notifications
+router.get('/notifications', vendorAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    
+    const vendor = await Vendor.findById(req.vendorId);
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
+
+    // Get recent quote requests that might be relevant to this vendor
+    const recentQuotes = await CopierQuoteRequest.find({
+      status: { $in: ['pending', 'active'] }
+    })
+    .sort({ createdAt: -1 })
+    .limit(10);
+
+    // Get recent vendor activities
+    const recentActivities = await VendorActivity.find({ vendorId: req.vendorId })
+      .sort({ date: -1 })
+      .limit(10);
+
+    // Create notifications array
+    const notifications = [];
+
+    // Add quote-based notifications
+    recentQuotes.forEach(quote => {
+      notifications.push({
+        id: `quote-${quote._id}`,
+        type: 'quote_opportunity',
+        title: 'New Quote Opportunity',
+        message: `New quote request for ${quote.copierType || 'equipment'} - ${quote.monthlyVolume || 'N/A'} pages/month`,
+        timestamp: quote.createdAt,
+        isRead: false,
+        priority: 'medium',
+        data: {
+          quoteId: quote._id,
+          companyName: quote.companyName,
+          location: quote.location
+        }
+      });
+    });
+
+    // Add activity-based notifications
+    recentActivities.forEach(activity => {
+      if (activity.type === 'login') return; // Skip login activities for notifications
+      
+      notifications.push({
+        id: `activity-${activity._id}`,
+        type: 'activity',
+        title: 'Account Activity',
+        message: activity.description,
+        timestamp: activity.date,
+        isRead: true, // Mark activities as read
+        priority: 'low',
+        data: {
+          activityType: activity.type
+        }
+      });
+    });
+
+    // Sort by timestamp and apply pagination
+    notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    const startIndex = (page - 1) * limit;
+    const paginatedNotifications = notifications.slice(startIndex, startIndex + parseInt(limit));
+
+    res.status(200).json({
+      success: true,
+      notifications: paginatedNotifications,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: notifications.length,
+        hasMore: startIndex + parseInt(limit) < notifications.length
+      },
+      stats: {
+        unreadCount: notifications.filter(n => !n.isRead).length,
+        totalCount: notifications.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching vendor notifications:', error.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error.',
+      error: error.message 
+    });
+  }
+});
+
+// Mark notification as read
+router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as read',
+      notificationId
+    });
+  } catch (error) {
+    console.error('❌ Error marking notification as read:', error.message);
+    res.status(500).json({ 
+      success: false,
+      message: 'Internal server error.',
+      error: error.message 
+    });
+  }
+});
+
+// AI recommendations
+router.get('/recommend', recommendLimiter, async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ message: 'Missing userId in query.' });
+    if (!isValidObjectId(userId)) return res.status(400).json({ message: 'Invalid userId format.' });
+
+    const quotes = await CopierQuoteRequest.find({ userId }).sort({ createdAt: -1 });
+    if (!quotes.length) return res.status(404).json({ message: 'No quote requests found for this user.' });
+
+    const recommendations = await AIRecommendationEngine.generateRecommendations(
+      quotes[0],
+      userId,
+      []
+    );
+
+    res.status(200).json({ recommendations });
+  } catch (error) {
+    console.error('❌ Error in /recommend endpoint:', error.message);
+    res.status(500).json({ message: 'Failed to get AI recommendations.', error: error.message });
+  }
+});
+
+// ===== VENDOR UPLOAD & PRODUCT MANAGEMENT ROUTES =====
+
+// Apply auth middleware to all upload/product routes
 router.use(vendorAuth);
 
 /**
@@ -153,106 +475,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 });
 
 /**
- * POST /api/vendors/upload-legacy
- * Legacy upload endpoint for backward compatibility with CopierListing
- */
-router.post("/upload-legacy", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: "⚠ No file uploaded." });
-
-    const vendorId = req.vendor?._id;
-    if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
-
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) return res.status(404).json({ message: "⚠ Vendor not found." });
-
-    const filePath = req.file.path.replace(/\\/g, "/");
-    const fileName = req.file.filename;
-
-    await Vendor.updateOne(
-      { _id: vendor._id },
-      {
-        $push: {
-          uploads: {
-            fileName,
-            filePath,
-            fileType: "csv",
-            uploadDate: new Date(),
-          },
-        },
-      }
-    );
-
-    const listingsData = [];
-
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on("data", (row) => {
-        const listing = {
-          vendor: vendorId,
-          model: row.Model || "Unknown Model",
-          buyInPrice: parseFloat(row.BuyInPrice) || 0,
-          costPerCopy: {
-            mono: [
-              { volumeRange: "0-5000", price: parseFloat(row.CostPerCopyMono_0_5000) || 0 },
-              { volumeRange: "5001-10000", price: parseFloat(row.CostPerCopyMono_5001_10000) || 0 },
-            ],
-            colour: [
-              { volumeRange: "0-2000", price: parseFloat(row.CostPerCopyColour_0_2000) || 0 },
-              { volumeRange: "2001-5000", price: parseFloat(row.CostPerCopyColour_2001_5000) || 0 },
-            ],
-          },
-          extraTrays: parseInt(row.ExtraTrays) || 0,
-          paperCut: parseFloat(row.PaperCut) || 0,
-          followMePrint: parseFloat(row.FollowMePrint) || 0,
-          bookletFinisher: parseFloat(row.BookletFinisher) || 0,
-          tonerCollection: parseFloat(row.TonerCollection) || 0,
-          leaseOptions: [
-            { termMonths: 36, leasePercentage: parseFloat(row.LeasePercentage_36) || 0 },
-            { termMonths: 60, leasePercentage: parseFloat(row.LeasePercentage_60) || 0 },
-          ],
-          isRefurbished: (row.IsRefurbished || "").toLowerCase() === "true",
-          refurbishedPricing: {
-            buyInPrice: parseFloat(row.RefurbBuyInPrice) || 0,
-            costPerCopyMono: parseFloat(row.RefurbMonoCostPerCopy) || 0,
-            costPerCopyColour: parseFloat(row.RefurbColourCostPerCopy) || 0,
-          },
-          vendorMarginType: row.VendorMarginType || "percentage",
-          vendorMarginValue: parseFloat(row.VendorMarginValue) || 0,
-        };
-
-        if (listing.model !== "Unknown Model") listingsData.push(listing);
-      })
-      .on("end", async () => {
-        try {
-          if (listingsData.length === 0) {
-            return res.status(400).json({ message: "⚠ No valid listings found in CSV." });
-          }
-
-          await CopierListing.insertMany(listingsData);
-          res.status(201).json({
-            message: "✅ File processed and listings saved.",
-            listings: listingsData,
-          });
-        } catch (dbError) {
-          res.status(500).json({
-            message: "❌ Error saving to database.",
-            error: dbError.message,
-          });
-        }
-      })
-      .on("error", (parseError) => {
-        res.status(500).json({
-          message: "❌ CSV parsing error.",
-          error: parseError.message,
-        });
-      });
-  } catch (error) {
-    res.status(500).json({ message: "❌ File upload error.", error: error.message });
-  }
-});
-
-/**
  * GET /api/vendors/products
  * Retrieve all VendorProducts for the authenticated vendor
  */
@@ -280,26 +502,6 @@ router.get("/products", async (req, res) => {
       message: "Internal server error", 
       errors: [error.message] 
     });
-  }
-});
-
-/**
- * GET /api/vendors/listings
- * Legacy endpoint - retrieve CopierListings for backward compatibility
- */
-router.get("/listings", async (req, res) => {
-  try {
-    const vendorId = req.vendor?._id;
-    if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
-
-    const listings = await CopierListing.find({ vendor: vendorId }).lean();
-    if (!listings.length) {
-      return res.status(404).json({ message: "⚠ No listings found for this vendor." });
-    }
-
-    res.status(200).json(listings);
-  } catch (error) {
-    res.status(500).json({ message: "❌ Internal server error.", error: error.message });
   }
 });
 
@@ -518,6 +720,26 @@ router.get("/upload-history", async (req, res) => {
       message: "Internal server error",
       errors: [error.message]
     });
+  }
+});
+
+/**
+ * GET /api/vendors/listings
+ * Legacy endpoint - retrieve CopierListings for backward compatibility
+ */
+router.get("/listings", async (req, res) => {
+  try {
+    const vendorId = req.vendor?._id;
+    if (!vendorId) return res.status(401).json({ message: "⚠ Unauthorized" });
+
+    const listings = await CopierListing.find({ vendor: vendorId }).lean();
+    if (!listings.length) {
+      return res.status(404).json({ message: "⚠ No listings found for this vendor." });
+    }
+
+    res.status(200).json(listings);
+  } catch (error) {
+    res.status(500).json({ message: "❌ Internal server error.", error: error.message });
   }
 });
 
