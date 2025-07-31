@@ -1,4 +1,4 @@
-// models/Quote.js
+// models/Quote.js - Improved version
 import mongoose from 'mongoose';
 
 const quoteSchema = new mongoose.Schema({
@@ -23,22 +23,39 @@ const quoteSchema = new mongoose.Schema({
     required: true 
   },
 
+  // User Volume Requirements (from original request)
+  userRequirements: {
+    monthlyVolume: {
+      mono: { type: Number, required: true },
+      colour: { type: Number, required: true },
+      total: { type: Number, required: true }
+    },
+    paperSize: { type: String, required: true }, // A4, A3, SRA3
+    priority: { type: String, required: true }, // cost, quality, speed, etc.
+    maxBudget: { type: Number, required: true },
+    urgency: { type: String }, // timeline requirement
+    features: [{ type: String }] // required features
+  },
+
   // AI Matching Score
   matchScore: {
-    total: { type: Number, required: true }, // 0-1 score
+    total: { type: Number, required: true, min: 0, max: 1 }, // 0-1 score
     breakdown: {
-      volumeMatch: { type: Number },
-      costEfficiency: { type: Number },
-      speedMatch: { type: Number },
-      featureMatch: { type: Number },
-      reliabilityMatch: { type: Number }
+      volumeMatch: { type: Number, min: 0, max: 1 },
+      costEfficiency: { type: Number, min: 0, max: 1 },
+      speedMatch: { type: Number, min: 0, max: 1 },
+      featureMatch: { type: Number, min: 0, max: 1 },
+      reliabilityMatch: { type: Number, min: 0, max: 1 },
+      paperSizeMatch: { type: Number, min: 0, max: 1 },
+      urgencyMatch: { type: Number, min: 0, max: 1 }
     },
     reasoning: [{ type: String }], // AI explanations
     confidence: { 
       type: String, 
       enum: ['High', 'Medium', 'Low'],
       required: true 
-    }
+    },
+    weightingUsed: { type: String } // Which priority weighting was applied
   },
 
   // Cost Breakdown
@@ -49,11 +66,20 @@ const quoteSchema = new mongoose.Schema({
     profitMargin: { type: Number, required: true },
     totalMachineCost: { type: Number, required: true },
 
-    // Usage costs (monthly)
+    // CPC Rates Applied
+    cpcRates: {
+      monoRate: { type: Number, required: true }, // pence per page
+      colourRate: { type: Number, required: true }, // pence per page
+      paperSize: { type: String, required: true } // Which size rates were used
+    },
+
+    // Usage costs (monthly) - CALCULATED from user volumes
     monthlyCosts: {
-      monoPages: { type: Number, required: true },
-      colourPages: { type: Number, required: true },
-      cpcCosts: { type: Number, required: true }, // total CPC cost
+      monoPages: { type: Number, required: true }, // user mono volume
+      colourPages: { type: Number, required: true }, // user colour volume
+      monoCpcCost: { type: Number, required: true }, // monoPages × monoRate ÷ 100
+      colourCpcCost: { type: Number, required: true }, // colourPages × colourRate ÷ 100
+      totalCpcCost: { type: Number, required: true }, // sum of above
       leaseCost: { type: Number, required: true },
       serviceCost: { type: Number, required: true },
       totalMonthlyCost: { type: Number, required: true }
@@ -67,23 +93,32 @@ const quoteSchema = new mongoose.Schema({
       totalAnnual: { type: Number }
     },
 
-    // Savings vs current setup
-    savings: {
-      monthlyAmount: { type: Number },
-      annualAmount: { type: Number },
-      percentageSaved: { type: Number },
-      description: { type: String }
+    // Comparison with current setup
+    currentSetupComparison: {
+      currentMonthlyMono: { type: Number }, // user's current mono CPC
+      currentMonthlyColour: { type: Number }, // user's current colour CPC
+      currentLeaseCost: { type: Number }, // user's current lease
+      currentTotalMonthlyCost: { type: Number },
+      savings: {
+        cpcSavings: { type: Number }, // CPC improvement
+        leaseSavings: { type: Number }, // Lease improvement
+        totalMonthlySavings: { type: Number },
+        annualSavings: { type: Number },
+        percentageSaved: { type: Number }
+      }
     }
   },
 
   // Lease Options
   leaseOptions: [{
-    term: { type: Number, required: true }, // months
+    term: { type: Number, required: true }, // months (36, 48, 60)
     quarterlyPayment: { type: Number, required: true },
     monthlyPayment: { type: Number, required: true },
     totalCost: { type: Number, required: true },
     margin: { type: Number }, // vendor margin percentage
-    isRecommended: { type: Boolean, default: false }
+    interestRate: { type: Number }, // effective rate
+    isRecommended: { type: Boolean, default: false },
+    description: { type: String } // "Best value" or "Lowest monthly payment"
   }],
 
   // Product Details Summary (for quick display)
@@ -94,78 +129,107 @@ const quoteSchema = new mongoose.Schema({
     speed: { type: Number, required: true },
     features: [{ type: String }],
     paperSizes: [{ type: String }],
-    volumeRange: { type: String }
+    volumeRange: { type: String },
+    isA3: { type: Boolean },
+    description: { type: String }
   },
 
   // Service & Support
   serviceDetails: {
-    responseTime: { type: String },
-    serviceLevel: { type: String },
-    supportHours: { type: String },
-    onSiteSupport: { type: Boolean },
-    remoteSupport: { type: Boolean },
-    trainingIncluded: { type: Boolean },
-    warrantyPeriod: { type: String }
+    level: { type: String, enum: ['Basic', 'Standard', 'Premium'] },
+    responseTime: { type: String }, // "4hr", "Next day"
+    supportHours: { type: String }, // "9-5" or "24/7"
+    onSiteSupport: { type: Boolean, default: true },
+    remoteSupport: { type: Boolean, default: true },
+    trainingIncluded: { type: Boolean, default: false },
+    warrantyPeriod: { type: String, default: "12 months" },
+    quarterlyServiceCost: { type: Number }
   },
 
   // Additional Options
   accessories: [{
-    item: { type: String },
+    item: { type: String, required: true },
     description: { type: String },
-    cost: { type: Number },
-    isRecommended: { type: Boolean, default: false }
+    cost: { type: Number, required: true },
+    isRecommended: { type: Boolean, default: false },
+    category: { type: String, enum: ['Essential', 'Recommended', 'Optional'] }
   }],
 
   // Terms & Conditions
   terms: {
     validUntil: { type: Date, required: true },
-    deliveryTime: { type: String }, // "2-3 weeks"
-    installationTime: { type: String }, // "1-2 days"
-    paymentTerms: { type: String },
+    deliveryTime: { type: String, default: "2-3 weeks" },
+    installationTime: { type: String, default: "1-2 days" },
+    paymentTerms: { type: String, default: "Net 30" },
     cancellationPolicy: { type: String },
-    upgradeOptions: { type: String }
+    upgradeOptions: { type: String },
+    minimumContractTerm: { type: Number }, // months
+    autoRenewal: { type: Boolean, default: false }
   },
 
   // Quote Status
   status: { 
     type: String, 
-    enum: ['draft', 'sent', 'viewed', 'accepted', 'rejected', 'expired', 'withdrawn'],
-    default: 'draft'
+    enum: ['draft', 'generated', 'sent', 'viewed', 'downloaded', 'accepted', 'rejected', 'expired', 'withdrawn', 'converted'],
+    default: 'generated'
   },
 
   // Customer Interaction
   customerActions: [{
     action: { 
       type: String, 
-      enum: ['viewed', 'downloaded', 'shared', 'requested_demo', 'requested_call', 'accepted', 'rejected']
+      enum: ['viewed', 'downloaded', 'shared', 'requested_demo', 'requested_call', 'questioned', 'accepted', 'rejected']
     },
     timestamp: { type: Date, default: Date.now },
-    notes: { type: String }
+    notes: { type: String },
+    ipAddress: { type: String }, // for tracking
+    userAgent: { type: String }
   }],
 
-  // Ranking (1st, 2nd, 3rd choice)
+  // Ranking among alternatives (1st, 2nd, 3rd choice)
   ranking: { 
     type: Number, 
     min: 1, 
-    max: 3,
+    max: 5, // Allow up to 5 quotes
     required: true 
+  },
+
+  // AI Confidence and Explanation
+  aiInsights: {
+    whyRecommended: [{ type: String }], // Bullet points of benefits
+    potentialConcerns: [{ type: String }], // Any limitations
+    bestForScenarios: [{ type: String }], // When this quote is ideal
+    comparisonToAlternatives: { type: String }
   },
 
   // Admin/Vendor Notes
   internalNotes: [{
-    note: { type: String },
+    note: { type: String, required: true },
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     addedAt: { type: Date, default: Date.now },
-    type: { type: String, enum: ['admin', 'vendor', 'system'], default: 'admin' }
+    type: { type: String, enum: ['admin', 'vendor', 'system'], default: 'admin' },
+    priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
   }],
 
-  // Communication
+  // Communication Log
   communications: [{
-    type: { type: String, enum: ['email', 'phone', 'meeting', 'demo'] },
-    date: { type: Date },
-    summary: { type: String },
-    nextAction: { type: String }
-  }]
+    type: { type: String, enum: ['email', 'phone', 'meeting', 'demo', 'follow_up'] },
+    date: { type: Date, required: true },
+    summary: { type: String, required: true },
+    outcome: { type: String },
+    nextAction: { type: String },
+    scheduledFollowUp: { type: Date }
+  }],
+
+  // Performance Tracking
+  metrics: {
+    viewCount: { type: Number, default: 0 },
+    downloadCount: { type: Number, default: 0 },
+    shareCount: { type: Number, default: 0 },
+    timeToView: { type: Number }, // minutes from creation to first view
+    timeToDecision: { type: Number }, // minutes from creation to accept/reject
+    competitorQuotesReceived: { type: Number, default: 0 }
+  }
 
 }, { 
   timestamps: true,
@@ -175,39 +239,72 @@ const quoteSchema = new mongoose.Schema({
 
 // Virtual for formatted ranking
 quoteSchema.virtual('rankingDisplay').get(function() {
-  const rankings = { 1: '1st Choice', 2: '2nd Choice', 3: '3rd Choice' };
+  const rankings = { 1: '1st Choice', 2: '2nd Choice', 3: '3rd Choice', 4: '4th Choice', 5: '5th Choice' };
   return rankings[this.ranking] || `${this.ranking} Choice`;
 });
 
 // Virtual for monthly savings display
 quoteSchema.virtual('savingsDisplay').get(function() {
-  if (!this.costs?.savings?.monthlyAmount) return 'No savings data';
+  if (!this.costs?.currentSetupComparison?.savings?.totalMonthlySavings) {
+    return 'No comparison data';
+  }
   
-  const amount = this.costs.savings.monthlyAmount;
-  const percentage = this.costs.savings.percentageSaved || 0;
+  const amount = this.costs.currentSetupComparison.savings.totalMonthlySavings;
+  const percentage = this.costs.currentSetupComparison.savings.percentageSaved || 0;
   
   if (amount > 0) {
     return `Save £${amount.toFixed(2)}/month (${percentage.toFixed(1)}%)`;
+  } else if (amount < 0) {
+    return `£${Math.abs(amount).toFixed(2)}/month more (${Math.abs(percentage).toFixed(1)}% increase)`;
   } else {
-    return `£${Math.abs(amount).toFixed(2)}/month more`;
+    return 'Similar cost to current setup';
   }
 });
 
-// Virtual for lease range display
-quoteSchema.virtual('leaseRangeDisplay').get(function() {
-  if (!this.leaseOptions || this.leaseOptions.length === 0) return 'No lease options';
+// Virtual for total CPC display
+quoteSchema.virtual('cpcDisplay').get(function() {
+  if (!this.costs?.cpcRates) return 'CPC rates not available';
   
-  const payments = this.leaseOptions.map(opt => opt.quarterlyPayment);
-  const min = Math.min(...payments);
-  const max = Math.max(...payments);
+  const mono = this.costs.cpcRates.monoRate;
+  const colour = this.costs.cpcRates.colourRate;
+  const size = this.costs.cpcRates.paperSize;
   
-  if (min === max) return `£${min.toFixed(2)}/quarter`;
-  return `£${min.toFixed(2)} - £${max.toFixed(2)}/quarter`;
+  if (colour > 0) {
+    return `${mono}p mono, ${colour}p colour (${size})`;
+  } else {
+    return `${mono}p mono only (${size})`;
+  }
 });
 
-// Pre-save middleware to calculate totals
+// Pre-save middleware to calculate totals and CPC costs
 quoteSchema.pre('save', function(next) {
-  // Calculate monthly payment from quarterly
+  // Calculate monthly CPC costs from user volumes and rates
+  if (this.userRequirements?.monthlyVolume && this.costs?.cpcRates) {
+    const monoPages = this.userRequirements.monthlyVolume.mono || 0;
+    const colourPages = this.userRequirements.monthlyVolume.colour || 0;
+    const monoRate = this.costs.cpcRates.monoRate || 0;
+    const colourRate = this.costs.cpcRates.colourRate || 0;
+    
+    // Calculate costs (convert pence to pounds)
+    const monoCpcCost = (monoPages * monoRate) / 100;
+    const colourCpcCost = (colourPages * colourRate) / 100;
+    
+    // Update monthly costs
+    this.costs.monthlyCosts = this.costs.monthlyCosts || {};
+    this.costs.monthlyCosts.monoPages = monoPages;
+    this.costs.monthlyCosts.colourPages = colourPages;
+    this.costs.monthlyCosts.monoCpcCost = monoCpcCost;
+    this.costs.monthlyCosts.colourCpcCost = colourCpcCost;
+    this.costs.monthlyCosts.totalCpcCost = monoCpcCost + colourCpcCost;
+    
+    // Calculate total monthly cost
+    this.costs.monthlyCosts.totalMonthlyCost = 
+      this.costs.monthlyCosts.totalCpcCost + 
+      (this.costs.monthlyCosts.leaseCost || 0) + 
+      (this.costs.monthlyCosts.serviceCost || 0);
+  }
+
+  // Calculate lease monthly payments from quarterly
   if (this.leaseOptions) {
     this.leaseOptions.forEach(option => {
       if (option.quarterlyPayment && !option.monthlyPayment) {
@@ -224,10 +321,10 @@ quoteSchema.pre('save', function(next) {
     this.terms.validUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   }
 
-  // Calculate annual costs if monthly costs exist
+  // Calculate annual costs
   if (this.costs?.monthlyCosts?.totalMonthlyCost) {
     this.costs.annualCosts = {
-      totalCPC: this.costs.monthlyCosts.cpcCosts * 12,
+      totalCPC: this.costs.monthlyCosts.totalCpcCost * 12,
       totalLease: this.costs.monthlyCosts.leaseCost * 12,
       totalService: this.costs.monthlyCosts.serviceCost * 12,
       totalAnnual: this.costs.monthlyCosts.totalMonthlyCost * 12
@@ -239,12 +336,12 @@ quoteSchema.pre('save', function(next) {
 
 // Indexes for efficient querying
 quoteSchema.index({ quoteRequest: 1, ranking: 1 });
-quoteSchema.index({ vendor: 1 });
-quoteSchema.index({ status: 1 });
+quoteSchema.index({ vendor: 1, status: 1 });
+quoteSchema.index({ status: 1, 'terms.validUntil': 1 });
 quoteSchema.index({ 'matchScore.total': -1 });
 quoteSchema.index({ 'costs.monthlyCosts.totalMonthlyCost': 1 });
-quoteSchema.index({ 'terms.validUntil': 1 });
 quoteSchema.index({ createdAt: -1 });
+quoteSchema.index({ 'userRequirements.monthlyVolume.total': 1 });
 
 const Quote = mongoose.model('Quote', quoteSchema);
 export default Quote;
