@@ -1,91 +1,285 @@
-// models/Vendor.js
+// models/Vendor.js - Streamlined version
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 
-const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms'];
+const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software'];
 
-const fileSchema = new mongoose.Schema({
-  fileName: { type: String, required: true, trim: true },
-  filePath: { type: String, required: true, trim: true },
-  fileType: {
-    type: String,
-    enum: ['pdf', 'csv', 'excel', 'image'],
-    required: true,
+const vendorSchema = new mongoose.Schema({
+  // Core Identity
+  name: { 
+    type: String, 
+    required: true, 
+    trim: true 
   },
-  uploadDate: { type: Date, default: Date.now },
-});
+  company: { 
+    type: String, 
+    required: true, 
+    trim: true,
+    index: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true,
+    match: [/.+@.+\..+/, 'Please provide a valid email address'],
+    index: true,
+  },
+  password: { 
+    type: String, 
+    required: true,
+    minlength: 6
+  },
 
-const machineSchema = new mongoose.Schema({
-  model: { type: String, required: true, trim: true },
-  type: { type: String, required: true, enum: ['A3', 'A4'], trim: true },
-  mono_cpc: { type: Number, required: true },
-  color_cpc: { type: Number, required: true },
-  lease_cost: { type: Number, required: true },
-  services: { type: String, trim: true, default: '' },
-  provider: { type: String, required: true, trim: true },
-});
+  // Business Profile
+  services: {
+    type: [String],
+    required: true,
+    validate: {
+      validator: function(arr) {
+        return arr.length > 0 && arr.every((service) => validServices.includes(service));
+      },
+      message: 'Must provide at least one valid service. Allowed: ' + validServices.join(', '),
+    },
+  },
 
-const vendorSchema = new mongoose.Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    company: { type: String, required: true, trim: true },
-    email: {
+  // Location & Contact
+  location: {
+    address: { type: String, trim: true, default: '' },
+    city: { type: String, trim: true, default: '' },
+    postcode: { type: String, trim: true, default: '' },
+    region: { type: String, trim: true, default: '' },
+    coverage: [{ type: String, trim: true }], // ["London", "Birmingham", "Manchester"]
+  },
+
+  contactInfo: {
+    phone: {
       type: String,
-      required: true,
-      unique: true,
+      match: [/^\+?\d{10,15}$/, 'Please provide a valid phone number'],
+      default: '',
+    },
+    website: { 
+      type: String, 
       trim: true,
-      match: [/.+@.+\..+/, 'Please provide a valid email address'],
-      index: true,
+      match: [/^https?:\/\/.+/, 'Please provide a valid website URL'],
+      default: ''
     },
-    password: { type: String, required: true },
-    services: {
-      type: [String],
-      required: true,
-      validate: {
-        validator: function(arr) {
-          return arr.every((service) => validServices.includes(service));
-        },
-        message: 'Invalid service(s). Allowed: CCTV, Photocopiers, IT, Telecoms.',
-      },
+    linkedIn: { type: String, trim: true, default: '' },
+    alternativeContact: {
+      name: { type: String, trim: true, default: '' },
+      email: { type: String, trim: true, default: '' },
+      phone: { type: String, trim: true, default: '' }
+    }
+  },
+
+  // Business Details
+  businessProfile: {
+    yearsInBusiness: { 
+      type: Number, 
+      min: 0,
+      max: 100,
+      default: 0 
     },
-    pricing: { type: Map, of: Number },
-    uploads: { type: [fileSchema], default: [] },
-    machines: { type: [machineSchema], default: [] },
-    location: { type: String, trim: true, default: '' },
-    contactInfo: {
-      phone: {
-        type: String,
-        match: [/^\+?\d{10,15}$/, 'Please provide a valid phone number'],
-        default: '',
-      },
-      address: { type: String, trim: true, default: '' },
+    companySize: {
+      type: String,
+      enum: ['Startup', 'Small (1-50)', 'Medium (51-200)', 'Large (201-1000)', 'Enterprise (1000+)'],
+      default: 'Small (1-50)'
     },
-    price: { type: Number, default: 0 },
-    serviceLevel: { type: String, default: '' },
-    responseTime: { type: Number, default: 0 },
-    yearsInBusiness: { type: Number, default: 0 },
-    support: { type: String, default: '' },
+    specializations: [{ type: String, trim: true }], // ["Healthcare", "Education", "Finance"]
+    certifications: [{ type: String, trim: true }], // ["ISO9001", "ISO27001"]
+    accreditations: [{ type: String, trim: true }], // ["Konica Minolta Authorized", "Canon Partner"]
+  },
+
+  // Performance & Reputation
+  performance: {
     rating: {
       type: Number,
       default: 0,
       min: [0, 'Rating cannot be less than 0'],
       max: [5, 'Rating cannot exceed 5'],
     },
+    reviewCount: { type: Number, default: 0 },
+    averageResponseTime: { type: Number, default: 0 }, // hours
+    completionRate: { type: Number, default: 0 }, // percentage
+    customerSatisfaction: { type: Number, default: 0 }, // percentage
+    onTimeDelivery: { type: Number, default: 0 }, // percentage
+  },
+
+  // Service Capabilities
+  serviceCapabilities: {
+    responseTime: { 
+      type: String, 
+      enum: ['4hr', '8hr', 'Next day', '48hr', '3-5 days'],
+      default: 'Next day' 
+    },
+    supportHours: { 
+      type: String, 
+      enum: ['9-5', '8-6', '24/7', 'Extended hours'],
+      default: '9-5' 
+    },
+    installationService: { type: Boolean, default: true },
+    maintenanceService: { type: Boolean, default: true },
+    trainingProvided: { type: Boolean, default: false },
+    remoteSupport: { type: Boolean, default: false },
+    emergencySupport: { type: Boolean, default: false }
+  },
+
+  // Financial & Commercial
+  commercial: {
+    creditRating: { 
+      type: String, 
+      enum: ['Excellent', 'Good', 'Fair', 'Poor', 'Unknown'],
+      default: 'Unknown'
+    },
+    paymentTerms: { 
+      type: String, 
+      enum: ['Net 30', 'Net 60', 'COD', 'Advance payment'],
+      default: 'Net 30' 
+    },
+    minimumOrderValue: { type: Number, default: 0 },
+    discountThresholds: [{
+      volumeThreshold: { type: Number },
+      discountPercentage: { type: Number }
+    }],
+    preferredLeasePartners: [{ type: String, trim: true }] // ["ABC Leasing", "XYZ Finance"]
+  },
+
+  // Account Status & Management
+  account: {
     status: {
       type: String,
-      default: 'active',
-      enum: ['active', 'inactive', 'suspended'],
+      default: 'pending',
+      enum: ['pending', 'active', 'inactive', 'suspended', 'rejected'],
     },
-    createdAt: { type: Date, default: Date.now },
+    verificationStatus: {
+      type: String,
+      default: 'unverified',
+      enum: ['unverified', 'pending', 'verified', 'rejected']
+    },
+    tier: {
+      type: String,
+      default: 'standard',
+      enum: ['bronze', 'silver', 'gold', 'platinum', 'standard']
+    },
+    lastLogin: { type: Date },
+    loginCount: { type: Number, default: 0 },
+    agreementsSigned: [{
+      type: { type: String }, // "Terms of Service", "Data Processing Agreement"
+      signedAt: { type: Date },
+      version: { type: String }
+    }]
   },
-  { timestamps: true }
-);
 
-// ✅ Password comparison method (used during login)
+  // Platform Integration
+  integration: {
+    apiKey: { type: String, unique: true, sparse: true },
+    webhookUrl: { type: String, trim: true },
+    autoQuoteGeneration: { type: Boolean, default: false },
+    productCatalogUrl: { type: String, trim: true },
+    pricingUpdateFrequency: { 
+      type: String, 
+      enum: ['Manual', 'Daily', 'Weekly', 'Monthly'],
+      default: 'Manual' 
+    }
+  },
+
+  // Notes & Communication
+  notes: [{
+    note: { type: String, required: true },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    addedAt: { type: Date, default: Date.now },
+    type: { type: String, enum: ['admin', 'system', 'vendor'], default: 'admin' },
+    priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
+  }],
+
+  // Remove legacy fields that are now in VendorProduct model:
+  // - machines[] (use VendorProduct collection instead)
+  // - uploads[] (handle file uploads separately)
+  // - pricing (use VendorProduct.costs instead)
+
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Virtuals
+vendorSchema.virtual('productCount', {
+  ref: 'VendorProduct',
+  localField: '_id',
+  foreignField: 'vendorId',
+  count: true
+});
+
+vendorSchema.virtual('activeQuoteCount', {
+  ref: 'Quote',
+  localField: '_id',
+  foreignField: 'vendor',
+  count: true,
+  match: { status: { $in: ['sent', 'viewed'] } }
+});
+
+// Pre-save middleware for password hashing
+vendorSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  
+  try {
+    const salt = await bcrypt.genSalt(12);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Generate API key if needed
+vendorSchema.pre('save', function(next) {
+  if (!this.integration.apiKey && this.account.status === 'active') {
+    this.integration.apiKey = require('crypto').randomBytes(32).toString('hex');
+  }
+  next();
+});
+
+// Instance Methods
 vendorSchema.methods.comparePassword = function(candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
-// ✅ Export model
-const Vendor = mongoose.models.Vendor || mongoose.model('Vendor', vendorSchema);
+vendorSchema.methods.updateLastLogin = function() {
+  this.account.lastLogin = new Date();
+  this.account.loginCount += 1;
+  return this.save();
+};
+
+vendorSchema.methods.isActive = function() {
+  return this.account.status === 'active' && this.account.verificationStatus === 'verified';
+};
+
+// Static Methods
+vendorSchema.statics.findByService = function(service) {
+  return this.find({ 
+    services: service,
+    'account.status': 'active',
+    'account.verificationStatus': 'verified'
+  });
+};
+
+vendorSchema.statics.findByRegion = function(region) {
+  return this.find({ 
+    'location.coverage': region,
+    'account.status': 'active'
+  });
+};
+
+// Indexes
+vendorSchema.index({ email: 1 }, { unique: true });
+vendorSchema.index({ company: 1 });
+vendorSchema.index({ services: 1 });
+vendorSchema.index({ 'location.coverage': 1 });
+vendorSchema.index({ 'account.status': 1, 'account.verificationStatus': 1 });
+vendorSchema.index({ 'performance.rating': -1 });
+vendorSchema.index({ 'integration.apiKey': 1 }, { sparse: true });
+
+const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;
