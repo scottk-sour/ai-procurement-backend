@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import QuoteFeedback from '../models/QuoteFeedback.js';
-import QuoteRequest from '../models/QuoteRequest.js'; // Updated model name
+import CopierQuoteRequest from '../models/CopierQuoteRequest.js'; // Corrected import
 import VendorProduct from '../models/VendorProduct.js';
 import FileParserService from './FileParserService.js';
 import logger from './logger.js';
