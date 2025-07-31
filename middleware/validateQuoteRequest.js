@@ -11,16 +11,16 @@ const validateQuoteRequest = (req, res, next) => {
       });
     }
 
-    // ✅ Validate required fields
+    // ✅ FIXED: Validate required fields that actually exist in your form
     const requiredFields = [
       'companyName',
       'industryType', 
       'numEmployees',
-      'monthlyVolume.total',
-      'urgency.timeframe',
-      'budget.maxLeasePrice',
-      'requirements.priority',
-      'paperRequirements.primarySize'
+      'postcode', // Added this since it's required by backend
+      'implementationTimeline', // This is what your form actually sends
+      'max_lease_price', // This is what your form actually sends
+      'preference', // This is what your form actually sends
+      'type' // This is what your form actually sends (paper size)
     ];
 
     const missingFields = [];
@@ -30,6 +30,16 @@ const validateQuoteRequest = (req, res, next) => {
         missingFields.push(field);
       }
     });
+
+    // ✅ Also check for monthly volume (either individual or total)
+    const hasMonthlyVolume = userRequirements.monthlyVolume?.mono || 
+                            userRequirements.monthlyVolume?.colour ||
+                            userRequirements.monthlyVolume?.total ||
+                            userRequirements.monthlyPrintVolume;
+    
+    if (!hasMonthlyVolume) {
+      missingFields.push('monthlyVolume (mono, colour, or total)');
+    }
 
     if (missingFields.length > 0) {
       console.error("❌ ERROR: Missing required fields:", missingFields);
@@ -55,7 +65,7 @@ const validateQuoteRequest = (req, res, next) => {
       organizationStructure: userRequirements.organizationStructure?.trim() || '',
       multiFloor: Boolean(userRequirements.multiFloor),
 
-      // Location
+      // Location - FIXED: Handle both possible field locations
       location: {
         postcode: userRequirements.location?.postcode?.trim() || userRequirements.postcode?.trim() || ''
       },
@@ -68,21 +78,24 @@ const validateQuoteRequest = (req, res, next) => {
       impactOnProductivity: userRequirements.impactOnProductivity?.trim() || '',
       urgencyLevel: userRequirements.urgencyLevel?.trim() || '',
       
+      // FIXED: Map from actual form field
       urgency: {
         timeframe: userRequirements.urgency?.timeframe || userRequirements.implementationTimeline || ''
       },
       
       budgetCycle: userRequirements.budgetCycle?.trim() || '',
 
-      // Volume & Usage
+      // Volume & Usage - FIXED: Better handling of volume data
       monthlyPrintVolume: Number(userRequirements.monthlyPrintVolume) || 0,
       annualPrintVolume: Number(userRequirements.annualPrintVolume) || 0,
       
       monthlyVolume: {
         colour: Number(userRequirements.monthlyVolume?.colour) || 0,
         mono: Number(userRequirements.monthlyVolume?.mono) || 0,
-        total: (Number(userRequirements.monthlyVolume?.colour) || 0) + 
-               (Number(userRequirements.monthlyVolume?.mono) || 0)
+        total: userRequirements.monthlyVolume?.total || 
+               (Number(userRequirements.monthlyVolume?.colour) || 0) + 
+               (Number(userRequirements.monthlyVolume?.mono) || 0) ||
+               Number(userRequirements.monthlyPrintVolume) || 0
       },
       
       peakUsagePeriods: userRequirements.peakUsagePeriods?.trim() || '',
@@ -132,6 +145,7 @@ const validateQuoteRequest = (req, res, next) => {
       serviceType: userRequirements.serviceType?.trim() || 'Photocopiers',
       colour: userRequirements.colour?.trim() || '',
       
+      // FIXED: Map from actual form field
       paperRequirements: {
         primarySize: userRequirements.paperRequirements?.primarySize || userRequirements.type || ''
       },
@@ -166,10 +180,12 @@ const validateQuoteRequest = (req, res, next) => {
         ? userRequirements.required_functions 
         : [],
       
+      // FIXED: Map from actual form field
       requirements: {
         priority: userRequirements.requirements?.priority || userRequirements.preference || ''
       },
       
+      // FIXED: Map from actual form field
       budget: {
         maxLeasePrice: Number(userRequirements.budget?.maxLeasePrice) || 
                       Number(userRequirements.max_lease_price) || 0
