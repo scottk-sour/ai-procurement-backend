@@ -555,7 +555,7 @@ class VendorUploadValidator {
 /**
  * Enhanced import function with validation
  */
-export async function importVendorProducts(filePath, vendorId) {
+async function importVendorProducts(filePath, vendorId) {
   try {
     console.log('📊 Starting import process for:', filePath);
     
@@ -661,7 +661,7 @@ export async function importVendorProducts(filePath, vendorId) {
 /**
  * Bulk delete products for a vendor
  */
-export async function deleteVendorProducts(vendorId, productIds = []) {
+async function deleteVendorProducts(vendorId, productIds = []) {
   try {
     let deletedCount = 0;
     
@@ -689,7 +689,7 @@ export async function deleteVendorProducts(vendorId, productIds = []) {
 /**
  * Get upload statistics for a vendor
  */
-export async function getVendorUploadStats(vendorId) {
+async function getVendorUploadStats(vendorId) {
   try {
     const totalProducts = await VendorProduct.countDocuments({ vendorId });
     const productsByCategory = await VendorProduct.aggregate([
@@ -719,7 +719,7 @@ export async function getVendorUploadStats(vendorId) {
 /**
  * Export helper function for generating CSV templates
  */
-export function generateCSVTemplate() {
+function generateCSVTemplate() {
   const headers = [
     'manufacturer',
     'model',
@@ -779,6 +779,11 @@ export function generateCSVTemplate() {
   };
 }
 
-// Export all functions
-// Export all functions - no duplicates
-export { VendorUploadValidator, deleteVendorProducts, getVendorUploadStats, generateCSVTemplate };
+// ✅ FIXED: Single export statement with no duplicates
+export { 
+  VendorUploadValidator, 
+  importVendorProducts, 
+  deleteVendorProducts, 
+  getVendorUploadStats, 
+  generateCSVTemplate 
+};
