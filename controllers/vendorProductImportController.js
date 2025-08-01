@@ -780,5 +780,5 @@ export function generateCSVTemplate() {
 }
 
 // Export all functions
+// Export all functions - no duplicates
 export { VendorUploadValidator, deleteVendorProducts, getVendorUploadStats, generateCSVTemplate };
-export default VendorUploadValidator;
