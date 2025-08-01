@@ -1,4 +1,6 @@
-// controllers/vendorProductImportController.js - Fixed for your current CSV format
+// controllers/vendorProductImportController.js - Complete fixed version
+import fs from 'fs';
+import Papa from 'papaparse';
 import VendorProduct from "../models/VendorProduct.js";
 import { readExcelFile } from '../utils/readExcel.js';
 import { readCSVFile } from '../utils/readCSV.js';
@@ -8,17 +10,14 @@ import { readCSVFile } from '../utils/readCSV.js';
  */
 class VendorUploadValidator {
   
-  // Required headers that match your current CSV format
+  // ✅ FIXED: Only require headers that are actually in your CSV
   static requiredHeaders = [
     'manufacturer',
     'model', 
-    'category',
-    'profit_margin',
-    'cpc_mono_pence',
-    'cpc_colour_pence'
+    'category'
   ];
 
-  // Optional headers for future CSV expansions
+  // ✅ FIXED: Move pricing fields to optional with defaults
   static optionalHeaders = [
     'description',
     'speed',
@@ -28,11 +27,17 @@ class VendorUploadValidator {
     'volume_max_monthly',
     'machine_cost',
     'installation_cost',
+    'profit_margin',        // ✅ Now optional with default
+    'cpc_mono_pence',       // ✅ Now optional with default
+    'cpc_colour_pence',     // ✅ Now optional with default
+    'cpc_a3_mono_pence',
+    'cpc_a3_colour_pence',
     'features',
     'lease_terms',
     'auxiliaries',
     'service_level',
     'response_time',
+    'quarterly_service',
     'regions_covered',
     'industries',
     'stock_status',
@@ -42,6 +47,37 @@ class VendorUploadValidator {
     'lead_time',
     'installation_window'
   ];
+
+  // ✅ NEW: Default values for missing optional fields
+  static defaultValues = {
+    'profit_margin': 250,
+    'cpc_mono_pence': 0.35,
+    'cpc_colour_pence': 3.5,
+    'cpc_a3_mono_pence': 0.4,
+    'cpc_a3_colour_pence': 3.8,
+    'speed': 30,
+    'machine_cost': 1000,
+    'installation_cost': 250,
+    'paper_size_primary': 'A4',
+    'paper_sizes_supported': 'A4,A3',
+    'volume_min_monthly': 1000,
+    'volume_max_monthly': 15000,
+    'features': 'Print,Copy,Scan',
+    'lease_terms': '36:0.6,48:0.55,60:0.5',
+    'auxiliaries': '',
+    'service_level': 'Standard',
+    'response_time': 'Next day',
+    'quarterly_service': 150,
+    'regions_covered': 'UK',
+    'industries': 'General',
+    'stock_status': 'In Stock',
+    'model_year': new Date().getFullYear(),
+    'compliance_tags': '',
+    'in_stock': 'true',
+    'lead_time': 14,
+    'installation_window': 7,
+    'description': ''
+  };
 
   /**
    * Validate volume and speed alignment (critical to prevent oversizing)
@@ -166,14 +202,22 @@ class VendorUploadValidator {
   }
 
   /**
-   * Parse CSV row to product object - WORKS WITH YOUR CURRENT CSV FORMAT
+   * ✅ FIXED: Parse CSV row with defaults for missing values
    */
   static parseRow(row, headers) {
     const product = {};
     
+    // Map CSV row to product object
     headers.forEach((header, index) => {
       const value = row[index];
       product[header] = value;
+    });
+    
+    // ✅ Apply defaults for missing values
+    Object.keys(this.defaultValues).forEach(header => {
+      if (!product[header] || product[header] === '') {
+        product[header] = this.defaultValues[header];
+      }
     });
     
     // Normalize category
@@ -185,7 +229,7 @@ class VendorUploadValidator {
       category: category,
       description: product.description?.trim() || `${product.manufacturer} ${product.model}`.trim(),
       
-      // Performance specs - inferred from category since not in current CSV
+      // Performance specs - use provided values or infer from category
       speed: product.speed ? parseInt(product.speed) : this.inferSpeedFromCategory(category),
       isA3: product.is_a3 ? product.is_a3.toLowerCase() === 'true' : this.inferIsA3FromCategory(category),
       
@@ -196,20 +240,20 @@ class VendorUploadValidator {
           [this.inferPaperSizeFromCategory(category)]
       },
       
-      // Volume handling - inferred from category since not in current CSV
+      // Volume handling - use provided values or infer from category
       minVolume: product.volume_min_monthly ? parseInt(product.volume_min_monthly) : this.inferMinVolumeFromCategory(category),
       maxVolume: product.volume_max_monthly ? parseInt(product.volume_max_monthly) : this.inferMaxVolumeFromCategory(category),
       
       costs: {
-        machineCost: product.machine_cost ? parseFloat(product.machine_cost) : this.inferMachineCostFromMargin(parseFloat(product.profit_margin)),
+        machineCost: product.machine_cost ? parseFloat(product.machine_cost) : this.inferMachineCostFromMargin(parseFloat(product.profit_margin || this.defaultValues.profit_margin)),
         installation: product.installation_cost ? parseFloat(product.installation_cost) : (category.includes('Printer') ? 100 : 250),
-        profitMargin: parseFloat(product.profit_margin) || 0,
+        profitMargin: parseFloat(product.profit_margin || this.defaultValues.profit_margin),
         totalMachineCost: 0, // Will be calculated in validation
         cpcRates: {
-          A4Mono: parseFloat(product.cpc_mono_pence) || 0,
-          A4Colour: parseFloat(product.cpc_colour_pence) || 0,
-          A3Mono: parseFloat(product.cpc_a3_mono_pence) || parseFloat(product.cpc_mono_pence) || 0,
-          A3Colour: parseFloat(product.cpc_a3_colour_pence) || parseFloat(product.cpc_colour_pence) || 0
+          A4Mono: parseFloat(product.cpc_mono_pence || this.defaultValues.cpc_mono_pence),
+          A4Colour: parseFloat(product.cpc_colour_pence || this.defaultValues.cpc_colour_pence),
+          A3Mono: parseFloat(product.cpc_a3_mono_pence || product.cpc_mono_pence || this.defaultValues.cpc_a3_mono_pence),
+          A3Colour: parseFloat(product.cpc_a3_colour_pence || product.cpc_colour_pence || this.defaultValues.cpc_a3_colour_pence)
         }
       },
       
@@ -222,24 +266,24 @@ class VendorUploadValidator {
       auxiliaries: this.parseAuxiliaries(product.auxiliaries),
       
       service: {
-        level: product.service_level || 'Standard',
-        responseTime: product.response_time || 'Next day',
-        quarterlyService: product.quarterly_service ? parseFloat(product.quarterly_service) : 150
+        level: product.service_level || this.defaultValues.service_level,
+        responseTime: product.response_time || this.defaultValues.response_time,
+        quarterlyService: product.quarterly_service ? parseFloat(product.quarterly_service) : this.defaultValues.quarterly_service
       },
       
-      stockStatus: product.stock_status || 'In Stock',
-      modelYear: product.model_year ? parseInt(product.model_year) : new Date().getFullYear(),
+      stockStatus: product.stock_status || this.defaultValues.stock_status,
+      modelYear: product.model_year ? parseInt(product.model_year) : this.defaultValues.model_year,
       complianceTags: product.compliance_tags ? 
         product.compliance_tags.split(',').map(s => s.trim()) : [],
       regionsCovered: product.regions_covered ? 
-        product.regions_covered.split(',').map(s => s.trim()) : ['UK'],
+        product.regions_covered.split(',').map(s => s.trim()) : [this.defaultValues.regions_covered],
       industries: product.industries ? 
-        product.industries.split(',').map(s => s.trim()) : [],
+        product.industries.split(',').map(s => s.trim()) : [this.defaultValues.industries],
       
       availability: {
         inStock: product.in_stock ? product.in_stock.toLowerCase() === 'true' : true,
-        leadTime: product.lead_time ? parseInt(product.lead_time) : 14,
-        installationWindow: product.installation_window ? parseInt(product.installation_window) : 7
+        leadTime: product.lead_time ? parseInt(product.lead_time) : this.defaultValues.lead_time,
+        installationWindow: product.installation_window ? parseInt(product.installation_window) : this.defaultValues.installation_window
       }
     };
   }
@@ -254,14 +298,17 @@ class VendorUploadValidator {
       'a4 multifunction': 'A4 MFP',
       'a3 mfp': 'A3 MFP',
       'a3 multifunction': 'A3 MFP',
-      'sra3 mfp': 'SRA3 MFP'
+      'sra3 mfp': 'SRA3 MFP',
+      'multifunction': 'A4 MFP',
+      'printer': 'A4 Printers',
+      'copier': 'A4 MFP'
     };
     
     return categoryMap[category.toLowerCase()] || category;
   }
 
   static parseLeaseTerms(leaseString) {
-    if (!leaseString) {
+    if (!leaseString || leaseString === '') {
       // Default lease terms
       return [
         { term: 36, margin: 0.6 },
@@ -290,7 +337,7 @@ class VendorUploadValidator {
   }
 
   static parseAuxiliaries(auxString) {
-    if (!auxString) return [];
+    if (!auxString || auxString === '') return [];
     
     try {
       if (auxString.startsWith('[')) {
@@ -311,16 +358,15 @@ class VendorUploadValidator {
   }
 
   /**
-   * Validate a single product
+   * ✅ FIXED: More flexible validation - only check truly required fields
    */
   static validateProduct(product, rowNumber) {
     const errors = [];
     const warnings = [];
     
-    // Validate required fields
+    // Only validate truly essential fields
     const requiredFields = [
-      'manufacturer', 'model', 'category',
-      'costs.profitMargin', 'costs.cpcRates.A4Mono', 'costs.cpcRates.A4Colour'
+      'manufacturer', 'model', 'category'
     ];
     
     requiredFields.forEach(field => {
@@ -341,7 +387,9 @@ class VendorUploadValidator {
     const validPaperSizes = ['A4', 'A3', 'SRA3'];
     if (!validPaperSizes.includes(product.paperSizes?.primary)) {
       warnings.push(`Row ${rowNumber}: Paper size '${product.paperSizes?.primary}' will be set to 'A4'`);
-      product.paperSizes.primary = 'A4';
+      if (product.paperSizes) {
+        product.paperSizes.primary = 'A4';
+      }
     }
     
     // Volume and speed alignment validation
@@ -404,7 +452,7 @@ class VendorUploadValidator {
   }
 
   /**
-   * Validate entire upload
+   * ✅ FIXED: More flexible upload validation
    */
   static validateUpload(csvData, headers) {
     const validation = {
@@ -419,17 +467,36 @@ class VendorUploadValidator {
       }
     };
     
-    // Check for required headers
-    const missingHeaders = this.requiredHeaders.filter(h => !headers.includes(h));
+    // ✅ Only check for truly required headers
+    const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+    const missingHeaders = this.requiredHeaders.filter(h => 
+      !normalizedHeaders.includes(h.toLowerCase())
+    );
+    
     if (missingHeaders.length > 0) {
       validation.errors.push(`Missing required headers: ${missingHeaders.join(', ')}`);
       validation.success = false;
       return validation;
     }
     
+    // ✅ Warn about optional headers that will use defaults
+    const missingOptional = this.optionalHeaders.filter(h => 
+      !normalizedHeaders.includes(h.toLowerCase())
+    );
+    
+    if (missingOptional.length > 0) {
+      validation.warnings.push(`Missing optional headers (will use defaults): ${missingOptional.join(', ')}`);
+    }
+    
     // Validate each row
     csvData.forEach((row, index) => {
       const rowNumber = index + 2; // Account for header row
+      
+      // Skip empty rows
+      if (!row || row.every(cell => !cell || cell.trim() === '')) {
+        return;
+      }
+      
       const product = this.parseRow(row, headers);
       const result = this.validateProduct(product, rowNumber);
       
@@ -449,6 +516,40 @@ class VendorUploadValidator {
     validation.success = validation.errors.length === 0;
     return validation;
   }
+
+  /**
+   * Validate headers flexibility
+   */
+  static validateHeaders(headers) {
+    const errors = [];
+    const warnings = [];
+    const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+    
+    // Check for required headers
+    const missingRequired = this.requiredHeaders.filter(required => 
+      !normalizedHeaders.includes(required.toLowerCase())
+    );
+    
+    if (missingRequired.length > 0) {
+      errors.push(`Missing required headers: ${missingRequired.join(', ')}`);
+    }
+
+    // Check for optional headers and warn about defaults
+    const missingOptional = this.optionalHeaders.filter(optional => 
+      !normalizedHeaders.includes(optional.toLowerCase())
+    );
+    
+    if (missingOptional.length > 0) {
+      warnings.push(`Missing optional headers (will use defaults): ${missingOptional.join(', ')}`);
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      normalizedHeaders
+    };
+  }
 }
 
 /**
@@ -458,14 +559,29 @@ export async function importVendorProducts(filePath, vendorId) {
   try {
     console.log('📊 Starting import process for:', filePath);
     
-    // Read file
+    // Read file based on extension
     let rows = [];
     const ext = filePath.split('.').pop().toLowerCase();
     
     if (ext === 'xlsx' || ext === 'xls') {
       rows = readExcelFile(filePath);
     } else if (ext === 'csv') {
-      rows = await readCSVFile(filePath);
+      // Read CSV file with Papa Parse for better handling
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const parseResult = Papa.parse(fileContent, {
+        header: false,
+        skipEmptyLines: true,
+        trimHeaders: true,
+        dynamicTyping: false, // Keep as strings initially
+        delimitersToGuess: [',', '\t', '|', ';']
+      });
+      
+      if (parseResult.errors.length > 0) {
+        console.error('❌ CSV Parse Errors:', parseResult.errors);
+        throw new Error(`CSV parsing failed: ${parseResult.errors[0].message}`);
+      }
+      
+      rows = parseResult.data;
     } else {
       throw new Error('Unsupported file format. Please upload CSV or Excel file.');
     }
@@ -476,7 +592,7 @@ export async function importVendorProducts(filePath, vendorId) {
       throw new Error('File must contain at least a header row and one data row');
     }
     
-    const headers = rows[0];
+    const headers = rows[0].map(h => h.toString().toLowerCase().trim());
     const dataRows = rows.slice(1);
     
     console.log('📄 Headers found:', headers);
@@ -513,7 +629,7 @@ export async function importVendorProducts(filePath, vendorId) {
         savedProducts.push(product);
         console.log(`✅ Saved product: ${productData.manufacturer} ${productData.model}`);
       } catch (saveError) {
-        console.error(`❌ Error saving ${productData.manufacturer} ${productData.model}:`, saveError);
+        console.error(`❌ Error saving ${productData.manufacturer} ${productData.model}:`, saveError.message);
         validation.errors.push(`Error saving ${productData.manufacturer} ${productData.model}: ${saveError.message}`);
       }
     }
@@ -542,6 +658,127 @@ export async function importVendorProducts(filePath, vendorId) {
   }
 }
 
-// Export both as named exports
-export { VendorUploadValidator };
+/**
+ * Bulk delete products for a vendor
+ */
+export async function deleteVendorProducts(vendorId, productIds = []) {
+  try {
+    let deletedCount = 0;
+    
+    if (productIds.length > 0) {
+      // Delete specific products
+      const result = await VendorProduct.deleteMany({
+        vendorId,
+        _id: { $in: productIds }
+      });
+      deletedCount = result.deletedCount;
+    } else {
+      // Delete all products for vendor
+      const result = await VendorProduct.deleteMany({ vendorId });
+      deletedCount = result.deletedCount;
+    }
+    
+    console.log(`🗑️ Deleted ${deletedCount} products for vendor ${vendorId}`);
+    return { success: true, deletedCount };
+  } catch (error) {
+    console.error('❌ Error deleting products:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get upload statistics for a vendor
+ */
+export async function getVendorUploadStats(vendorId) {
+  try {
+    const totalProducts = await VendorProduct.countDocuments({ vendorId });
+    const productsByCategory = await VendorProduct.aggregate([
+      { $match: { vendorId } },
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]);
+    
+    const recentUploads = await VendorProduct.find({ vendorId })
+      .sort({ uploadDate: -1 })
+      .limit(5)
+      .select('manufacturer model uploadDate category');
+    
+    return {
+      success: true,
+      stats: {
+        totalProducts,
+        productsByCategory,
+        recentUploads
+      }
+    };
+  } catch (error) {
+    console.error('❌ Error getting upload stats:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Export helper function for generating CSV templates
+ */
+export function generateCSVTemplate() {
+  const headers = [
+    'manufacturer',
+    'model',
+    'category',
+    'description',
+    'speed',
+    'paper_size_primary',
+    'paper_sizes_supported',
+    'volume_min_monthly',
+    'volume_max_monthly',
+    'machine_cost',
+    'installation_cost',
+    'profit_margin',
+    'cpc_mono_pence',
+    'cpc_colour_pence',
+    'cpc_a3_mono_pence',
+    'cpc_a3_colour_pence',
+    'lease_terms',
+    'features',
+    'service_level',
+    'response_time',
+    'quarterly_service',
+    'regions_covered',
+    'industries'
+  ];
+
+  const sampleRow = [
+    'Xerox',
+    'WorkCentre 7830',
+    'A3 MFP',
+    'High-performance A3 multifunction device',
+    '30',
+    'A3',
+    'A3,A4,A5',
+    '5000',
+    '30000',
+    '3500',
+    '300',
+    '500',
+    '0.4',
+    '4.2',
+    '0.45',
+    '4.5',
+    '36:0.6,48:0.55,60:0.5',
+    'Print,Copy,Scan,Fax,Email',
+    'Standard',
+    'Next day',
+    '200',
+    'London,Essex,Kent',
+    'Legal,Healthcare,Education'
+  ];
+
+  return {
+    headers,
+    sampleRow,
+    csvContent: [headers.join(','), sampleRow.join(',')].join('\n')
+  };
+}
+
+// Export all functions
+export { VendorUploadValidator, deleteVendorProducts, getVendorUploadStats, generateCSVTemplate };
 export default VendorUploadValidator;
