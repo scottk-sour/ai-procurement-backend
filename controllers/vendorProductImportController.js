@@ -1,4 +1,4 @@
-// controllers/vendorProductImportController.js - Complete fixed version
+// controllers/vendorProductImportController.js - Complete version with header mapping
 import fs from 'fs';
 import Papa from 'papaparse';
 import VendorProduct from "../models/VendorProduct.js";
@@ -6,18 +6,18 @@ import { readExcelFile } from '../utils/readExcel.js';
 import { readCSVFile } from '../utils/readCSV.js';
 
 /**
- * Enhanced validation matching your current CSV and future expansions
+ * Enhanced validation with header mapping for camelCase and snake_case
  */
 class VendorUploadValidator {
   
-  // ✅ FIXED: Only require headers that are actually in your CSV
+  // ✅ Only require headers that are truly essential
   static requiredHeaders = [
     'manufacturer',
     'model', 
     'category'
   ];
 
-  // ✅ FIXED: Move pricing fields to optional with defaults
+  // ✅ Optional headers with defaults
   static optionalHeaders = [
     'description',
     'speed',
@@ -27,9 +27,9 @@ class VendorUploadValidator {
     'volume_max_monthly',
     'machine_cost',
     'installation_cost',
-    'profit_margin',        // ✅ Now optional with default
-    'cpc_mono_pence',       // ✅ Now optional with default
-    'cpc_colour_pence',     // ✅ Now optional with default
+    'profit_margin',
+    'cpc_mono_pence',
+    'cpc_colour_pence',
     'cpc_a3_mono_pence',
     'cpc_a3_colour_pence',
     'features',
@@ -48,7 +48,47 @@ class VendorUploadValidator {
     'installation_window'
   ];
 
-  // ✅ NEW: Default values for missing optional fields
+  // ✅ Header mapping to handle both camelCase and snake_case
+  static headerMappings = {
+    // Map various header formats to standard names
+    'machinecost': 'machine_cost',
+    'profitmargin': 'profit_margin',
+    'cpca4mono': 'cpc_mono_pence',
+    'cpca4colour': 'cpc_colour_pence',
+    'cpca3mono': 'cpc_a3_mono_pence',
+    'cpca3colour': 'cpc_a3_colour_pence',
+    'papersizeprimary': 'paper_size_primary',
+    'papersizessupported': 'paper_sizes_supported',
+    'minvolume': 'volume_min_monthly',
+    'maxvolume': 'volume_max_monthly',
+    'servicelevel': 'service_level',
+    'responsetime': 'response_time',
+    'quarterlyservice': 'quarterly_service',
+    'stockstatus': 'stock_status',
+    'modelyear': 'model_year',
+    'compliancetags': 'compliance_tags',
+    'instock': 'in_stock',
+    'leadtime': 'lead_time',
+    'installationwindow': 'installation_window',
+    'regionscovered': 'regions_covered',
+    'isa3': 'is_a3',
+    'installation': 'installation_cost',
+    
+    // Handle auxiliary items
+    'auxiliaryitem1': 'auxiliary_item_1',
+    'auxiliaryprice1': 'auxiliary_price_1',
+    'auxiliaryitem2': 'auxiliary_item_2',
+    'auxiliaryprice2': 'auxiliary_price_2',
+    'auxiliaryitem3': 'auxiliary_item_3',
+    'auxiliaryprice3': 'auxiliary_price_3',
+    
+    // Handle lease terms
+    'leaseterm36margin': 'lease_term_36_margin',
+    'leaseterm48margin': 'lease_term_48_margin',
+    'leaseterm60margin': 'lease_term_60_margin'
+  };
+
+  // ✅ Default values for missing optional fields
   static defaultValues = {
     'profit_margin': 250,
     'cpc_mono_pence': 0.35,
@@ -78,6 +118,14 @@ class VendorUploadValidator {
     'installation_window': 7,
     'description': ''
   };
+
+  // ✅ Normalize headers function
+  static normalizeHeaders(headers) {
+    return headers.map(header => {
+      const cleaned = header.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+      return this.headerMappings[cleaned] || header.toLowerCase().trim();
+    });
+  }
 
   /**
    * Validate volume and speed alignment (critical to prevent oversizing)
@@ -187,7 +235,6 @@ class VendorUploadValidator {
 
   static inferMachineCostFromMargin(profitMargin) {
     if (!profitMargin) return 1000;
-    // Reverse engineer machine cost from profit margin (assuming margin is ~20-30% of total)
     return Math.round(profitMargin * 3.5);
   }
 
@@ -202,18 +249,41 @@ class VendorUploadValidator {
   }
 
   /**
-   * ✅ FIXED: Parse CSV row with defaults for missing values
+   * ✅ UPDATED: Parse CSV row with header mapping
    */
-  static parseRow(row, headers) {
+  static parseRow(row, originalHeaders) {
+    const normalizedHeaders = this.normalizeHeaders(originalHeaders);
     const product = {};
     
-    // Map CSV row to product object
-    headers.forEach((header, index) => {
+    // Map CSV row to product object using normalized headers
+    normalizedHeaders.forEach((header, index) => {
       const value = row[index];
       product[header] = value;
     });
     
-    // ✅ Apply defaults for missing values
+    // Handle auxiliary items specially
+    const auxiliaries = [];
+    for (let i = 1; i <= 3; i++) {
+      const item = product[`auxiliary_item_${i}`];
+      const price = product[`auxiliary_price_${i}`];
+      if (item && price) {
+        auxiliaries.push(`${item}:${price}`);
+      }
+    }
+    if (auxiliaries.length > 0) {
+      product.auxiliaries = auxiliaries.join(',');
+    }
+    
+    // Handle lease terms specially
+    const leaseTerms = [];
+    if (product.lease_term_36_margin) leaseTerms.push(`36:${product.lease_term_36_margin}`);
+    if (product.lease_term_48_margin) leaseTerms.push(`48:${product.lease_term_48_margin}`);
+    if (product.lease_term_60_margin) leaseTerms.push(`60:${product.lease_term_60_margin}`);
+    if (leaseTerms.length > 0) {
+      product.lease_terms = leaseTerms.join(';');
+    }
+    
+    // Apply defaults for missing values
     Object.keys(this.defaultValues).forEach(header => {
       if (!product[header] || product[header] === '') {
         product[header] = this.defaultValues[header];
@@ -231,7 +301,7 @@ class VendorUploadValidator {
       
       // Performance specs - use provided values or infer from category
       speed: product.speed ? parseInt(product.speed) : this.inferSpeedFromCategory(category),
-      isA3: product.is_a3 ? product.is_a3.toLowerCase() === 'true' : this.inferIsA3FromCategory(category),
+      isA3: product.is_a3 === 'true' || product.is_a3 === true ? true : this.inferIsA3FromCategory(category),
       
       paperSizes: {
         primary: product.paper_size_primary?.trim() || this.inferPaperSizeFromCategory(category),
@@ -240,7 +310,7 @@ class VendorUploadValidator {
           [this.inferPaperSizeFromCategory(category)]
       },
       
-      // Volume handling - use provided values or infer from category
+      // Use actual CSV values
       minVolume: product.volume_min_monthly ? parseInt(product.volume_min_monthly) : this.inferMinVolumeFromCategory(category),
       maxVolume: product.volume_max_monthly ? parseInt(product.volume_max_monthly) : this.inferMaxVolumeFromCategory(category),
       
@@ -281,7 +351,7 @@ class VendorUploadValidator {
         product.industries.split(',').map(s => s.trim()) : [this.defaultValues.industries],
       
       availability: {
-        inStock: product.in_stock ? product.in_stock.toLowerCase() === 'true' : true,
+        inStock: product.in_stock === 'true' || product.in_stock === true || product.instock === 'true' || product.instock === true ? true : true,
         leadTime: product.lead_time ? parseInt(product.lead_time) : this.defaultValues.lead_time,
         installationWindow: product.installation_window ? parseInt(product.installation_window) : this.defaultValues.installation_window
       }
@@ -309,7 +379,6 @@ class VendorUploadValidator {
 
   static parseLeaseTerms(leaseString) {
     if (!leaseString || leaseString === '') {
-      // Default lease terms
       return [
         { term: 36, margin: 0.6 },
         { term: 48, margin: 0.55 },
@@ -358,7 +427,7 @@ class VendorUploadValidator {
   }
 
   /**
-   * ✅ FIXED: More flexible validation - only check truly required fields
+   * More flexible validation - only check truly required fields
    */
   static validateProduct(product, rowNumber) {
     const errors = [];
@@ -452,9 +521,11 @@ class VendorUploadValidator {
   }
 
   /**
-   * ✅ FIXED: More flexible upload validation
+   * ✅ UPDATED: More flexible upload validation with header mapping
    */
-  static validateUpload(csvData, headers) {
+  static validateUpload(csvData, originalHeaders) {
+    const normalizedHeaders = this.normalizeHeaders(originalHeaders);
+    
     const validation = {
       success: true,
       validProducts: [],
@@ -467,8 +538,7 @@ class VendorUploadValidator {
       }
     };
     
-    // ✅ Only check for truly required headers
-    const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+    // Check for truly required headers using normalized names
     const missingHeaders = this.requiredHeaders.filter(h => 
       !normalizedHeaders.includes(h.toLowerCase())
     );
@@ -479,7 +549,7 @@ class VendorUploadValidator {
       return validation;
     }
     
-    // ✅ Warn about optional headers that will use defaults
+    // Check optional headers - but many are now present in your CSV!
     const missingOptional = this.optionalHeaders.filter(h => 
       !normalizedHeaders.includes(h.toLowerCase())
     );
@@ -488,7 +558,7 @@ class VendorUploadValidator {
       validation.warnings.push(`Missing optional headers (will use defaults): ${missingOptional.join(', ')}`);
     }
     
-    // Validate each row
+    // Validate each row with normalized headers
     csvData.forEach((row, index) => {
       const rowNumber = index + 2; // Account for header row
       
@@ -497,7 +567,7 @@ class VendorUploadValidator {
         return;
       }
       
-      const product = this.parseRow(row, headers);
+      const product = this.parseRow(row, originalHeaders);
       const result = this.validateProduct(product, rowNumber);
       
       if (result.errors.length > 0) {
@@ -521,9 +591,9 @@ class VendorUploadValidator {
    * Validate headers flexibility
    */
   static validateHeaders(headers) {
+    const normalizedHeaders = this.normalizeHeaders(headers);
     const errors = [];
     const warnings = [];
-    const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
     
     // Check for required headers
     const missingRequired = this.requiredHeaders.filter(required => 
@@ -592,14 +662,15 @@ async function importVendorProducts(filePath, vendorId) {
       throw new Error('File must contain at least a header row and one data row');
     }
     
-    const headers = rows[0].map(h => h.toString().toLowerCase().trim());
+    const originalHeaders = rows[0]; // Keep original headers for mapping
     const dataRows = rows.slice(1);
     
-    console.log('📄 Headers found:', headers);
+    console.log('📄 Original headers found:', originalHeaders);
+    console.log('📄 Normalized headers:', VendorUploadValidator.normalizeHeaders(originalHeaders));
     console.log('📊 Data rows:', dataRows.length);
     
-    // Validate upload
-    const validation = VendorUploadValidator.validateUpload(dataRows, headers);
+    // Validate upload with original headers
+    const validation = VendorUploadValidator.validateUpload(dataRows, originalHeaders);
     
     console.log('✅ Validation result:', {
       success: validation.success,
@@ -665,15 +736,20 @@ async function deleteVendorProducts(vendorId, productIds = []) {
   try {
     let deletedCount = 0;
     
+/**
+ * Bulk delete products for a vendor
+ */
+async function deleteVendorProducts(vendorId, productIds = []) {
+  try {
+    let deletedCount = 0;
+    
     if (productIds.length > 0) {
-      // Delete specific products
       const result = await VendorProduct.deleteMany({
         vendorId,
         _id: { $in: productIds }
       });
       deletedCount = result.deletedCount;
     } else {
-      // Delete all products for vendor
       const result = await VendorProduct.deleteMany({ vendorId });
       deletedCount = result.deletedCount;
     }
@@ -779,7 +855,7 @@ function generateCSVTemplate() {
   };
 }
 
-// ✅ FIXED: Single export statement with no duplicates
+// ✅ Single export statement with no duplicates
 export { 
   VendorUploadValidator, 
   importVendorProducts, 
