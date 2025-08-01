@@ -24,23 +24,41 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// Rate limiters
+// ✅ FIXED Rate limiters with proper proxy support
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: 'Too many login attempts. Please try again later.',
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window per IP
+  message: { message: 'Too many login attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy: true, // ✅ Critical for proxy environments
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  }
 });
 
 const signupLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 3,
-  message: 'Too many signup attempts. Please try again later.',
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // 3 attempts per window per IP
+  message: { message: 'Too many signup attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy: true, // ✅ Critical for proxy environments
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  }
 });
 
 const recommendLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: 'Too many recommendation requests. Please try again later.',
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window per IP
+  message: { message: 'Too many recommendation requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  trustProxy: true, // ✅ Critical for proxy environments
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress;
+  }
 });
 
 // ===== VENDOR AUTHENTICATION ROUTES =====
@@ -68,11 +86,31 @@ router.post('/signup', signupLimiter, async (req, res) => {
     });
     await newVendor.save();
 
-    await VendorActivity.create({
-      vendorId: newVendor._id,
-      type: 'signup',
-      description: 'Vendor account created',
-    });
+    // ✅ FIXED: Use static method with proper error handling
+    try {
+      await VendorActivity.createActivity({
+        vendorId: newVendor._id,
+        category: 'authentication',
+        type: 'signup',
+        description: 'Vendor account created successfully',
+        metadata: {
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+          source: 'web'
+        },
+        performance: {
+          success: true
+        },
+        impact: {
+          outcome: 'positive'
+        },
+        flags: {
+          isFirstTime: true
+        }
+      });
+    } catch (activityError) {
+      console.error('❌ Failed to create signup activity:', activityError.message);
+    }
 
     res.status(201).json({ message: 'Vendor registered successfully.' });
   } catch (error) {
@@ -86,6 +124,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+    
     const vendor = await Vendor.findOne({ email });
     if (!vendor) return res.status(401).json({ message: 'Invalid email or password.' });
 
@@ -98,11 +137,28 @@ router.post('/login', loginLimiter, async (req, res) => {
       { expiresIn: '4h' }
     );
 
-    await VendorActivity.create({
-      vendorId: vendor._id,
-      type: 'login',
-      description: 'Vendor logged in',
-    });
+    // ✅ FIXED: Use static method with proper error handling
+    try {
+      await VendorActivity.createActivity({
+        vendorId: vendor._id,
+        category: 'authentication',
+        type: 'login',
+        description: 'Vendor logged in successfully',
+        metadata: {
+          ipAddress: req.ip,
+          userAgent: req.get('User-Agent'),
+          source: 'web'
+        },
+        performance: {
+          success: true
+        },
+        impact: {
+          outcome: 'positive'
+        }
+      });
+    } catch (activityError) {
+      console.error('❌ Failed to create login activity:', activityError.message);
+    }
 
     res.json({
       token,
@@ -423,6 +479,31 @@ router.post("/upload", upload.single("file"), async (req, res) => {
         fs.unlinkSync(filePath);
       }
 
+      // Record upload activity
+      try {
+        await VendorActivity.createActivity({
+          vendorId: vendor._id,
+          category: 'products',
+          type: 'product_upload',
+          description: `Uploaded ${result.savedProducts || 0} products from ${fileName}`,
+          metadata: {
+            fileName,
+            productsUploaded: result.savedProducts || 0,
+            filesAffected: 1,
+            source: 'web'
+          },
+          performance: {
+            success: result.success
+          },
+          impact: {
+            level: result.savedProducts > 50 ? 'high' : 'medium',
+            outcome: result.success ? 'positive' : 'negative'
+          }
+        });
+      } catch (activityError) {
+        console.error('❌ Failed to create upload activity:', activityError.message);
+      }
+
       if (result.success) {
         res.status(201).json({
           success: true,
@@ -535,6 +616,25 @@ router.delete("/products/:productId", async (req, res) => {
 
     await VendorProduct.findByIdAndDelete(productId);
 
+    // Record deletion activity
+    try {
+      await VendorActivity.createActivity({
+        vendorId: vendorId,
+        category: 'products',
+        type: 'product_delete',
+        description: `Deleted product: ${product.model || 'Unknown'}`,
+        metadata: {
+          deletedProduct: product.model,
+          source: 'web'
+        },
+        impact: {
+          outcome: 'neutral'
+        }
+      });
+    } catch (activityError) {
+      console.error('❌ Failed to create deletion activity:', activityError.message);
+    }
+
     res.status(200).json({
       success: true,
       message: "Product deleted successfully"
@@ -588,6 +688,25 @@ router.put("/products/:productId", async (req, res) => {
         success: false,
         message: "Product not found or unauthorized"
       });
+    }
+
+    // Record update activity
+    try {
+      await VendorActivity.createActivity({
+        vendorId: vendorId,
+        category: 'products',
+        type: 'product_update',
+        description: `Updated product: ${product.model || 'Unknown'}`,
+        metadata: {
+          updatedProduct: product.model,
+          source: 'web'
+        },
+        impact: {
+          outcome: 'positive'
+        }
+      });
+    } catch (activityError) {
+      console.error('❌ Failed to create update activity:', activityError.message);
     }
 
     res.status(200).json({
