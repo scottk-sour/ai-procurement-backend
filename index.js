@@ -40,6 +40,9 @@ if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
 // Express app
 const app = express();
 
+// ✅ CRITICAL FIX: Trust proxy for rate limiting and IP detection
+app.set('trust proxy', 1);
+
 // ✅ IMPROVED CORS CONFIG — Handles all Vercel deployment URLs automatically
 app.use(cors({
   origin: function (origin, callback) {
