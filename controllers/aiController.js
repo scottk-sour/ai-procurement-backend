@@ -1,18 +1,47 @@
-// controllers/aiController.js
+import OpenAI from 'openai';
+
 export const suggestCopiers = async (req, res) => {
   try {
-    const input = req.body;
-
-    // For now, return mock machine suggestions
-    const suggestions = [
-      "Ricoh IM 550F",
-      "Konica Minolta bizhub 4750i",
-      "Canon iR-ADV DX 4725i"
-    ];
-
-    return res.status(200).json({ suggestions });
+    const { formData } = req.body;
+    
+    // Use your OPENAI_API_KEY from Render environment
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+    
+    // Make OpenAI call here
+    const suggestions = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "user",
+          content: `Based on this printing requirements data, suggest 3 suitable copier/printer models: 
+          Monthly Volume: ${formData.monthlyVolume?.total || 'Unknown'} pages
+          Industry: ${formData.industryType || 'Unknown'}
+          Paper Size: ${formData.type || 'A4'}
+          Speed Required: ${formData.min_speed || 'Any'} PPM
+          Color: ${formData.colour || 'Unknown'}
+          
+          Please provide 3 specific model recommendations with brief explanations.`
+        }
+      ],
+      max_tokens: 300,
+      temperature: 0.7
+    });
+    
+    // Parse the response into an array of suggestions
+    const suggestionText = suggestions.choices[0].message.content;
+    const suggestionArray = suggestionText.split('\n').filter(line => line.trim());
+    
+    res.json({ 
+      suggestions: suggestionArray
+    });
+    
   } catch (error) {
-    console.error("❌ Error in suggestCopiers:", error.message);
-    return res.status(500).json({ message: "Internal server error" });
+    console.error('AI suggestion error:', error);
+    res.status(500).json({ 
+      error: 'AI suggestion failed',
+      suggestions: [] 
+    });
   }
 };
