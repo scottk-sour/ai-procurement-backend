@@ -855,7 +855,7 @@ function generateCSVTemplate() {
   };
 }
 
-// ✅ Single export statement with no duplicates
+// Export all functions
 export { 
   VendorUploadValidator, 
   importVendorProducts, 
