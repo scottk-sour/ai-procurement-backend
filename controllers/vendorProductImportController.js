@@ -86,7 +86,7 @@ class VendorUploadValidator {
     'leaseterm36margin': 'lease_term_36_margin',
     'leaseterm48margin': 'lease_term_48_margin',
     'leaseterm60margin': 'lease_term_60_margin'
-  };
+  ];
 
   // ✅ Default values for missing optional fields
   static defaultValues = {
@@ -729,13 +729,6 @@ async function importVendorProducts(filePath, vendorId) {
   }
 }
 
-/**
- * Bulk delete products for a vendor
- */
-async function deleteVendorProducts(vendorId, productIds = []) {
-  try {
-    let deletedCount = 0;
-    
 /**
  * Bulk delete products for a vendor
  */
