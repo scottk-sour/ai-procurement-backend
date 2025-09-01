@@ -123,6 +123,70 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
+// NEW: AI Copier Suggestions Route
+app.post('/api/suggest-copiers', async (req, res) => {
+  try {
+    console.log('🤖 AI Copier suggestion request:', req.body);
+    
+    // Basic suggestions based on the request data
+    const suggestions = [];
+    const { monthlyVolume, industryType, colour, min_speed, serviceType } = req.body;
+    
+    // Simple logic to provide basic suggestions
+    if (monthlyVolume?.total > 5000) {
+      suggestions.push("High-volume multifunction device recommended for your print requirements");
+    }
+    
+    if (monthlyVolume?.total < 1000) {
+      suggestions.push("Compact desktop printer suitable for low-volume needs");
+    }
+    
+    if (industryType === 'Legal' || industryType === 'Healthcare') {
+      suggestions.push("Security-focused models with encryption and audit trails recommended");
+    }
+    
+    if (industryType === 'Manufacturing' || industryType === 'Government') {
+      suggestions.push("Industrial-grade devices with enhanced durability features");
+    }
+    
+    if (colour === 'Color') {
+      suggestions.push("Color multifunction printer with professional-grade output quality");
+    }
+    
+    if (colour === 'Black & White') {
+      suggestions.push("High-efficiency monochrome printer optimized for text documents");
+    }
+    
+    if (min_speed && min_speed > 30) {
+      suggestions.push("High-speed printing capability (30+ PPM) recommended for productivity");
+    }
+    
+    if (serviceType === 'Production') {
+      suggestions.push("Production-level equipment with finishing capabilities recommended");
+    }
+    
+    // Add some generic helpful suggestions if we have basic info
+    if (suggestions.length === 0 && (monthlyVolume?.total || industryType)) {
+      suggestions.push("Multifunction device with print, scan, and copy capabilities");
+      suggestions.push("Energy-efficient model to reduce operational costs");
+    }
+    
+    res.json({ 
+      suggestions,
+      message: suggestions.length > 0 ? "AI suggestions generated based on your requirements" : "Please provide more details for personalized recommendations",
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Error in suggest-copiers:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate suggestions',
+      suggestions: [],
+      message: 'AI suggestion service temporarily unavailable'
+    });
+  }
+});
+
 // ✅ NEW: Test endpoint to verify all routes are working
 app.get('/api/test-dashboard', async (req, res) => {
   try {
@@ -165,11 +229,12 @@ app.get('/api/test-dashboard', async (req, res) => {
         { category: 'Vendors', path: '/api/vendors/signup', method: 'POST', status: 'Available', description: 'Vendor registration' },
         { category: 'Vendor Upload', path: '/api/vendors/upload', method: 'POST', status: 'Available', description: 'Upload vendor products' },
         { category: 'Vendor Upload', path: '/api/vendors/products', method: 'GET', status: 'Available', description: 'Get vendor products' },
-        { category: 'Vendor Upload', path: '/api/vendors/upload-template', method: 'GET', status: 'Available', description: 'Download upload template' }
+        { category: 'Vendor Upload', path: '/api/vendors/upload-template', method: 'GET', status: 'Available', description: 'Download upload template' },
+        { category: 'AI Features', path: '/api/suggest-copiers', method: 'POST', status: 'Available', description: 'Get AI-powered copier suggestions' }
       ],
-      totalEndpoints: 20,
-      message: '✅ All dashboard endpoints are now available including vendor upload!',
-      note: 'Your TendorAI platform is ready for production use with consolidated vendor routing.',
+      totalEndpoints: 21,
+      message: '✅ All dashboard endpoints are now available including AI suggestions!',
+      note: 'Your TendorAI platform is ready for production use with AI-powered recommendations.',
       dashboardFeatures: [
         '✅ User authentication and authorization',
         '✅ Quote request submission and management', 
@@ -180,7 +245,8 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ Activity tracking',
         '✅ Multi-role support (Users, Vendors, Admins)',
         '✅ Dynamic CORS for Vercel deployments',
-        '✅ Vendor product upload system'
+        '✅ Vendor product upload system',
+        '✅ AI-powered copier suggestions'
       ]
     };
 
@@ -221,7 +287,8 @@ app.get('/', (req, res) => {
       'File upload support',
       'Notification system',
       'Dynamic CORS for Vercel deployments',
-      'Vendor product upload system'
+      'Vendor product upload system',
+      'AI copier suggestions'
     ]
   });
 });
@@ -240,6 +307,7 @@ app.use((req, res) => {
       '/api/users/* - User management routes', 
       '/api/quotes/* - Quote management routes',
       '/api/vendors/* - Vendor routes (including upload)',
+      '/api/suggest-copiers - AI copier suggestions',
       '/ - Health check'
     ]
   });
@@ -289,6 +357,7 @@ async function startServer() {
       console.log(`📊 Test endpoint available at: http://localhost:${PORT}/api/test-dashboard`);
       console.log(`🏥 Health check available at: http://localhost:${PORT}/`);
       console.log(`📤 Vendor upload now available at: http://localhost:${PORT}/api/vendors/upload`);
+      console.log(`🤖 AI suggestions available at: http://localhost:${PORT}/api/suggest-copiers`);
       console.log(`\n🎉 TendorAI Backend is ready for connections!`);
     });
 
