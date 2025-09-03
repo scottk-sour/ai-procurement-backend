@@ -110,7 +110,8 @@ router.get('/requests', verifyToken, async (req, res) => {
     }));
     
     res.json({
-      quotes: transformedRequests, // Changed from 'requests' to 'quotes' to match frontend expectation
+      requests: transformedRequests, // Keep as 'requests' for UserDashboard compatibility
+      quotes: transformedRequests, // Also provide as 'quotes' for QuoteDetails compatibility
       page: parseInt(page),
       totalPages: Math.ceil(quoteRequests.length / limit),
       total: quoteRequests.length
