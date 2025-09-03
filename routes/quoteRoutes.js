@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Listing from '../models/Listing.js';
 import Vendor from '../models/Vendor.js';
@@ -29,14 +30,22 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Get all quotes for a user
+// Get all quotes for a user (legacy route)
 router.get('/user', async (req, res) => {
   try {
     const { userId } = req.query;
     if (!userId) {
       return res.status(400).json({ message: 'User ID is required' });
     }
-    const quotes = await QuoteRequest.find({ userId }).lean();
+    
+    // Try both userId and submittedBy fields for backward compatibility
+    const quotes = await QuoteRequest.find({
+      $or: [
+        { userId: userId },
+        { submittedBy: new mongoose.Types.ObjectId(userId) }
+      ]
+    }).lean();
+    
     console.log('📡 Retrieved Quotes:', quotes.length, 'quotes found');
     res.status(200).json(quotes);
   } catch (error) {
@@ -45,50 +54,63 @@ router.get('/user', async (req, res) => {
   }
 });
 
-// GET /api/quotes/requests - For dashboard
+// GET /api/quotes/requests - For dashboard (FIXED)
 router.get('/requests', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const userId = req.userId;
     console.log(`🔍 Fetching quote requests for user: ${userId}`);
-    // Get quote requests from database
-    const quoteRequests = await QuoteRequest.find({ userId })
+    
+    // FIX: Convert userId to ObjectId and query submittedBy field
+    const quoteRequests = await QuoteRequest.find({ 
+      submittedBy: new mongoose.Types.ObjectId(userId) 
+    })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
+      
     console.log(`📊 Found ${quoteRequests.length} quote requests`);
+    
     // Transform the data to match frontend expectations
     const transformedRequests = quoteRequests.map(request => ({
       _id: request._id,
       title: `${request.serviceType} Request for ${request.companyName}`,
       companyName: request.companyName,
+      contactName: request.contactName,
+      email: request.email,
       industryType: request.industryType,
       serviceType: request.serviceType,
       status: request.status || 'pending',
       createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
       matches: [], // You can populate this with actual vendor matches later
       monthlyVolume: request.monthlyVolume,
-      preference: request.preference,
+      paperRequirements: request.paperRequirements,
+      budget: request.budget,
+      urgency: request.urgency,
+      location: request.location,
+      preference: request.requirements?.priority,
       // Mock some vendor matches for demo
       ...(request.matchedVendors && request.matchedVendors.length > 0 && {
         matches: [
           {
             _id: 'vendor1',
             vendorName: 'Sharp Business Solutions',
-            price: request.price || 150,
+            price: request.budget?.maxLeasePrice || 150,
             savings: 25
           },
           {
             _id: 'vendor2',
             vendorName: 'Canon Office Equipment',
-            price: (request.price || 150) + 20,
+            price: (request.budget?.maxLeasePrice || 150) + 20,
             savings: 10
           }
         ]
       })
     }));
+    
     res.json({
-      requests: transformedRequests,
+      quotes: transformedRequests, // Changed from 'requests' to 'quotes' to match frontend expectation
       page: parseInt(page),
       totalPages: Math.ceil(quoteRequests.length / limit),
       total: quoteRequests.length
@@ -104,18 +126,23 @@ router.get('/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.userId;
+    
     const quoteRequest = await QuoteRequest.findOne({
       _id: id,
-      userId: userId
+      submittedBy: new mongoose.Types.ObjectId(userId)
     });
+    
     if (!quoteRequest) {
       return res.status(404).json({ message: 'Quote request not found' });
     }
+    
     // Transform data for frontend
     const transformedRequest = {
       _id: quoteRequest._id,
       title: `${quoteRequest.serviceType} Request for ${quoteRequest.companyName}`,
       companyName: quoteRequest.companyName,
+      contactName: quoteRequest.contactName,
+      email: quoteRequest.email,
       industryType: quoteRequest.industryType,
       serviceType: quoteRequest.serviceType,
       status: quoteRequest.status || 'pending',
@@ -123,6 +150,7 @@ router.get('/:id', verifyToken, async (req, res) => {
       formData: quoteRequest, // Full form data
       matches: [] // You can populate this with actual vendor matches
     };
+    
     res.json({ quote: transformedRequest });
   } catch (error) {
     console.error('❌ Error fetching quote request:', error);
@@ -136,12 +164,20 @@ router.post('/accept', verifyToken, async (req, res) => {
     const { quoteId, vendorName } = req.body;
     const userId = req.userId;
     console.log(`✅ User ${userId} accepting quote ${quoteId} from ${vendorName}`);
+    
     // Update the quote status in your database
-    await QuoteRequest.findByIdAndUpdate(quoteId, {
-      status: 'Vendor Selected',
-      preferredVendor: vendorName,
-      updatedAt: new Date()
-    });
+    await QuoteRequest.findOneAndUpdate(
+      { 
+        _id: quoteId, 
+        submittedBy: new mongoose.Types.ObjectId(userId)
+      },
+      {
+        status: 'Vendor Selected',
+        preferredVendor: vendorName,
+        updatedAt: new Date()
+      }
+    );
+    
     res.json({
       message: 'Quote accepted successfully',
       quoteId,
@@ -159,6 +195,7 @@ router.post('/contact', verifyToken, async (req, res) => {
     const { quoteId, vendorName } = req.body;
     const userId = req.userId;
     console.log(`📞 User ${userId} contacting vendor ${vendorName} for quote ${quoteId}`);
+    
     // In production, you'd send an email or create a contact request
     // For now, just log the interaction
     res.json({
@@ -194,7 +231,7 @@ router.post('/request', userAuth, async (req, res) => {
     // Map user requirements to schema fields
     const quoteData = {
       userId,
-      submittedBy: userId, // Ensure ObjectId
+      submittedBy: new mongoose.Types.ObjectId(userId), // Ensure ObjectId
       serviceType: userRequirements.serviceType || 'Photocopiers',
       companyName: userRequirements.companyName || 'Unknown Company',
       contactName: userRequirements.contactName || 'Unknown Contact',
@@ -378,7 +415,11 @@ router.post('/ai/recommendations', userAuth, async (req, res) => {
     if (!userId) {
       return res.status(400).json({ message: 'User ID is required' });
     }
-    const latestQuote = await QuoteRequest.findOne({ userId }).sort({ createdAt: -1 });
+    
+    const latestQuote = await QuoteRequest.findOne({ 
+      submittedBy: new mongoose.Types.ObjectId(userId) 
+    }).sort({ createdAt: -1 });
+    
     if (!latestQuote) {
       return res.status(404).json({ message: 'No quotes found for this user' });
     }
@@ -433,11 +474,19 @@ router.post('/request-selected', userAuth, async (req, res) => {
     if (!quoteId) {
       return res.status(400).json({ message: 'Quote ID is required' });
     }
-    const updatedQuote = await QuoteRequest.findByIdAndUpdate(
-      quoteId,
-      { preferredVendor: selectedVendors[0], status: 'Vendor Selected' },
+    
+    const updatedQuote = await QuoteRequest.findOneAndUpdate(
+      { 
+        _id: quoteId,
+        submittedBy: new mongoose.Types.ObjectId(req.user.id)
+      },
+      { 
+        preferredVendor: selectedVendors[0], 
+        status: 'Vendor Selected' 
+      },
       { new: true }
     );
+    
     if (!updatedQuote) {
       return res.status(404).json({ message: 'Quote not found' });
     }
