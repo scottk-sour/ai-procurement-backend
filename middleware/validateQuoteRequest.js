@@ -1,209 +1,182 @@
 const validateQuoteRequest = (req, res, next) => {
   try {
     const userRequirements = req.body;
-    
-    // ✅ Check if request body exists
+
+    // Check if request body exists
     if (!userRequirements || typeof userRequirements !== 'object') {
       console.error("❌ ERROR: Missing or invalid request body.");
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: "Invalid or missing request data.",
         details: ["Request body must be a valid object with user requirements"]
       });
     }
 
-    // ✅ FIXED: Validate required fields that actually exist in your form
+    // Validate required fields from QuoteRequest schema
     const requiredFields = [
       'companyName',
-      'industryType', 
+      'contactName',
+      'email',
+      'industryType',
       'numEmployees',
-      'postcode', // Added this since it's required by backend
-      'implementationTimeline', // This is what your form actually sends
-      'max_lease_price', // This is what your form actually sends
-      'preference', // This is what your form actually sends
-      'type' // This is what your form actually sends (paper size)
+      'numLocations',
+      'monthlyVolume.mono',
+      'monthlyVolume.colour',
+      'monthlyVolume.total',
+      'paperRequirements.primarySize',
+      'currentSetup.machineAge',
+      'requirements.priority',
+      'budget.maxLeasePrice',
+      'urgency.timeframe',
+      'location.postcode'
     ];
 
     const missingFields = [];
     requiredFields.forEach(field => {
       const value = getNestedValue(userRequirements, field);
-      if (!value && value !== 0) {
+      if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
         missingFields.push(field);
       }
     });
 
-    // ✅ Also check for monthly volume (either individual or total)
-    const hasMonthlyVolume = userRequirements.monthlyVolume?.mono || 
-                            userRequirements.monthlyVolume?.colour ||
-                            userRequirements.monthlyVolume?.total ||
-                            userRequirements.monthlyPrintVolume;
-    
-    if (!hasMonthlyVolume) {
-      missingFields.push('monthlyVolume (mono, colour, or total)');
+    // Validate specific formats
+    if (userRequirements.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userRequirements.email)) {
+      missingFields.push('email (invalid format)');
+    }
+    if (userRequirements.location?.postcode && !/^[A-Z0-9]{2,4}\s?[A-Z0-9]{3}$/i.test(userRequirements.location.postcode)) {
+      missingFields.push('location.postcode (invalid format)');
     }
 
     if (missingFields.length > 0) {
-      console.error("❌ ERROR: Missing required fields:", missingFields);
-      return res.status(400).json({ 
-        error: "Missing required fields",
-        details: missingFields.map(field => `Path \`${field}\` is required.`)
+      console.error("❌ ERROR: Missing or invalid required fields:", missingFields);
+      return res.status(400).json({
+        error: "Missing or invalid required fields",
+        details: missingFields.map(field => `Path \`${field}\` is required or invalid.`)
       });
     }
 
-    // ✅ Sanitize and validate data with comprehensive defaults
+    // Sanitize and provide defaults for userRequirements
     req.validatedUserRequirements = {
-      // Company Profile
-      companyName: userRequirements.companyName?.trim() || '',
-      contactName: userRequirements.contactName?.trim() || '',
-      email: userRequirements.email?.trim() || '',
-      industryType: userRequirements.industryType?.trim() || '',
-      subSector: userRequirements.subSector?.trim() || '',
-      annualRevenue: userRequirements.annualRevenue?.trim() || '',
-      numEmployees: Number(userRequirements.numEmployees) || 0,
-      officeBasedEmployees: Number(userRequirements.officeBasedEmployees) || 0,
+      // Required fields with defaults
+      companyName: userRequirements.companyName?.trim() || 'Unknown Company',
+      contactName: userRequirements.contactName?.trim() || 'Unknown Contact',
+      email: userRequirements.email?.trim() || 'unknown@example.com',
+      industryType: userRequirements.industryType?.trim() || 'Other',
+      numEmployees: Number(userRequirements.numEmployees) || 1,
       numLocations: Math.abs(Number(userRequirements.numLocations)) || 1,
-      primaryBusinessActivity: userRequirements.primaryBusinessActivity?.trim() || '',
-      organizationStructure: userRequirements.organizationStructure?.trim() || '',
-      multiFloor: Boolean(userRequirements.multiFloor),
-
-      // Location - FIXED: Handle both possible field locations
-      location: {
-        postcode: userRequirements.location?.postcode?.trim() || userRequirements.postcode?.trim() || ''
-      },
-
-      // Challenges & Timeline
-      primaryChallenges: Array.isArray(userRequirements.primaryChallenges) 
-        ? userRequirements.primaryChallenges 
-        : [],
-      currentPainPoints: userRequirements.currentPainPoints?.trim() || '',
-      impactOnProductivity: userRequirements.impactOnProductivity?.trim() || '',
-      urgencyLevel: userRequirements.urgencyLevel?.trim() || '',
-      
-      // FIXED: Map from actual form field
-      urgency: {
-        timeframe: userRequirements.urgency?.timeframe || userRequirements.implementationTimeline || ''
-      },
-      
-      budgetCycle: userRequirements.budgetCycle?.trim() || '',
-
-      // Volume & Usage - FIXED: Better handling of volume data
-      monthlyPrintVolume: Number(userRequirements.monthlyPrintVolume) || 0,
-      annualPrintVolume: Number(userRequirements.annualPrintVolume) || 0,
-      
       monthlyVolume: {
-        colour: Number(userRequirements.monthlyVolume?.colour) || 0,
         mono: Number(userRequirements.monthlyVolume?.mono) || 0,
-        total: userRequirements.monthlyVolume?.total || 
-               (Number(userRequirements.monthlyVolume?.colour) || 0) + 
-               (Number(userRequirements.monthlyVolume?.mono) || 0) ||
-               Number(userRequirements.monthlyPrintVolume) || 0
+        colour: Number(userRequirements.monthlyVolume?.colour) || 0,
+        total: Number(userRequirements.monthlyVolume?.total) ||
+               (Number(userRequirements.monthlyVolume?.mono) || 0) + 
+               (Number(userRequirements.monthlyVolume?.colour) || 0) || 1
       },
-      
-      peakUsagePeriods: userRequirements.peakUsagePeriods?.trim() || '',
-      documentTypes: Array.isArray(userRequirements.documentTypes) 
-        ? userRequirements.documentTypes 
-        : [],
-      averagePageCount: userRequirements.averagePageCount?.trim() || '',
-      finishingRequirements: Array.isArray(userRequirements.finishingRequirements) 
-        ? userRequirements.finishingRequirements 
-        : [],
-
-      // Technical Environment
-      networkSetup: userRequirements.networkSetup?.trim() || '',
-      itSupportStructure: userRequirements.itSupportStructure?.trim() || '',
-      securityRequirements: Array.isArray(userRequirements.securityRequirements) 
-        ? userRequirements.securityRequirements 
-        : [],
-      currentSoftwareEnvironment: userRequirements.currentSoftwareEnvironment?.trim() || '',
-      cloudPreference: userRequirements.cloudPreference?.trim() || '',
-      integrationNeeds: Array.isArray(userRequirements.integrationNeeds) 
-        ? userRequirements.integrationNeeds 
-        : [],
-      mobileRequirements: Boolean(userRequirements.mobileRequirements),
-      remoteWorkImpact: userRequirements.remoteWorkImpact?.trim() || '',
-
-      // Current Setup & Costs
-      currentColorCPC: Number(userRequirements.currentColorCPC) || 0,
-      currentMonoCPC: Number(userRequirements.currentMonoCPC) || 0,
-      quarterlyLeaseCost: Number(userRequirements.quarterlyLeaseCost) || 0,
-      totalAnnualCosts: Number(userRequirements.totalAnnualCosts) || 0,
-      hiddenCosts: userRequirements.hiddenCosts?.trim() || '',
-      leasingCompany: userRequirements.leasingCompany?.trim() || '',
-      serviceProvider: userRequirements.serviceProvider?.trim() || '',
-      contractStartDate: userRequirements.contractStartDate || '',
-      contractEndDate: userRequirements.contractEndDate || '',
-      maintenanceIssues: userRequirements.maintenanceIssues?.trim() || '',
-
+      paperRequirements: {
+        primarySize: userRequirements.paperRequirements?.primarySize || userRequirements.type || 'A4',
+        additionalSizes: Array.isArray(userRequirements.paperRequirements?.additionalSizes) ? userRequirements.paperRequirements.additionalSizes : [],
+        specialPaper: Boolean(userRequirements.paperRequirements?.specialPaper),
+        specialPaperTypes: Array.isArray(userRequirements.paperRequirements?.specialPaperTypes) ? userRequirements.paperRequirements.specialPaperTypes : []
+      },
       currentSetup: {
-        machineAge: userRequirements.currentSetup?.machineAge || userRequirements.currentEquipmentAge || ''
+        machineAge: userRequirements.currentSetup?.machineAge || userRequirements.currentEquipmentAge || 'No current machine',
+        currentSupplier: userRequirements.serviceProvider?.trim() || undefined,
+        contractEndDate: userRequirements.contractEndDate ? new Date(userRequirements.contractEndDate) : undefined,
+        currentCosts: {
+          monoRate: Number(userRequirements.currentMonoCPC) || undefined,
+          colourRate: Number(userRequirements.currentColorCPC) || undefined,
+          quarterlyLeaseCost: Number(userRequirements.quarterlyLeaseCost) || undefined,
+          quarterlyService: undefined
+        },
+        painPoints: Array.isArray(userRequirements.primaryChallenges) ? userRequirements.primaryChallenges : [],
+        satisfactionLevel: undefined
       },
-
-      // Requirements & Specifications
-      additionalServices: Array.isArray(userRequirements.additionalServices) 
-        ? userRequirements.additionalServices 
-        : [],
+      requirements: {
+        priority: userRequirements.requirements?.priority || userRequirements.preference || 'cost',
+        essentialFeatures: Array.isArray(userRequirements.required_functions) ? userRequirements.required_functions : [],
+        niceToHaveFeatures: Array.isArray(userRequirements.requirements?.niceToHaveFeatures) ? userRequirements.requirements.niceToHaveFeatures : [],
+        minSpeed: Number(userRequirements.min_speed) || undefined,
+        maxNoiseLevel: undefined,
+        environmentalConcerns: Boolean(userRequirements.sustainabilityGoals)
+      },
+      budget: {
+        maxLeasePrice: Number(userRequirements.budget?.maxLeasePrice) || Number(userRequirements.max_lease_price) || 100,
+        preferredTerm: userRequirements.contractLengthPreference?.trim() || '36 months',
+        includeService: true,
+        includeConsumables: true
+      },
+      urgency: {
+        timeframe: userRequirements.urgency?.timeframe || userRequirements.implementationTimeline || 'Within 1 month',
+        reason: userRequirements.currentPainPoints?.trim() || undefined
+      },
+      location: {
+        postcode: userRequirements.location?.postcode?.trim() || userRequirements.postcode?.trim() || 'Unknown',
+        city: undefined,
+        region: undefined,
+        installationRequirements: undefined
+      },
+      // Optional fields
+      subSector: userRequirements.subSector?.trim() || undefined,
+      annualRevenue: userRequirements.annualRevenue?.trim() || undefined,
+      officeBasedEmployees: Number(userRequirements.officeBasedEmployees) || undefined,
+      primaryBusinessActivity: userRequirements.primaryBusinessActivity?.trim() || undefined,
+      organizationStructure: userRequirements.organizationStructure?.trim() || undefined,
+      multiFloor: Boolean(userRequirements.multiFloor),
+      primaryChallenges: Array.isArray(userRequirements.primaryChallenges) ? userRequirements.primaryChallenges : [],
+      currentPainPoints: userRequirements.currentPainPoints?.trim() || undefined,
+      impactOnProductivity: userRequirements.impactOnProductivity?.trim() || undefined,
+      urgencyLevel: userRequirements.urgencyLevel?.trim() || undefined,
+      budgetCycle: userRequirements.budgetCycle?.trim() || undefined,
+      monthlyPrintVolume: Number(userRequirements.monthlyPrintVolume) || undefined,
+      annualPrintVolume: Number(userRequirements.annualPrintVolume) || undefined,
+      peakUsagePeriods: userRequirements.peakUsagePeriods?.trim() || undefined,
+      documentTypes: Array.isArray(userRequirements.documentTypes) ? userRequirements.documentTypes : [],
+      averagePageCount: userRequirements.averagePageCount?.trim() || undefined,
+      finishingRequirements: Array.isArray(userRequirements.finishingRequirements) ? userRequirements.finishingRequirements : [],
+      networkSetup: userRequirements.networkSetup?.trim() || undefined,
+      itSupportStructure: userRequirements.itSupportStructure?.trim() || undefined,
+      securityRequirements: Array.isArray(userRequirements.securityRequirements) ? userRequirements.securityRequirements : [],
+      currentSoftwareEnvironment: userRequirements.currentSoftwareEnvironment?.trim() || undefined,
+      cloudPreference: userRequirements.cloudPreference?.trim() || undefined,
+      integrationNeeds: Array.isArray(userRequirements.integrationNeeds) ? userRequirements.integrationNeeds : [],
+      mobileRequirements: Boolean(userRequirements.mobileRequirements),
+      remoteWorkImpact: userRequirements.remoteWorkImpact?.trim() || undefined,
+      currentColorCPC: Number(userRequirements.currentColorCPC) || undefined,
+      currentMonoCPC: Number(userRequirements.currentMonoCPC) || undefined,
+      quarterlyLeaseCost: Number(userRequirements.quarterlyLeaseCost) || undefined,
+      totalAnnualCosts: Number(userRequirements.totalAnnualCosts) || undefined,
+      hiddenCosts: userRequirements.hiddenCosts?.trim() || undefined,
+      leasingCompany: userRequirements.leasingCompany?.trim() || undefined,
+      serviceProvider: userRequirements.serviceProvider?.trim() || undefined,
+      contractStartDate: userRequirements.contractStartDate ? new Date(userRequirements.contractStartDate) : undefined,
+      contractEndDate: userRequirements.contractEndDate ? new Date(userRequirements.contractEndDate) : undefined,
+      maintenanceIssues: userRequirements.maintenanceIssues?.trim() || undefined,
+      additionalServices: Array.isArray(userRequirements.additionalServices) ? userRequirements.additionalServices : [],
       paysForScanning: Boolean(userRequirements.paysForScanning),
       serviceType: userRequirements.serviceType?.trim() || 'Photocopiers',
-      colour: userRequirements.colour?.trim() || '',
-      
-      // FIXED: Map from actual form field
-      paperRequirements: {
-        primarySize: userRequirements.paperRequirements?.primarySize || userRequirements.type || ''
-      },
-      
-      min_speed: Number(userRequirements.min_speed) || 0,
-      securityFeatures: Array.isArray(userRequirements.securityFeatures) 
-        ? userRequirements.securityFeatures 
-        : [],
+      colour: userRequirements.colour?.trim() || undefined,
+      min_speed: Number(userRequirements.min_speed) || undefined,
+      securityFeatures: Array.isArray(userRequirements.securityFeatures) ? userRequirements.securityFeatures : [],
       accessibilityNeeds: Boolean(userRequirements.accessibilityNeeds),
-      sustainabilityGoals: userRequirements.sustainabilityGoals?.trim() || '',
-
-      // Service & Support
-      responseTimeExpectation: userRequirements.responseTimeExpectation?.trim() || '',
-      maintenancePreference: userRequirements.maintenancePreference?.trim() || '',
-      trainingNeeds: userRequirements.trainingNeeds?.trim() || '',
-      supplyManagement: userRequirements.supplyManagement?.trim() || '',
-      reportingNeeds: Array.isArray(userRequirements.reportingNeeds) 
-        ? userRequirements.reportingNeeds 
-        : [],
-      vendorRelationshipType: userRequirements.vendorRelationshipType?.trim() || '',
-
-      // Decision Process
-      decisionMakers: Array.isArray(userRequirements.decisionMakers) 
-        ? userRequirements.decisionMakers 
-        : [],
-      evaluationCriteria: Array.isArray(userRequirements.evaluationCriteria) 
-        ? userRequirements.evaluationCriteria 
-        : [],
-      contractLengthPreference: userRequirements.contractLengthPreference?.trim() || '',
-      pricingModelPreference: userRequirements.pricingModelPreference?.trim() || '',
-      required_functions: Array.isArray(userRequirements.required_functions) 
-        ? userRequirements.required_functions 
-        : [],
-      
-      // FIXED: Map from actual form field
-      requirements: {
-        priority: userRequirements.requirements?.priority || userRequirements.preference || ''
-      },
-      
-      // FIXED: Map from actual form field
-      budget: {
-        maxLeasePrice: Number(userRequirements.budget?.maxLeasePrice) || 
-                      Number(userRequirements.max_lease_price) || 0
-      },
-      
-      roiExpectations: userRequirements.roiExpectations?.trim() || '',
-
-      // Future Planning
-      expectedGrowth: userRequirements.expectedGrowth?.trim() || '',
-      expansionPlans: userRequirements.expansionPlans?.trim() || '',
-      technologyRoadmap: userRequirements.technologyRoadmap?.trim() || '',
-      digitalTransformation: userRequirements.digitalTransformation?.trim() || '',
-      threeYearVision: userRequirements.threeYearVision?.trim() || '',
-
-      // Status & Metadata
-      status: 'Pending',
-      submittedBy: userRequirements.submittedBy || '',
-      userId: userRequirements.userId || ''
+      sustainabilityGoals: userRequirements.sustainabilityGoals?.trim() || undefined,
+      responseTimeExpectation: userRequirements.responseTimeExpectation?.trim() || undefined,
+      maintenancePreference: userRequirements.maintenancePreference?.trim() || undefined,
+      trainingNeeds: userRequirements.trainingNeeds?.trim() || undefined,
+      supplyManagement: userRequirements.supplyManagement?.trim() || undefined,
+      reportingNeeds: Array.isArray(userRequirements.reportingNeeds) ? userRequirements.reportingNeeds : [],
+      vendorRelationshipType: userRequirements.vendorRelationshipType?.trim() || undefined,
+      decisionMakers: Array.isArray(userRequirements.decisionMakers) ? userRequirements.decisionMakers : [],
+      evaluationCriteria: Array.isArray(userRequirements.evaluationCriteria) ? userRequirements.evaluationCriteria : [],
+      contractLengthPreference: userRequirements.contractLengthPreference?.trim() || undefined,
+      pricingModelPreference: userRequirements.pricingModelPreference?.trim() || undefined,
+      required_functions: Array.isArray(userRequirements.required_functions) ? userRequirements.required_functions : [],
+      roiExpectations: userRequirements.roiExpectations?.trim() || undefined,
+      expectedGrowth: userRequirements.expectedGrowth?.trim() || undefined,
+      expansionPlans: userRequirements.expansionPlans?.trim() || undefined,
+      technologyRoadmap: userRequirements.technologyRoadmap?.trim() || undefined,
+      digitalTransformation: userRequirements.digitalTransformation?.trim() || undefined,
+      threeYearVision: userRequirements.threeYearVision?.trim() || undefined,
+      status: 'pending',
+      submittedBy: userRequirements.submittedBy || userRequirements.userId || undefined,
+      userId: userRequirements.userId || undefined
     };
 
     console.log("✅ Validated comprehensive userRequirements");
@@ -211,11 +184,10 @@ const validateQuoteRequest = (req, res, next) => {
     console.log("📊 Industry:", req.validatedUserRequirements.industryType);
     console.log("📊 Monthly Volume:", req.validatedUserRequirements.monthlyVolume.total);
     console.log("📊 Budget:", req.validatedUserRequirements.budget.maxLeasePrice);
-
-    next(); // ✅ Proceed to the next middleware
+    next(); // Proceed to the next middleware
   } catch (error) {
     console.error("❌ ERROR in validateQuoteRequest middleware:", error.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Internal server error during validation.",
       details: [error.message]
     });
