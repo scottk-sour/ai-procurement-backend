@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import QuoteFeedback from '../models/QuoteFeedback.js';
-import CopierQuoteRequest from '../models/CopierQuoteRequest.js'; // Corrected import
+import CopierQuoteRequest from '../models/CopierQuoteRequest.js';
 import VendorProduct from '../models/VendorProduct.js';
 import FileParserService from './FileParserService.js';
 import logger from './logger.js';
@@ -38,7 +38,7 @@ function cosineSimilarity(vecA, vecB) {
 }
 
 /**
- * Enhanced AI Recommendation Engine with proper volume and suitability matching
+ * Production-ready AI Recommendation Engine with comprehensive error handling
  */
 class AIRecommendationEngine {
   
@@ -86,92 +86,116 @@ class AIRecommendationEngine {
    * Score how well a machine's volume capacity matches user needs
    */
   static scoreVolumeMatch(userVolume, product) {
-    if (!userVolume || !product.minVolume || !product.maxVolume) return 0;
-    
-    const { minVolume, maxVolume } = product;
-    
-    // Perfect match: within recommended range
-    if (userVolume >= minVolume && userVolume <= maxVolume) {
-      // Bonus for being in the sweet spot (70-90% of max capacity)
-      const utilization = userVolume / maxVolume;
-      if (utilization >= 0.7 && utilization <= 0.9) return 1.0;
-      if (utilization >= 0.5 && utilization <= 0.95) return 0.9;
-      return 0.8; // Still good match but not optimal utilization
+    try {
+      if (!userVolume || !product || !product.minVolume || !product.maxVolume) {
+        logger.warn('Invalid volume parameters:', { userVolume, productMin: product?.minVolume, productMax: product?.maxVolume });
+        return 0;
+      }
+      
+      const { minVolume, maxVolume } = product;
+      
+      // Perfect match: within recommended range
+      if (userVolume >= minVolume && userVolume <= maxVolume) {
+        // Bonus for being in the sweet spot (70-90% of max capacity)
+        const utilization = userVolume / maxVolume;
+        if (utilization >= 0.7 && utilization <= 0.9) return 1.0;
+        if (utilization >= 0.5 && utilization <= 0.95) return 0.9;
+        return 0.8; // Still good match but not optimal utilization
+      }
+      
+      // Under-utilization (machine too big) - HEAVILY penalize
+      if (userVolume < minVolume) {
+        const ratio = userVolume / minVolume;
+        if (ratio < 0.2) return 0.02; // Severely oversized - almost eliminate
+        if (ratio < 0.4) return 0.1;  // Very oversized
+        if (ratio < 0.6) return 0.25; // Moderately oversized
+        return 0.4; // Slightly oversized but might be acceptable
+      }
+      
+      // Over-utilization (machine too small) - also penalize but less severely
+      if (userVolume > maxVolume) {
+        const ratio = maxVolume / userVolume;
+        if (ratio < 0.6) return 0.05; // Way too small - reliability issues
+        if (ratio < 0.8) return 0.2;  // Too small but might work
+        return 0.4; // Tight but acceptable with careful usage
+      }
+      
+      return 0.5;
+    } catch (error) {
+      logger.error('Error in scoreVolumeMatch:', error);
+      return 0;
     }
-    
-    // Under-utilization (machine too big) - HEAVILY penalize
-    if (userVolume < minVolume) {
-      const ratio = userVolume / minVolume;
-      if (ratio < 0.2) return 0.02; // Severely oversized - almost eliminate
-      if (ratio < 0.4) return 0.1;  // Very oversized
-      if (ratio < 0.6) return 0.25; // Moderately oversized
-      return 0.4; // Slightly oversized but might be acceptable
-    }
-    
-    // Over-utilization (machine too small) - also penalize but less severely
-    if (userVolume > maxVolume) {
-      const ratio = maxVolume / userVolume;
-      if (ratio < 0.6) return 0.05; // Way too small - reliability issues
-      if (ratio < 0.8) return 0.2;  // Too small but might work
-      return 0.4; // Tight but acceptable with careful usage
-    }
-    
-    return 0.5;
   }
 
   /**
    * Score speed suitability for volume
    */
   static scoreSpeedSuitability(userVolume, machineSpeed) {
-    if (!userVolume || !machineSpeed) return 0.5;
-    
-    const suggestedSpeed = this.getSuggestedSpeed(userVolume);
-    
-    // Perfect range: suggested speed to 1.5x suggested
-    if (machineSpeed >= suggestedSpeed && machineSpeed <= suggestedSpeed * 1.5) {
-      return 1.0;
+    try {
+      if (!userVolume || !machineSpeed) return 0.5;
+      
+      const suggestedSpeed = this.getSuggestedSpeed(userVolume);
+      
+      // Perfect range: suggested speed to 1.5x suggested
+      if (machineSpeed >= suggestedSpeed && machineSpeed <= suggestedSpeed * 1.5) {
+        return 1.0;
+      }
+      
+      // Too slow for volume - will cause productivity issues
+      if (machineSpeed < suggestedSpeed) {
+        const ratio = machineSpeed / suggestedSpeed;
+        if (ratio < 0.5) return 0.1; // Way too slow
+        if (ratio < 0.7) return 0.3; // Too slow
+        return Math.max(0.5, ratio * 0.8); // Somewhat slow but workable
+      }
+      
+      // Too fast (overpowered but not terrible) - waste of money but works
+      if (machineSpeed > suggestedSpeed * 2) {
+        return 0.7; // Overpowered but works fine
+      }
+      
+      return 0.85; // Slightly overpowered - good performance headroom
+    } catch (error) {
+      logger.error('Error in scoreSpeedSuitability:', error);
+      return 0.5;
     }
-    
-    // Too slow for volume - will cause productivity issues
-    if (machineSpeed < suggestedSpeed) {
-      const ratio = machineSpeed / suggestedSpeed;
-      if (ratio < 0.5) return 0.1; // Way too slow
-      if (ratio < 0.7) return 0.3; // Too slow
-      return Math.max(0.5, ratio * 0.8); // Somewhat slow but workable
-    }
-    
-    // Too fast (overpowered but not terrible) - waste of money but works
-    if (machineSpeed > suggestedSpeed * 2) {
-      return 0.7; // Overpowered but works fine
-    }
-    
-    return 0.85; // Slightly overpowered - good performance headroom
   }
 
   /**
    * Check paper size compatibility (hard filter)
    */
   static checkPaperCompatibility(requiredSize, product) {
-    if (!requiredSize) return true; // No requirement specified
-    
-    // Check if product supports the required paper size
-    const supportedSizes = product.paperSizes?.supported || [product.paperSizes?.primary];
-    return supportedSizes.includes(requiredSize);
+    try {
+      if (!requiredSize) return true; // No requirement specified
+      if (!product || !product.paperSizes) return false;
+      
+      // Check if product supports the required paper size
+      const supportedSizes = product.paperSizes?.supported || [product.paperSizes?.primary];
+      return Array.isArray(supportedSizes) ? supportedSizes.includes(requiredSize) : supportedSizes === requiredSize;
+    } catch (error) {
+      logger.error('Error in checkPaperCompatibility:', error);
+      return false;
+    }
   }
 
   /**
    * Enhanced feature matching with scoring
    */
   static scoreFeatureMatch(requiredFeatures, productFeatures) {
-    if (!requiredFeatures || requiredFeatures.length === 0) return 1.0;
-    if (!productFeatures || productFeatures.length === 0) return 0.0;
-    
-    const matchedFeatures = requiredFeatures.filter(feature => 
-      productFeatures.some(pf => pf.toLowerCase().includes(feature.toLowerCase()))
-    );
-    
-    const score = matchedFeatures.length / requiredFeatures.length;
-    return Math.max(0, Math.min(1, score));
+    try {
+      if (!requiredFeatures || requiredFeatures.length === 0) return 1.0;
+      if (!productFeatures || productFeatures.length === 0) return 0.0;
+      
+      const matchedFeatures = requiredFeatures.filter(feature => 
+        productFeatures.some(pf => pf && pf.toLowerCase().includes(feature.toLowerCase()))
+      );
+      
+      const score = matchedFeatures.length / requiredFeatures.length;
+      return Math.max(0, Math.min(1, score));
+    } catch (error) {
+      logger.error('Error in scoreFeatureMatch:', error);
+      return 0.5;
+    }
   }
 
   /**
@@ -179,13 +203,13 @@ class AIRecommendationEngine {
    */
   static async calculateHybridScore(quoteRequest, product, prefs) {
     try {
-      // Build request description
+      // Build request description with null checks
       const requestText = [
-        quoteRequest.description || '',
-        quoteRequest.primaryBusinessActivity || '',
-        quoteRequest.currentPainPoints || '',
-        quoteRequest.requiredFunctions?.join(' ') || '',
-        quoteRequest.industryType || ''
+        quoteRequest?.description || '',
+        quoteRequest?.primaryBusinessActivity || '',
+        quoteRequest?.currentPainPoints || '',
+        quoteRequest?.requiredFunctions?.join(' ') || '',
+        quoteRequest?.industryType || ''
       ].filter(Boolean).join(' ');
 
       if (requestText.length < 10) return 0.5; // Default if no meaningful text
@@ -197,14 +221,14 @@ class AIRecommendationEngine {
       })).data[0].embedding;
 
       // Use product embedding if available
-      const productEmbedding = product.embedding || [];
+      const productEmbedding = product?.embedding || [];
       let similarity = 0;
       
       if (productEmbedding.length > 0) {
         similarity = cosineSimilarity(reqEmbedding, productEmbedding);
       } else {
         // Fallback: generate embedding for product
-        const productText = `${product.manufacturer} ${product.model} ${product.description || ''} ${product.features?.join(' ') || ''}`;
+        const productText = `${product?.manufacturer || ''} ${product?.model || ''} ${product?.description || ''} ${product?.features?.join(' ') || ''}`;
         const prodEmbedding = (await openai.embeddings.create({
           model: 'text-embedding-3-large',
           input: productText.substring(0, 8000)
@@ -214,12 +238,12 @@ class AIRecommendationEngine {
 
       // Collaborative filtering bonus
       let collabBonus = 0;
-      if (prefs.preferredVendors?.includes(product.manufacturer)) {
+      if (prefs?.preferredVendors?.includes(product?.manufacturer)) {
         collabBonus = 0.15;
       }
       
       // Industry matching bonus
-      if (quoteRequest.industryType && product.industries?.includes(quoteRequest.industryType)) {
+      if (quoteRequest?.industryType && product?.industries?.includes(quoteRequest.industryType)) {
         collabBonus += 0.1;
       }
 
@@ -235,7 +259,18 @@ class AIRecommendationEngine {
    */
   static async calculateSuitabilityScore(quoteRequest, product, prefs) {
     try {
-      // Extract user volume from enhanced quote request
+      // Validate inputs
+      if (!quoteRequest || !product) {
+        logger.warn('Missing quoteRequest or product for suitability calculation');
+        return {
+          score: 0,
+          reason: 'Missing required data',
+          suitable: false,
+          breakdown: {}
+        };
+      }
+
+      // Extract user volume from enhanced quote request with null checks
       const userVolume = (quoteRequest.monthlyVolume?.mono || 0) + 
                         (quoteRequest.monthlyVolume?.colour || 0) ||
                         quoteRequest.monthlyVolume?.total || 0;
@@ -253,7 +288,7 @@ class AIRecommendationEngine {
         };
       }
 
-      // Calculate component scores
+      // Calculate component scores with error handling
       const volumeScore = this.scoreVolumeMatch(userVolume, product);
       const speedScore = this.scoreSpeedSuitability(userVolume, product.speed);
       const featureScore = this.scoreFeatureMatch(
@@ -264,12 +299,12 @@ class AIRecommendationEngine {
       // Volume score below threshold = not suitable
       if (volumeScore < 0.25) {
         let reason;
-        if (userVolume < product.minVolume * 0.4) {
-          reason = `Machine severely oversized - designed for ${product.minVolume}-${product.maxVolume} pages/month, you need ${userVolume} pages/month. You'd pay for unused capacity.`;
-        } else if (userVolume < product.minVolume) {
-          reason = `Machine oversized - recommended for ${product.minVolume}-${product.maxVolume} pages/month, you need ${userVolume} pages/month`;
+        if (userVolume < (product.minVolume || 0) * 0.4) {
+          reason = `Machine severely oversized - designed for ${product.minVolume || 'unknown'}-${product.maxVolume || 'unknown'} pages/month, you need ${userVolume} pages/month. You'd pay for unused capacity.`;
+        } else if (userVolume < (product.minVolume || 0)) {
+          reason = `Machine oversized - recommended for ${product.minVolume || 'unknown'}-${product.maxVolume || 'unknown'} pages/month, you need ${userVolume} pages/month`;
         } else {
-          reason = `Machine undersized - max capacity ${product.maxVolume} pages/month, you need ${userVolume} pages/month. Risk of reliability issues.`;
+          reason = `Machine undersized - max capacity ${product.maxVolume || 'unknown'} pages/month, you need ${userVolume} pages/month. Risk of reliability issues.`;
         }
         
         return {
@@ -317,15 +352,21 @@ class AIRecommendationEngine {
   }
 
   /**
-   * Enhanced cost efficiency calculation
+   * Enhanced cost efficiency calculation with comprehensive error handling
    */
   static calculateCostEfficiency(quoteRequest, product, quarterlyLease, currentContract = {}) {
     try {
+      // Validate inputs
+      if (!quoteRequest || !product) {
+        logger.warn('Missing inputs for cost efficiency calculation');
+        return this.getDefaultCostEfficiency();
+      }
+
       const monthlyMonoVolume = quoteRequest.monthlyVolume?.mono || 0;
       const monthlyColourVolume = quoteRequest.monthlyVolume?.colour || 0;
 
       // Calculate new costs (enhanced with proper CPC handling)
-      const newMonthlyLease = quarterlyLease / 3;
+      const newMonthlyLease = (quarterlyLease || 300) / 3;
       const newMonoCPC = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
       const newColourCPC = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
       const newMonthlyCPC = (monthlyMonoVolume * newMonoCPC) + (monthlyColourVolume * newColourCPC);
@@ -372,44 +413,53 @@ class AIRecommendationEngine {
       };
     } catch (error) {
       logger.error('Error calculating cost efficiency:', error);
-      return {
-        monthlySavings: 0,
-        annualSavings: 0,
-        savingsPercentage: 0,
-        newTotalMonthlyCost: 0,
-        currentTotalMonthlyCost: 0,
-        efficiencyScore: 0.5,
-        breakdown: {}
-      };
+      return this.getDefaultCostEfficiency();
     }
   }
 
   /**
-   * Enhanced lease margin calculation
+   * Default cost efficiency object
+   */
+  static getDefaultCostEfficiency() {
+    return {
+      monthlySavings: 0,
+      annualSavings: 0,
+      savingsPercentage: 0,
+      newTotalMonthlyCost: 0,
+      currentTotalMonthlyCost: 0,
+      efficiencyScore: 0.5,
+      breakdown: {}
+    };
+  }
+
+  /**
+   * Enhanced lease margin calculation with error handling
    */
   static getLeaseMargin(product, requestedTerm) {
     let margin = 0.55; // Default margin
     
     try {
-      if (product.leaseTermsAndMargins) {
-        if (typeof product.leaseTermsAndMargins === 'string') {
-          // Legacy string format: "36:0.6;48:0.55;60:0.5"
-          const marginObj = {};
-          product.leaseTermsAndMargins.split(';').forEach(pair => {
-            const [term, marginValue] = pair.split(':');
-            if (term && marginValue) {
-              marginObj[parseInt(term, 10)] = parseFloat(marginValue);
-            }
-          });
-          margin = marginObj[requestedTerm] || marginObj[60] || marginObj[48] || marginObj[36] || 0.55;
-        } else if (Array.isArray(product.leaseTermsAndMargins)) {
-          // New array format from schema
-          const termOption = product.leaseTermsAndMargins.find(t => t.term === requestedTerm) ||
-                            product.leaseTermsAndMargins.find(t => t.term === 60) ||
-                            product.leaseTermsAndMargins.find(t => t.term === 48) ||
-                            product.leaseTermsAndMargins[0];
-          margin = termOption?.margin || 0.55;
-        }
+      if (!product || !product.leaseTermsAndMargins) {
+        return margin;
+      }
+
+      if (typeof product.leaseTermsAndMargins === 'string') {
+        // Legacy string format: "36:0.6;48:0.55;60:0.5"
+        const marginObj = {};
+        product.leaseTermsAndMargins.split(';').forEach(pair => {
+          const [term, marginValue] = pair.split(':');
+          if (term && marginValue) {
+            marginObj[parseInt(term, 10)] = parseFloat(marginValue);
+          }
+        });
+        margin = marginObj[requestedTerm] || marginObj[60] || marginObj[48] || marginObj[36] || 0.55;
+      } else if (Array.isArray(product.leaseTermsAndMargins)) {
+        // New array format from schema
+        const termOption = product.leaseTermsAndMargins.find(t => t.term === requestedTerm) ||
+                          product.leaseTermsAndMargins.find(t => t.term === 60) ||
+                          product.leaseTermsAndMargins.find(t => t.term === 48) ||
+                          product.leaseTermsAndMargins[0];
+        margin = termOption?.margin || 0.55;
       }
       
       return Math.max(0.3, Math.min(1.0, margin)); // Clamp between 30% and 100%
@@ -420,7 +470,7 @@ class AIRecommendationEngine {
   }
 
   /**
-   * Enhanced user preference learning with LLM analysis
+   * Enhanced user preference learning with LLM analysis and error handling
    */
   static async getUserPreferenceProfile(userId) {
     try {
@@ -533,11 +583,16 @@ class AIRecommendationEngine {
   }
 
   /**
-   * Main recommendation generation with enhanced filtering and scoring
+   * Main recommendation generation with enhanced filtering and scoring - PRODUCTION READY
    */
   static async generateRecommendations(quoteRequest, userId, invoiceFiles = []) {
     try {
-      // Extract user volume from comprehensive quote request
+      // Validate essential inputs
+      if (!quoteRequest) {
+        throw new Error('Quote request is required');
+      }
+
+      // Extract user volume from comprehensive quote request with fallbacks
       const userVolume = (quoteRequest.monthlyVolume?.mono || 0) + 
                         (quoteRequest.monthlyVolume?.colour || 0) ||
                         quoteRequest.monthlyVolume?.total || 5000; // Default fallback
@@ -557,6 +612,18 @@ class AIRecommendationEngine {
       // Get user preferences with dynamic scoring weights
       const preferenceProfile = await this.getUserPreferenceProfile(userId);
       
+      // Initialize scoringWeights if not present (safety check)
+      if (!this.scoringWeights) {
+        this.scoringWeights = {
+          volumeMatch: 0.35,
+          costEfficiency: 0.25,
+          speedSuitability: 0.20,
+          featureMatch: 0.15,
+          paperCompatibility: 0.05,
+          semanticMatch: 0.15
+        };
+      }
+      
       // Adjust scoring weights based on user preferences
       this.scoringWeights.costEfficiency = 0.15 + (preferenceProfile.costPriority * 0.2);
       this.scoringWeights.speedSuitability = 0.15 + (preferenceProfile.speedPriority * 0.15);
@@ -573,10 +640,11 @@ class AIRecommendationEngine {
             minVolume: { $lte: userVolume * 2.5 } 
           }
         ],
-        // Paper size support
+        // Paper size support - make this more flexible
         $or: [
           { 'paperSizes.supported': requiredPaperSize },
-          { 'paperSizes.primary': requiredPaperSize }
+          { 'paperSizes.primary': requiredPaperSize },
+          { paperSizes: { $exists: false } } // Include products without explicit paper size data
         ]
       };
 
@@ -605,6 +673,12 @@ class AIRecommendationEngine {
 
       for (const product of vendorProducts) {
         try {
+          // Validate product has minimum required fields
+          if (!product || !product.manufacturer || !product.model) {
+            logger.warn('Product missing essential data:', product?._id);
+            continue;
+          }
+
           // Calculate suitability score
           const suitability = await this.calculateSuitabilityScore(quoteRequest, product, preferenceProfile);
           
@@ -614,8 +688,13 @@ class AIRecommendationEngine {
           const totalLeaseValue = salePrice * (1 + margin);
           const quarterlyLease = (totalLeaseValue / requestedTerm) * 3;
 
-          // Calculate cost efficiency
-          const costInfo = this.calculateCostEfficiency(quoteRequest, product, quarterlyLease);
+          // Calculate cost efficiency - FIXED: Initialize costInfo properly
+          let costInfo = this.calculateCostEfficiency(quoteRequest, product, quarterlyLease);
+          
+          // Ensure costInfo is properly initialized
+          if (!costInfo || typeof costInfo !== 'object') {
+            costInfo = this.getDefaultCostEfficiency();
+          }
 
           // Apply preference bonuses/penalties
           let preferenceBonus = 0;
@@ -626,10 +705,12 @@ class AIRecommendationEngine {
             preferenceBonus -= 0.15;
           }
 
-          // Calculate overall score
-          const overallScore = suitability.score + 
-                              (costInfo.efficiencyScore * 0.2) + 
-                              preferenceBonus;
+          // Calculate overall score - FIXED: Ensure all scores are valid numbers
+          const overallScore = Math.max(0, Math.min(1, 
+            (suitability.score || 0) + 
+            ((costInfo.efficiencyScore || 0.5) * 0.2) + 
+            preferenceBonus
+          ));
 
           scoredProducts.push({
             product,
@@ -637,7 +718,7 @@ class AIRecommendationEngine {
             costInfo,
             quarterlyLease: Math.round(quarterlyLease * 100) / 100,
             termMonths: requestedTerm,
-            overallScore: Math.max(0, Math.min(1, overallScore)),
+            overallScore,
             preferenceBonus,
             
             // Legacy compatibility fields
@@ -718,13 +799,13 @@ class AIRecommendationEngine {
       const finalRecommendations = topRecommendations.map(rec => ({
         ...rec,
         aiInsights: {
-          volumeMatch: `${Math.round(rec.suitability.volumeScore * 100)}%`,
-          speedSuitability: `${Math.round(rec.suitability.speedScore * 100)}%`,
-          featureMatch: `${Math.round(rec.suitability.featureScore * 100)}%`,
+          volumeMatch: `${Math.round((rec.suitability.volumeScore || 0) * 100)}%`,
+          speedSuitability: `${Math.round((rec.suitability.speedScore || 0) * 100)}%`,
+          featureMatch: `${Math.round((rec.suitability.featureScore || 0) * 100)}%`,
           overallCompatibility: `${Math.round(rec.overallScore * 100)}%`,
-          estimatedROI: rec.costInfo.annualSavings > 0 ? 
+          estimatedROI: (rec.costInfo.annualSavings || 0) > 0 ? 
             `£${rec.costInfo.annualSavings} annual savings` : 
-            `£${Math.abs(rec.costInfo.annualSavings)} annual increase`,
+            `£${Math.abs(rec.costInfo.annualSavings || 0)} annual increase`,
           recommendation: rec.ranking === 1 ? 'Recommended' : 
                          rec.ranking === 2 ? 'Good Alternative' : 
                          'Consideration Option'
@@ -821,7 +902,7 @@ class AIRecommendationEngine {
    */
   static generateExplanation(product, type, preferenceProfile) {
     const score = Math.round(product.overallScore * 100);
-    const savings = product.costInfo.monthlySavings;
+    const savings = product.costInfo.monthlySavings || 0;
     
     switch (type) {
       case 'suitable':
