@@ -3,13 +3,13 @@ import express from 'express';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
 import AIEngineAdapter from '../services/aiEngineAdapter.js';
-import auth from '../middleware/auth.js';
+import userAuth from '../middleware/userAuth.js';
 import logger from '../services/logger.js';
 
 const router = express.Router();
 
 // POST /api/quotes/requests - Create new quote request and trigger AI matching
-router.post('/requests', auth, async (req, res) => {
+router.post('/requests', userAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
     console.log('📝 Creating new quote request for user:', userId);
@@ -50,7 +50,9 @@ router.post('/requests', auth, async (req, res) => {
     if (!companyName || !email || !monthlyVolume) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: companyName, email, and monthlyVolume are required'
+        error: 'VALIDATION_ERROR',
+        message: 'Missing required fields: companyName, email, and monthlyVolume are required',
+        code: 'QUOTE_001'
       });
     }
 
@@ -264,14 +266,16 @@ router.post('/requests', auth, async (req, res) => {
 
     res.status(500).json({
       success: false,
+      error: 'INTERNAL_ERROR',
       message: 'Failed to create quote request',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_002'
     });
   }
 });
 
 // GET /api/quotes/requests - Get quote requests for user (with proper filtering)
-router.get('/requests', auth, async (req, res) => {
+router.get('/requests', userAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { page = 1, limit = 10, status, userId: queryUserId, submittedBy } = req.query;
@@ -329,14 +333,16 @@ router.get('/requests', auth, async (req, res) => {
     console.error('❌ Error fetching quote requests:', error);
     res.status(500).json({
       success: false,
+      error: 'FETCH_ERROR',
       message: 'Failed to fetch quote requests',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_003'
     });
   }
 });
 
 // POST /api/quotes/retry-matching/:requestId - Retry AI matching for a specific request
-router.post('/retry-matching/:requestId', auth, async (req, res) => {
+router.post('/retry-matching/:requestId', userAuth, async (req, res) => {
   try {
     const { requestId } = req.params;
     const userId = req.user.userId;
@@ -352,7 +358,9 @@ router.post('/retry-matching/:requestId', auth, async (req, res) => {
     if (!quoteRequest) {
       return res.status(404).json({
         success: false,
-        message: 'Quote request not found'
+        error: 'NOT_FOUND',
+        message: 'Quote request not found',
+        code: 'QUOTE_004'
       });
     }
     
@@ -381,8 +389,10 @@ router.post('/retry-matching/:requestId', auth, async (req, res) => {
     } else {
       res.json({
         success: false,
+        error: 'NO_MATCHES',
         message: 'No suitable matches found',
-        quotesCount: 0
+        quotesCount: 0,
+        code: 'QUOTE_005'
       });
     }
     
@@ -390,14 +400,16 @@ router.post('/retry-matching/:requestId', auth, async (req, res) => {
     console.error('❌ Error retrying AI matching:', error);
     res.status(500).json({
       success: false,
+      error: 'RETRY_ERROR',
       message: 'Failed to retry matching',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_006'
     });
   }
 });
 
 // GET /api/quotes/:id - Get specific quote details
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', userAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
@@ -414,7 +426,9 @@ router.get('/:id', auth, async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: 'Quote not found'
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_007'
       });
     }
     
@@ -425,7 +439,9 @@ router.get('/:id', auth, async (req, res) => {
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_008'
       });
     }
     
@@ -438,19 +454,31 @@ router.get('/:id', auth, async (req, res) => {
     console.error('❌ Error fetching quote details:', error);
     res.status(500).json({
       success: false,
+      error: 'FETCH_ERROR',
       message: 'Failed to fetch quote details',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_009'
     });
   }
 });
 
 // POST /api/quotes/accept - Accept a quote
-router.post('/accept', auth, async (req, res) => {
+router.post('/accept', userAuth, async (req, res) => {
   try {
     const { quoteId, vendorName } = req.body;
     const userId = req.user.userId;
     
     console.log('✅ Accepting quote:', { quoteId, vendorName, userId });
+    
+    // Validate required fields
+    if (!quoteId) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_010'
+      });
+    }
     
     // Find and verify quote
     const quote = await Quote.findById(quoteId).populate('quoteRequest');
@@ -458,7 +486,9 @@ router.post('/accept', auth, async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: 'Quote not found'
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_011'
       });
     }
     
@@ -469,43 +499,74 @@ router.post('/accept', auth, async (req, res) => {
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_012'
+      });
+    }
+    
+    // Check if quote is already accepted
+    if (quote.status === 'accepted') {
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ACCEPTED',
+        message: 'Quote has already been accepted',
+        code: 'QUOTE_013'
       });
     }
     
     // Update quote status
     quote.status = 'accepted';
     quote.acceptedAt = new Date();
+    quote.acceptedBy = userId;
     await quote.save();
     
     // Update quote request status
     if (quote.quoteRequest) {
       quote.quoteRequest.status = 'accepted';
+      quote.quoteRequest.acceptedQuote = quoteId;
       await quote.quoteRequest.save();
     }
     
     res.json({
       success: true,
-      message: `Quote from ${vendorName} accepted successfully`
+      message: `Quote from ${vendorName || 'vendor'} accepted successfully`,
+      quote: {
+        id: quote._id,
+        status: quote.status,
+        acceptedAt: quote.acceptedAt
+      }
     });
     
   } catch (error) {
     console.error('❌ Error accepting quote:', error);
     res.status(500).json({
       success: false,
+      error: 'ACCEPT_ERROR',
       message: 'Failed to accept quote',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_014'
     });
   }
 });
 
 // POST /api/quotes/contact - Contact vendor about a quote
-router.post('/contact', auth, async (req, res) => {
+router.post('/contact', userAuth, async (req, res) => {
   try {
-    const { quoteId, vendorName } = req.body;
+    const { quoteId, vendorName, message } = req.body;
     const userId = req.user.userId;
     
     console.log('📞 Contacting vendor:', { quoteId, vendorName, userId });
+    
+    // Validate required fields
+    if (!quoteId) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_015'
+      });
+    }
     
     // Find and verify quote
     const quote = await Quote.findById(quoteId)
@@ -515,7 +576,9 @@ router.post('/contact', auth, async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: 'Quote not found'
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_016'
       });
     }
     
@@ -526,7 +589,9 @@ router.post('/contact', auth, async (req, res) => {
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_017'
       });
     }
     
@@ -538,22 +603,30 @@ router.post('/contact', auth, async (req, res) => {
     quote.contactAttempts.push({
       contactedAt: new Date(),
       contactedBy: userId,
-      method: 'platform_request'
+      method: 'platform_request',
+      message: message || 'Customer inquiry via platform',
+      status: 'pending'
     });
     
     await quote.save();
     
     res.json({
       success: true,
-      message: `Contact request sent to ${vendorName}`
+      message: `Contact request sent to ${vendorName || 'vendor'}`,
+      contactAttempt: {
+        timestamp: new Date(),
+        method: 'platform_request'
+      }
     });
     
   } catch (error) {
     console.error('❌ Error contacting vendor:', error);
     res.status(500).json({
       success: false,
+      error: 'CONTACT_ERROR',
       message: 'Failed to contact vendor',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_018'
     });
   }
 });
@@ -561,44 +634,87 @@ router.post('/contact', auth, async (req, res) => {
 // LEGACY ROUTE SUPPORT - for backward compatibility with your existing frontend
 
 // POST /api/quotes/request - Alternative endpoint for quote request creation
-router.post('/request', async (req, res) => {
-  // Redirect to the new endpoint
+router.post('/request', userAuth, async (req, res) => {
+  // Redirect to the new endpoint by calling the handler directly
+  const originalUrl = req.url;
   req.url = '/requests';
-  router.handle(req, res);
+  
+  // Call the requests handler
+  const requestsHandler = router.stack.find(layer => 
+    layer.route && layer.route.path === '/requests' && layer.route.methods.post
+  );
+  
+  if (requestsHandler) {
+    requestsHandler.route.stack[1].handle(req, res);
+  } else {
+    res.status(500).json({
+      success: false,
+      error: 'ROUTE_ERROR',
+      message: 'Legacy route handler not found',
+      code: 'QUOTE_019'
+    });
+  }
 });
 
 // GET /api/quotes - Alternative endpoint for getting quotes
-router.get('/', auth, async (req, res) => {
+router.get('/', userAuth, async (req, res) => {
   try {
     // If no specific ID requested, return user's quotes
     const userId = req.user.userId;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, status } = req.query;
     
-    const quotes = await Quote.find({
+    console.log('🔍 Fetching quotes for user:', userId);
+    
+    // Build query to find quotes belonging to user's quote requests
+    const userQuoteRequests = await QuoteRequest.find({
       $or: [
-        { 'quoteRequest.userId': userId },
-        { 'quoteRequest.submittedBy': userId }
+        { userId: userId },
+        { submittedBy: userId }
       ]
-    })
-    .populate('quoteRequest')
-    .populate('product')
-    .populate('vendor')
-    .sort({ createdAt: -1 })
-    .skip((parseInt(page) - 1) * parseInt(limit))
-    .limit(parseInt(limit))
-    .lean();
+    }).select('_id').lean();
+    
+    const quoteRequestIds = userQuoteRequests.map(qr => qr._id);
+    
+    const query = {
+      quoteRequest: { $in: quoteRequestIds }
+    };
+    
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    const quotes = await Quote.find(query)
+      .populate('quoteRequest')
+      .populate('product')
+      .populate('vendor')
+      .sort({ createdAt: -1 })
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit))
+      .lean();
+    
+    const total = await Quote.countDocuments(query);
     
     res.json({
       success: true,
       quotes,
-      count: quotes.length
+      count: quotes.length,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
     });
     
   } catch (error) {
     console.error('❌ Error fetching quotes:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch quotes'
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quotes',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_020'
     });
   }
 });
