@@ -131,10 +131,10 @@ const quoteRequestSchema = new mongoose.Schema({
     ref: 'Quote' 
   }],
 
-  // Status Tracking
+  // FIXED: Updated status field to include 'matched' for AI processing
   status: { 
     type: String, 
-    enum: ['pending', 'processing', 'quotes_generated', 'quotes_sent', 'completed', 'cancelled'],
+    enum: ['pending', 'processing', 'matched', 'quotes_generated', 'quotes_sent', 'completed', 'cancelled'],
     default: 'pending'
   },
 
