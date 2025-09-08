@@ -131,7 +131,7 @@ class AIEngineAdapter {
   }
 
   /**
-   * Convert AIRecommendationEngine results to Quote format with comprehensive error handling
+   * Convert AIRecommendationEngine results to Quote format with ALL required fields
    */
   static convertToQuoteFormat(recommendation, quoteRequest, ranking) {
     try {
@@ -157,6 +157,20 @@ class AIEngineAdapter {
         savingsPercentage: 0,
         breakdown: {}
       };
+
+      // Extract CPC rates from product or use defaults
+      const monoRate = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
+      const colourRate = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
+      
+      // Calculate monthly volumes
+      const monthlyMono = quoteRequest.monthlyVolume?.mono || 0;
+      const monthlyColour = quoteRequest.monthlyVolume?.colour || 0;
+      const totalVolume = monthlyMono + monthlyColour;
+
+      // Calculate CPC costs
+      const monoCpcCost = monthlyMono * monoRate;
+      const colourCpcCost = monthlyColour * colourRate;
+      const totalCpcCost = monoCpcCost + colourCpcCost;
       
       return {
         quoteRequest: quoteRequest._id,
@@ -188,10 +202,23 @@ class AIEngineAdapter {
           profitMargin: product.costs?.profitMargin || (product.salePrice || 0) * 0.3,
           totalMachineCost: product.costs?.totalMachineCost || product.salePrice || 0,
           
+          // REQUIRED: CPC Rates section
+          cpcRates: {
+            paperSize: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
+            monoRate: monoRate,
+            colourRate: colourRate
+          },
+          
           monthlyCosts: {
-            monoPages: quoteRequest.monthlyVolume?.mono || 0,
-            colourPages: quoteRequest.monthlyVolume?.colour || 0,
-            cpcCosts: costInfo.breakdown?.newCPC || (costInfo.newTotalMonthlyCost || 0) * 0.4,
+            monoPages: monthlyMono,
+            colourPages: monthlyColour,
+            
+            // REQUIRED: Individual CPC costs
+            monoCpcCost: Math.round(monoCpcCost * 100) / 100,
+            colourCpcCost: Math.round(colourCpcCost * 100) / 100,
+            totalCpcCost: Math.round(totalCpcCost * 100) / 100,
+            
+            cpcCosts: totalCpcCost, // Legacy field
             leaseCost: (recommendation.quarterlyLease || 300) / 3,
             serviceCost: costInfo.breakdown?.serviceCost || (costInfo.newTotalMonthlyCost || 0) * 0.1 || 50,
             totalMonthlyCost: costInfo.newTotalMonthlyCost || 0
@@ -205,6 +232,18 @@ class AIEngineAdapter {
               `Save £${costInfo.monthlySavings}/month` :
               `£${Math.abs(costInfo.monthlySavings || 0)}/month more than current`
           }
+        },
+        
+        // REQUIRED: User Requirements section
+        userRequirements: {
+          monthlyVolume: {
+            mono: monthlyMono,
+            colour: monthlyColour,
+            total: totalVolume
+          },
+          paperSize: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
+          priority: quoteRequest.requirements?.priority || 'cost',
+          maxBudget: quoteRequest.budget?.maxLeasePrice || 300
         },
         
         leaseOptions: this.createLeaseOptions(product, recommendation.quarterlyLease, recommendation.termMonths),
@@ -423,6 +462,11 @@ class AIEngineAdapter {
         throw new Error('Valid quote request with _id required for sample quotes');
       }
 
+      // Calculate sample values based on request
+      const monthlyMono = quoteRequest.monthlyVolume?.mono || 1000;
+      const monthlyColour = quoteRequest.monthlyVolume?.colour || 500;
+      const totalVolume = monthlyMono + monthlyColour;
+
       // This would be useful for testing the Quote model without AI dependencies
       const sampleQuotes = [
         {
@@ -445,9 +489,23 @@ class AIEngineAdapter {
             machineCost: 2100,
             installation: 250,
             profitMargin: 650,
+            
+            // REQUIRED: CPC Rates
+            cpcRates: {
+              paperSize: 'A4',
+              monoRate: 0.01,
+              colourRate: 0.04
+            },
+            
             monthlyCosts: {
-              monoPages: quoteRequest.monthlyVolume?.mono || 1000,
-              colourPages: quoteRequest.monthlyVolume?.colour || 500,
+              monoPages: monthlyMono,
+              colourPages: monthlyColour,
+              
+              // REQUIRED: Individual CPC costs
+              monoCpcCost: monthlyMono * 0.01,
+              colourCpcCost: monthlyColour * 0.04,
+              totalCpcCost: (monthlyMono * 0.01) + (monthlyColour * 0.04),
+              
               cpcCosts: 45,
               leaseCost: 100,
               serviceCost: 35,
@@ -460,6 +518,19 @@ class AIEngineAdapter {
               description: 'Save £50/month'
             }
           },
+          
+          // REQUIRED: User Requirements
+          userRequirements: {
+            monthlyVolume: {
+              mono: monthlyMono,
+              colour: monthlyColour,
+              total: totalVolume
+            },
+            paperSize: quoteRequest.paperRequirements?.primarySize || 'A4',
+            priority: quoteRequest.requirements?.priority || 'cost',
+            maxBudget: quoteRequest.budget?.maxLeasePrice || 300
+          },
+          
           productSummary: {
             manufacturer: 'Sample Corp',
             model: 'Test Model 2000',
