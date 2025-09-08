@@ -3,13 +3,13 @@ import express from 'express';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
 import AIEngineAdapter from '../services/aiEngineAdapter.js';
-import { authenticateToken } from '../middleware/auth.js';
+import auth from '../middleware/auth.js';
 import logger from '../services/logger.js';
 
 const router = express.Router();
 
 // POST /api/quotes/requests - Create new quote request and trigger AI matching
-router.post('/requests', authenticateToken, async (req, res) => {
+router.post('/requests', auth, async (req, res) => {
   try {
     const userId = req.user.userId;
     console.log('📝 Creating new quote request for user:', userId);
@@ -271,7 +271,7 @@ router.post('/requests', authenticateToken, async (req, res) => {
 });
 
 // GET /api/quotes/requests - Get quote requests for user (with proper filtering)
-router.get('/requests', authenticateToken, async (req, res) => {
+router.get('/requests', auth, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { page = 1, limit = 10, status, userId: queryUserId, submittedBy } = req.query;
@@ -336,7 +336,7 @@ router.get('/requests', authenticateToken, async (req, res) => {
 });
 
 // POST /api/quotes/retry-matching/:requestId - Retry AI matching for a specific request
-router.post('/retry-matching/:requestId', authenticateToken, async (req, res) => {
+router.post('/retry-matching/:requestId', auth, async (req, res) => {
   try {
     const { requestId } = req.params;
     const userId = req.user.userId;
@@ -397,7 +397,7 @@ router.post('/retry-matching/:requestId', authenticateToken, async (req, res) =>
 });
 
 // GET /api/quotes/:id - Get specific quote details
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
@@ -445,7 +445,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // POST /api/quotes/accept - Accept a quote
-router.post('/accept', authenticateToken, async (req, res) => {
+router.post('/accept', auth, async (req, res) => {
   try {
     const { quoteId, vendorName } = req.body;
     const userId = req.user.userId;
@@ -500,7 +500,7 @@ router.post('/accept', authenticateToken, async (req, res) => {
 });
 
 // POST /api/quotes/contact - Contact vendor about a quote
-router.post('/contact', authenticateToken, async (req, res) => {
+router.post('/contact', auth, async (req, res) => {
   try {
     const { quoteId, vendorName } = req.body;
     const userId = req.user.userId;
@@ -568,7 +568,7 @@ router.post('/request', async (req, res) => {
 });
 
 // GET /api/quotes - Alternative endpoint for getting quotes
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     // If no specific ID requested, return user's quotes
     const userId = req.user.userId;
