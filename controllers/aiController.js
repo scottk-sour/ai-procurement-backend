@@ -40,7 +40,7 @@ class OpenAIService {
       clearTimeout(timeoutId);
       return completion;
     } catch (error) {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       
       if (attempt < this.retryCount && this.isRetryableError(error)) {
         logger.warn(`OpenAI API attempt ${attempt} failed, retrying...`, {
@@ -62,6 +62,8 @@ class OpenAIService {
       error.name === 'AbortError' ||
       error.code === 'ECONNRESET' ||
       error.code === 'ETIMEDOUT' ||
+      error.code === 'ENOTFOUND' ||
+      error.code === 'ECONNREFUSED' ||
       (error.status >= 500 && error.status < 600) ||
       error.status === 429 // Rate limit
     );
@@ -86,6 +88,10 @@ export const aiRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/health';
+  },
   handler: (req, res) => {
     logger.warn('Rate limit exceeded', {
       ip: req.ip,
@@ -97,12 +103,12 @@ export const aiRateLimit = rateLimit({
       error: 'Too many AI requests. Please wait a moment before trying again.',
       success: false,
       suggestions: [],
-      retryAfter: Math.ceil(60) // seconds
+      retryAfter: 60 // seconds
     });
   }
 });
 
-// Enhanced input validation
+// Enhanced input validation with better error messages
 function validateFormData(formData) {
   const errors = [];
   
@@ -111,54 +117,83 @@ function validateFormData(formData) {
     return { isValid: false, errors };
   }
 
-  // Validate monthly volume
+  // Validate monthly volume with more detailed checks
   if (formData.monthlyVolume) {
-    const volume = formData.monthlyVolume.total || 
-                  (formData.monthlyVolume.mono || 0) + (formData.monthlyVolume.colour || 0);
-    
-    if (typeof volume !== 'number' || volume < 0 || volume > 1000000) {
-      errors.push('monthlyVolume must be a positive number between 0 and 1,000,000');
+    if (typeof formData.monthlyVolume !== 'object') {
+      errors.push('monthlyVolume must be an object');
+    } else {
+      const volume = formData.monthlyVolume.total || 
+                    (formData.monthlyVolume.mono || 0) + (formData.monthlyVolume.colour || 0);
+      
+      if (volume !== undefined && (typeof volume !== 'number' || volume < 0 || volume > 1000000)) {
+        errors.push('monthlyVolume must be a positive number between 0 and 1,000,000');
+      }
     }
   }
 
   // Validate industry type
-  if (formData.industryType && typeof formData.industryType !== 'string') {
+  if (formData.industryType !== undefined && typeof formData.industryType !== 'string') {
     errors.push('industryType must be a string');
   }
 
   // Validate required functions
-  if (formData.required_functions && !Array.isArray(formData.required_functions)) {
-    errors.push('required_functions must be an array');
+  if (formData.required_functions !== undefined) {
+    if (!Array.isArray(formData.required_functions)) {
+      errors.push('required_functions must be an array');
+    } else if (formData.required_functions.length > 20) {
+      errors.push('required_functions array cannot have more than 20 items');
+    }
   }
 
   // Validate budget
-  if (formData.max_lease_price && (typeof formData.max_lease_price !== 'number' || formData.max_lease_price < 0)) {
-    errors.push('max_lease_price must be a positive number');
+  if (formData.max_lease_price !== undefined && 
+      (typeof formData.max_lease_price !== 'number' || formData.max_lease_price < 0 || formData.max_lease_price > 100000)) {
+    errors.push('max_lease_price must be a positive number between 0 and 100,000');
+  }
+
+  // Validate paper type
+  const validPaperTypes = ['A4', 'A3', 'Letter', 'Legal', 'Tabloid'];
+  if (formData.type !== undefined && !validPaperTypes.includes(formData.type)) {
+    errors.push(`paper type must be one of: ${validPaperTypes.join(', ')}`);
+  }
+
+  // Validate speed requirement
+  if (formData.min_speed !== undefined && 
+      (typeof formData.min_speed !== 'number' || formData.min_speed < 1 || formData.min_speed > 200)) {
+    errors.push('min_speed must be a number between 1 and 200');
   }
 
   return { isValid: errors.length === 0, errors };
 }
 
-// Enhanced response parsing with regex
+// Enhanced response parsing with better error handling
 function parseSuggestions(responseText) {
   try {
     if (!responseText || typeof responseText !== 'string') {
-      return [];
+      logger.warn('Invalid response text from OpenAI:', typeof responseText);
+      return getDefaultSuggestions();
     }
 
-    // Multiple parsing strategies for robustness
     let suggestions = [];
     
-    // Strategy 1: Model - Description format
+    // Strategy 1: Model - Description format (most reliable)
     const modelDescPattern = /^(.+?)\s*[-–—]\s*(.+)$/gm;
     const matches = responseText.match(modelDescPattern);
     
     if (matches && matches.length > 0) {
-      suggestions = matches.slice(0, 3).map(line => {
-        const [, model, description] = line.match(/^(.+?)\s*[-–—]\s*(.+)$/) || [];
+      suggestions = matches.slice(0, 3).map((line, index) => {
+        const matchResult = line.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+        if (matchResult) {
+          const [, model, description] = matchResult;
+          return {
+            model: model?.trim() || `Recommendation ${index + 1}`,
+            description: description?.trim() || 'Professional multifunction printer suitable for your requirements.',
+            rawText: line.trim()
+          };
+        }
         return {
-          model: model?.trim() || 'Unknown Model',
-          description: description?.trim() || 'No description available',
+          model: `Recommendation ${index + 1}`,
+          description: line.trim(),
           rawText: line.trim()
         };
       });
@@ -170,13 +205,13 @@ function parseSuggestions(responseText) {
       const numberedMatches = responseText.match(numberedPattern);
       
       if (numberedMatches) {
-        suggestions = numberedMatches.slice(0, 3).map(line => {
+        suggestions = numberedMatches.slice(0, 3).map((line, index) => {
           const cleanLine = line.replace(/^\d+\.?\s*/, '').trim();
           const parts = cleanLine.split(/\s*[-–—]\s*/);
           
           return {
-            model: parts[0]?.trim() || 'Model',
-            description: parts[1]?.trim() || cleanLine,
+            model: parts[0]?.trim() || `Option ${index + 1}`,
+            description: parts[1]?.trim() || parts[0]?.trim() || 'Suitable multifunction printer',
             rawText: cleanLine
           };
         });
@@ -187,34 +222,66 @@ function parseSuggestions(responseText) {
     if (suggestions.length === 0) {
       const lines = responseText.split('\n')
         .map(line => line.trim())
-        .filter(line => line && !line.toLowerCase().includes('here are') && !line.toLowerCase().includes('based on'))
+        .filter(line => 
+          line && 
+          line.length > 10 &&
+          !line.toLowerCase().includes('here are') && 
+          !line.toLowerCase().includes('based on') &&
+          !line.toLowerCase().includes('requirements')
+        )
         .slice(0, 3);
       
-      suggestions = lines.map(line => ({
-        model: 'Recommended Model',
-        description: line,
-        rawText: line
-      }));
+      if (lines.length > 0) {
+        suggestions = lines.map((line, index) => ({
+          model: `Professional Option ${index + 1}`,
+          description: line,
+          rawText: line
+        }));
+      }
     }
 
-    return suggestions.length > 0 ? suggestions : [{
-      model: 'General Recommendation',
-      description: 'Please contact our experts for personalized recommendations based on your specific requirements.',
-      rawText: 'Fallback recommendation'
-    }];
+    // Ensure we always return something useful
+    if (suggestions.length === 0) {
+      return getDefaultSuggestions();
+    }
+
+    // Validate suggestions before returning
+    return suggestions.map(suggestion => ({
+      model: suggestion.model || 'Professional Printer',
+      description: suggestion.description || 'High-quality multifunction printer suitable for office use.',
+      rawText: suggestion.rawText || suggestion.description || 'Professional recommendation'
+    }));
     
   } catch (error) {
     logger.error('Error parsing AI suggestions:', error);
-    return [{
-      model: 'Error',
-      description: 'Unable to process recommendations. Please try again.',
-      rawText: 'Error fallback'
-    }];
+    return getDefaultSuggestions();
   }
 }
 
-// Build comprehensive prompt
+// Default suggestions fallback
+function getDefaultSuggestions() {
+  return [
+    {
+      model: 'Canon imageRUNNER ADVANCE',
+      description: 'Reliable multifunction printer suitable for office environments with comprehensive printing, copying, and scanning capabilities.',
+      rawText: 'Canon imageRUNNER ADVANCE - Professional office solution'
+    },
+    {
+      model: 'Xerox WorkCentre Series',
+      description: 'High-performance multifunction device with advanced document management features and excellent print quality.',
+      rawText: 'Xerox WorkCentre Series - Enterprise-grade solution'
+    },
+    {
+      model: 'HP LaserJet Pro MFP',
+      description: 'Cost-effective multifunction printer with fast printing speeds and wireless connectivity options.',
+      rawText: 'HP LaserJet Pro MFP - Versatile office printer'
+    }
+  ];
+}
+
+// Build comprehensive and safe prompt
 function buildPrompt(formData) {
+  // Safely extract values with defaults
   const volume = formData.monthlyVolume?.total || 
                 (formData.monthlyVolume?.mono || 0) + (formData.monthlyVolume?.colour || 0) || 
                 'Not specified';
@@ -222,19 +289,22 @@ function buildPrompt(formData) {
   const speedRequirement = formData.min_speed ? `${formData.min_speed} PPM minimum` : 'Standard office speed';
   const budget = formData.max_lease_price ? `£${formData.max_lease_price}/month maximum` : 'Budget flexible';
   const functions = formData.required_functions?.length > 0 ? 
-    formData.required_functions.join(', ') : 'Print, Copy, Scan';
+    formData.required_functions.slice(0, 10).join(', ') : 'Print, Copy, Scan'; // Limit functions to prevent prompt injection
+  
+  // Sanitize string inputs to prevent prompt injection
+  const sanitize = (str) => str ? str.replace(/[^\w\s\-.,]/g, '').slice(0, 100) : '';
 
   return `You are an expert copier/printer procurement specialist. Based on these requirements, recommend exactly 3 specific multifunction printer models that would be suitable:
 
 REQUIREMENTS:
 • Monthly Volume: ${volume} pages
-• Industry: ${formData.industryType || 'General office'}
+• Industry: ${sanitize(formData.industryType) || 'General office'}
 • Paper Size: ${formData.type || 'A4'}
 • Speed Required: ${speedRequirement}
-• Color Needed: ${formData.colour || 'Not specified'}
+• Color Needed: ${sanitize(formData.colour) || 'Not specified'}
 • Budget: ${budget}
 • Required Functions: ${functions}
-• Location: ${formData.location || 'UK'}
+• Location: ${sanitize(formData.location) || 'UK'}
 
 FORMAT: Provide exactly 3 recommendations in this format:
 [Manufacturer Model] - [Brief explanation focusing on why it suits their volume and requirements]
@@ -245,7 +315,7 @@ Canon imageRUNNER ADVANCE C3330i - Perfect for your 5,000 page monthly volume wi
 Keep each recommendation to 1-2 sentences maximum. Focus on volume suitability, speed match, and key features that address their specific needs.`;
 }
 
-// Main controller function
+// Main controller function with enhanced error handling
 export const suggestCopiers = async (req, res) => {
   const startTime = Date.now();
   let tokenUsage = null;
@@ -254,17 +324,29 @@ export const suggestCopiers = async (req, res) => {
     logger.info('AI suggestion request received', {
       ip: req.ip,
       userAgent: req.get('User-Agent'),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      hasFormData: !!req.body?.formData
     });
 
     // Input validation
     const { formData } = req.body;
+    
+    if (!formData) {
+      logger.warn('Missing formData in request', { ip: req.ip });
+      return res.status(400).json({
+        error: 'formData is required',
+        success: false,
+        suggestions: []
+      });
+    }
+
     const validation = validateFormData(formData);
     
     if (!validation.isValid) {
       logger.warn('Invalid form data received', {
         errors: validation.errors,
-        ip: req.ip
+        ip: req.ip,
+        formData: formData ? Object.keys(formData) : null
       });
       
       return res.status(400).json({
@@ -281,16 +363,20 @@ export const suggestCopiers = async (req, res) => {
     logger.info('Generating AI suggestions', {
       industry: formData.industryType,
       volume: formData.monthlyVolume?.total || 0,
-      budget: formData.max_lease_price
+      budget: formData.max_lease_price,
+      promptLength: prompt.length
     });
 
+    // Determine model to use (with fallback)
+    const model = process.env.OPENAI_MODEL || "gpt-4";
+    
     // Call OpenAI with retry logic
     const completion = await openAIService.completionWithRetry({
-      model: process.env.OPENAI_MODEL || "gpt-4",
+      model,
       messages: [
         {
           role: "system",
-          content: "You are a professional office equipment procurement expert with deep knowledge of multifunction printers, copiers, and their optimal usage scenarios. Provide specific, accurate model recommendations."
+          content: "You are a professional office equipment procurement expert with deep knowledge of multifunction printers, copiers, and their optimal usage scenarios. Provide specific, accurate model recommendations based on the user's requirements. Always respond with exactly 3 recommendations in the requested format."
         },
         {
           role: "user",
@@ -300,7 +386,8 @@ export const suggestCopiers = async (req, res) => {
       max_tokens: 500,
       temperature: 0.3, // Lower for more consistent recommendations
       top_p: 0.9,
-      frequency_penalty: 0.1
+      frequency_penalty: 0.1,
+      presence_penalty: 0.1
     });
 
     if (!completion?.choices?.[0]?.message?.content) {
@@ -321,6 +408,7 @@ export const suggestCopiers = async (req, res) => {
       volume: formData.monthlyVolume?.total || 0,
       suggestionsCount: suggestions.length,
       processingTime,
+      model,
       tokenUsage: tokenUsage ? {
         prompt: tokenUsage.prompt_tokens,
         completion: tokenUsage.completion_tokens,
@@ -334,10 +422,10 @@ export const suggestCopiers = async (req, res) => {
       suggestions,
       metadata: {
         processingTime,
-        model: process.env.OPENAI_MODEL || "gpt-4",
-        tokenUsage,
+        model,
+        tokenUsage: process.env.NODE_ENV === 'production' ? undefined : tokenUsage, // Hide in production
         generatedAt: new Date().toISOString(),
-        requestId: req.id || null // If you have request ID middleware
+        requestId: req.id || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       }
     });
 
@@ -350,15 +438,14 @@ export const suggestCopiers = async (req, res) => {
         message: error.message,
         name: error.name,
         code: error.code,
-        status: error.status
+        status: error.status,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
       request: {
         ip: req.ip,
         userAgent: req.get('User-Agent'),
-        formData: req.body.formData ? {
-          industry: req.body.formData.industryType,
-          volume: req.body.formData.monthlyVolume?.total
-        } : null
+        hasFormData: !!req.body?.formData,
+        formDataKeys: req.body?.formData ? Object.keys(req.body.formData) : null
       },
       processingTime,
       timestamp: new Date().toISOString()
@@ -369,7 +456,7 @@ export const suggestCopiers = async (req, res) => {
       return res.status(500).json({
         error: 'Service configuration error. Please contact support.',
         success: false,
-        suggestions: [],
+        suggestions: getDefaultSuggestions(),
         code: 'AUTH_ERROR'
       });
     }
@@ -378,7 +465,7 @@ export const suggestCopiers = async (req, res) => {
       return res.status(503).json({
         error: 'AI service temporarily unavailable due to high demand. Please try again in a few minutes.',
         success: false,
-        suggestions: [],
+        suggestions: getDefaultSuggestions(),
         code: 'QUOTA_EXCEEDED',
         retryAfter: 300 // 5 minutes
       });
@@ -388,7 +475,7 @@ export const suggestCopiers = async (req, res) => {
       return res.status(408).json({
         error: 'Request timed out. Please try again.',
         success: false,
-        suggestions: [],
+        suggestions: getDefaultSuggestions(),
         code: 'TIMEOUT'
       });
     }
@@ -397,47 +484,70 @@ export const suggestCopiers = async (req, res) => {
       return res.status(400).json({
         error: 'Invalid request. Please check your input and try again.',
         success: false,
-        suggestions: [],
+        suggestions: getDefaultSuggestions(),
         code: 'CLIENT_ERROR'
       });
     }
 
-    // Generic server error
+    // Generic server error - always provide fallback suggestions
     res.status(500).json({
       error: 'AI suggestion service temporarily unavailable. Please try again later.',
       success: false,
-      suggestions: [],
+      suggestions: getDefaultSuggestions(),
       code: 'SERVER_ERROR'
     });
   }
 };
 
-// Health check endpoint
+// Health check endpoint with better error handling
 export const healthCheck = async (req, res) => {
   try {
-    const client = openAIService.getClient();
-    
-    // Basic connectivity test
-    const testCompletion = await client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: "Hello" }],
-      max_tokens: 5
-    });
-
-    res.json({
+    const healthData = {
       status: 'healthy',
-      openai: 'connected',
-      model: process.env.OPENAI_MODEL || "gpt-4",
       timestamp: new Date().toISOString(),
-      version: '2.0.0'
-    });
+      version: '2.0.0',
+      environment: process.env.NODE_ENV,
+      uptime: Math.floor(process.uptime())
+    };
+
+    // Only test OpenAI connection if API key is available
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const client = openAIService.getClient();
+        
+        // Quick test with minimal token usage
+        const testCompletion = await Promise.race([
+          client.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [{ role: "user", content: "Hi" }],
+            max_tokens: 5
+          }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Health check timeout')), 5000)
+          )
+        ]);
+
+        healthData.openai = 'connected';
+        healthData.model = process.env.OPENAI_MODEL || "gpt-4";
+      } catch (openaiError) {
+        logger.warn('OpenAI health check failed:', openaiError.message);
+        healthData.openai = 'disconnected';
+        healthData.openaiError = openaiError.message;
+      }
+    } else {
+      healthData.openai = 'not_configured';
+    }
+
+    const statusCode = healthData.openai === 'connected' || healthData.openai === 'not_configured' ? 200 : 503;
+    res.status(statusCode).json(healthData);
+    
   } catch (error) {
     logger.error('Health check failed', error);
     res.status(503).json({
       status: 'unhealthy',
-      openai: 'disconnected',
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      version: '2.0.0'
     });
   }
 };
