@@ -362,26 +362,197 @@ router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res)
   }
 });
 
-// AI recommendations
+// Enhanced AI recommendations with vendor data
 router.get('/recommend', recommendLimiter, async (req, res) => {
   try {
     const userId = req.query.userId;
-    if (!userId) return res.status(400).json({ message: 'Missing userId in query.' });
-    if (!isValidObjectId(userId)) return res.status(400).json({ message: 'Invalid userId format.' });
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Missing userId in query.' 
+      });
+    }
+    
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid userId format.' 
+      });
+    }
 
-    const quotes = await CopierQuoteRequest.find({ userId }).sort({ createdAt: -1 });
-    if (!quotes.length) return res.status(404).json({ message: 'No quote requests found for this user.' });
+    console.log(`🔍 Fetching vendor recommendations for user: ${userId}`);
 
-    const recommendations = await AIRecommendationEngine.generateRecommendations(
-      quotes[0],
-      userId,
-      []
-    );
+    // Get user's recent quote requests to understand their needs
+    const recentQuotes = await CopierQuoteRequest.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
 
-    res.status(200).json({ recommendations });
+    if (!recentQuotes.length) {
+      // If no quote history, return general top-rated vendors
+      const generalVendors = await Vendor.find({ status: 'active' })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('name email company services status')
+        .lean();
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          vendors: generalVendors,
+          basedOn: {
+            type: 'general',
+            message: 'No previous quote history found. Showing active vendors.'
+          }
+        }
+      });
+    }
+
+    // Extract service types and preferences from recent requests
+    const latestQuote = recentQuotes[0];
+    const serviceTypes = [...new Set(recentQuotes.map(q => q.serviceType).filter(Boolean))];
+    const monthlyVolumes = recentQuotes.map(q => q.monthlyVolume).filter(Boolean);
+    const budgets = recentQuotes.map(q => q.budget?.maxLeasePrice).filter(Boolean);
+
+    // Build recommendation criteria
+    let vendorQuery = { status: 'active' };
+    
+    // Filter by service types if available
+    if (serviceTypes.length > 0) {
+      vendorQuery.services = { $in: serviceTypes };
+    }
+
+    // Get vendors that match criteria
+    let recommendedVendors = await Vendor.find(vendorQuery)
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('name email company services status uploads')
+      .lean();
+
+    // If not enough vendors found, get additional vendors
+    if (recommendedVendors.length < 5) {
+      const additionalVendors = await Vendor.find({
+        status: 'active',
+        _id: { $nin: recommendedVendors.map(v => v._id) }
+      })
+      .sort({ createdAt: -1 })
+      .limit(10 - recommendedVendors.length)
+      .select('name email company services status uploads')
+      .lean();
+      
+      recommendedVendors.push(...additionalVendors);
+    }
+
+    // Also try to get AI recommendations using your existing engine
+    let aiRecommendations = [];
+    try {
+      const aiResult = await AIRecommendationEngine.generateRecommendations(
+        latestQuote,
+        userId,
+        []
+      );
+      aiRecommendations = aiResult || [];
+    } catch (aiError) {
+      console.error('AI recommendation engine error:', aiError.message);
+    }
+
+    // Enhance vendor data with additional info
+    const enhancedVendors = recommendedVendors.map(vendor => ({
+      ...vendor,
+      hasUploads: vendor.uploads && vendor.uploads.length > 0,
+      productCount: vendor.uploads ? vendor.uploads.length : 0,
+      matchReason: serviceTypes.includes(vendor.services?.[0]) ? 'Service match' : 'General recommendation'
+    }));
+
+    console.log(`✅ Found ${enhancedVendors.length} vendor recommendations`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        vendors: enhancedVendors,
+        basedOn: {
+          recentRequests: recentQuotes.length,
+          serviceTypes: serviceTypes,
+          latestBudget: budgets[0] || null,
+          aiRecommendations: aiRecommendations.length
+        }
+      }
+    });
+
   } catch (error) {
     console.error('❌ Error in /recommend endpoint:', error.message);
-    res.status(500).json({ message: 'Failed to get AI recommendations.', error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to get vendor recommendations.',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Additional endpoint for getting all vendors with filtering
+router.get('/all', async (req, res) => {
+  try {
+    const { 
+      serviceType, 
+      company, 
+      status = 'active',
+      page = 1, 
+      limit = 20 
+    } = req.query;
+
+    console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
+
+    // Build filter query
+    let filter = { status };
+    
+    if (serviceType) {
+      filter.services = { $in: [serviceType] };
+    }
+    
+    if (company) {
+      filter.company = { $regex: company, $options: 'i' };
+    }
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const vendors = await Vendor.find(filter)
+      .select('name email company services status uploads createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    const total = await Vendor.countDocuments(filter);
+
+    // Enhance vendor data
+    const enhancedVendors = vendors.map(vendor => ({
+      ...vendor,
+      hasProducts: vendor.uploads && vendor.uploads.length > 0,
+      uploadCount: vendor.uploads ? vendor.uploads.length : 0
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        vendors: enhancedVendors,
+        pagination: {
+          current: pageNum,
+          total: Math.ceil(total / limitNum),
+          count: vendors.length,
+          totalRecords: total
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching all vendors:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch vendors',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 });
 
