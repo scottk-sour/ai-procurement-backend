@@ -16,6 +16,97 @@ const validateRequiredFields = (fields, data) => {
   }
 };
 
+// GET /api/quotes/user/:userId/latest - Get user's most recent quote request quotes (max 3)
+router.get('/user/:userId/latest', userAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🔍 Fetching latest quotes for user:', userId);
+    
+    // Validate user access
+    if (userId !== req.user.userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
+    }
+    
+    // Find the most recent quote request with quotes
+    const latestRequest = await QuoteRequest.findOne({
+      $or: [
+        { userId: userId },
+        { submittedBy: userId }
+      ],
+      status: 'matched',
+      quotes: { $exists: true, $not: { $size: 0 } }
+    }).sort({ createdAt: -1 }).populate('quotes').lean();
+    
+    if (!latestRequest) {
+      console.log('📭 No quote requests with quotes found for user:', userId);
+      return res.json({ 
+        success: true, 
+        quotes: [], 
+        count: 0,
+        message: 'No quotes found',
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestedBy: userId,
+          recommendationType: 'latest_quotes'
+        }
+      });
+    }
+    
+    console.log(`📋 Found latest request: ${latestRequest._id} with ${latestRequest.quotes.length} quotes`);
+    
+    // Get the quotes from the latest request, limited to 3
+    const quotes = await Quote.find({ 
+      _id: { $in: latestRequest.quotes } 
+    })
+    .populate('vendor')
+    .populate('product')
+    .limit(3) // Limit to exactly 3 quotes
+    .lean();
+    
+    // Add request context to each quote
+    const quotesWithContext = quotes.map(quote => ({
+      ...quote,
+      quoteRequestId: latestRequest._id,
+      companyName: latestRequest.companyName,
+      monthlyVolume: latestRequest.monthlyVolume,
+      requestBudget: latestRequest.budget
+    }));
+    
+    console.log(`✅ Returning ${quotesWithContext.length} latest quotes for user ${userId}`);
+    
+    res.json({ 
+      success: true, 
+      quotes: quotesWithContext, 
+      count: quotesWithContext.length,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        requestedBy: userId,
+        latestRequestId: latestRequest._id,
+        latestRequestDate: latestRequest.createdAt,
+        companyName: latestRequest.companyName,
+        totalQuotesInRequest: latestRequest.quotes.length,
+        returnedCount: quotesWithContext.length,
+        aiPowered: true,
+        recommendationType: 'latest_quotes'
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching latest quotes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch latest quotes',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_021'
+    });
+  }
+});
+
 // GET /api/quotes/user/:userId - Get user's generated quotes for comparison
 router.get('/user/:userId', userAuth, async (req, res) => {
   try {
