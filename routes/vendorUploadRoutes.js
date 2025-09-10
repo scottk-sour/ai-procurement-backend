@@ -80,9 +80,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
       password: hashedPassword,
       company,
       services,
-      uploads: [],
-      machines: [],
-      status: 'active',
+      account: {
+        status: 'active'
+      }
     });
     await newVendor.save();
 
@@ -211,8 +211,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status,
-        uploads: vendor.uploads,
+        status: vendor.account?.status || 'active'
       },
     });
   } catch (error) {
@@ -225,11 +224,23 @@ router.get('/profile', vendorAuth, async (req, res) => {
 router.get('/uploaded-files', vendorAuth, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const vendor = await Vendor.findById(req.vendorId);
-    if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
+    
+    // Get VendorProducts instead of uploads array
+    const products = await VendorProduct.find({ vendorId: req.vendorId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .lean();
 
-    const startIndex = (page - 1) * limit;
-    const files = (vendor.uploads || []).slice(startIndex, startIndex + parseInt(limit));
+    // Transform to match expected format
+    const files = products.map(product => ({
+      fileName: `${product.model || 'Product'}.json`,
+      uploadDate: product.createdAt,
+      status: 'completed',
+      fileType: 'product',
+      productId: product._id
+    }));
+
     res.status(200).json({ files });
   } catch (error) {
     console.error('❌ Error fetching vendor files:', error.message);
@@ -281,7 +292,7 @@ router.get('/notifications', vendorAuth, async (req, res) => {
         id: `quote-${quote._id}`,
         type: 'quote_opportunity',
         title: 'New Quote Opportunity',
-        message: `New quote request for ${quote.copierType || 'equipment'} - ${quote.monthlyVolume || 'N/A'} pages/month`,
+        message: `New quote request for ${quote.copierType || 'equipment'} - ${quote.monthlyVolume?.mono || 'N/A'} pages/month`,
         timestamp: quote.createdAt,
         isRead: false,
         priority: 'medium',
@@ -362,7 +373,7 @@ router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res)
   }
 });
 
-// Enhanced AI recommendations with vendor data
+// Enhanced AI recommendations with vendor data - CORRECTED to work with your models
 router.get('/recommend', recommendLimiter, async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -382,27 +393,43 @@ router.get('/recommend', recommendLimiter, async (req, res) => {
 
     console.log(`🔍 Fetching vendor recommendations for user: ${userId}`);
 
-    // Get user's recent quote requests to understand their needs
+    // Get user's recent quote requests using CopierQuoteRequest model
     const recentQuotes = await CopierQuoteRequest.find({ userId })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean();
 
     if (!recentQuotes.length) {
-      // If no quote history, return general top-rated vendors
-      const generalVendors = await Vendor.find({ status: 'active' })
+      // If no quote history, return general active vendors
+      const generalVendors = await Vendor.find({ 'account.status': 'active' })
         .sort({ createdAt: -1 })
         .limit(5)
-        .select('name email company services status')
+        .select('name email company services account.status location performance')
         .lean();
+
+      // Transform to match expected format
+      const transformedVendors = generalVendors.map(vendor => ({
+        _id: vendor._id,
+        name: vendor.name,
+        email: vendor.email,
+        company: vendor.company,
+        services: vendor.services,
+        status: vendor.account?.status || 'active',
+        hasUploads: false,
+        productCount: 0,
+        matchReason: 'General recommendation - no quote history'
+      }));
 
       return res.status(200).json({
         success: true,
         data: {
-          vendors: generalVendors,
+          vendors: transformedVendors,
           basedOn: {
             type: 'general',
-            message: 'No previous quote history found. Showing active vendors.'
+            message: 'No previous quote history found. Showing active vendors.',
+            recentRequests: 0,
+            serviceTypes: [],
+            aiRecommendations: 0
           }
         }
       });
@@ -410,12 +437,14 @@ router.get('/recommend', recommendLimiter, async (req, res) => {
 
     // Extract service types and preferences from recent requests
     const latestQuote = recentQuotes[0];
-    const serviceTypes = [...new Set(recentQuotes.map(q => q.serviceType).filter(Boolean))];
+    
+    // Use available fields from CopierQuoteRequest
+    const serviceTypes = ['Photocopiers']; // Default since CopierQuoteRequest is specifically for copiers
     const monthlyVolumes = recentQuotes.map(q => q.monthlyVolume).filter(Boolean);
-    const budgets = recentQuotes.map(q => q.budget?.maxLeasePrice).filter(Boolean);
+    const budgets = recentQuotes.map(q => q.quarterlyPayment).filter(Boolean);
 
-    // Build recommendation criteria
-    let vendorQuery = { status: 'active' };
+    // Build recommendation criteria using your Vendor schema fields
+    let vendorQuery = { 'account.status': 'active' };
     
     // Filter by service types if available
     if (serviceTypes.length > 0) {
@@ -424,24 +453,31 @@ router.get('/recommend', recommendLimiter, async (req, res) => {
 
     // Get vendors that match criteria
     let recommendedVendors = await Vendor.find(vendorQuery)
-      .sort({ createdAt: -1 })
+      .sort({ 'performance.rating': -1, createdAt: -1 })
       .limit(10)
-      .select('name email company services status uploads')
+      .select('name email company services account.status location performance businessProfile')
       .lean();
 
     // If not enough vendors found, get additional vendors
     if (recommendedVendors.length < 5) {
       const additionalVendors = await Vendor.find({
-        status: 'active',
+        'account.status': 'active',
         _id: { $nin: recommendedVendors.map(v => v._id) }
       })
       .sort({ createdAt: -1 })
       .limit(10 - recommendedVendors.length)
-      .select('name email company services status uploads')
+      .select('name email company services account.status location performance businessProfile')
       .lean();
       
       recommendedVendors.push(...additionalVendors);
     }
+
+    // Get product counts for each vendor
+    const vendorIds = recommendedVendors.map(v => v._id);
+    const productCounts = await VendorProduct.aggregate([
+      { $match: { vendorId: { $in: vendorIds } } },
+      { $group: { _id: '$vendorId', count: { $sum: 1 } } }
+    ]);
 
     // Also try to get AI recommendations using your existing engine
     let aiRecommendations = [];
@@ -457,12 +493,24 @@ router.get('/recommend', recommendLimiter, async (req, res) => {
     }
 
     // Enhance vendor data with additional info
-    const enhancedVendors = recommendedVendors.map(vendor => ({
-      ...vendor,
-      hasUploads: vendor.uploads && vendor.uploads.length > 0,
-      productCount: vendor.uploads ? vendor.uploads.length : 0,
-      matchReason: serviceTypes.includes(vendor.services?.[0]) ? 'Service match' : 'General recommendation'
-    }));
+    const enhancedVendors = recommendedVendors.map(vendor => {
+      const productCount = productCounts.find(pc => pc._id.toString() === vendor._id.toString());
+      return {
+        _id: vendor._id,
+        name: vendor.name,
+        email: vendor.email,
+        company: vendor.company,
+        services: vendor.services,
+        status: vendor.account?.status || 'active',
+        rating: vendor.performance?.rating || 0,
+        reviewCount: vendor.performance?.reviewCount || 0,
+        location: vendor.location?.city || vendor.location?.region || '',
+        yearsInBusiness: vendor.businessProfile?.yearsInBusiness || 0,
+        hasUploads: (productCount?.count || 0) > 0,
+        productCount: productCount?.count || 0,
+        matchReason: serviceTypes.some(st => vendor.services?.includes(st)) ? 'Service match' : 'General recommendation'
+      };
+    });
 
     console.log(`✅ Found ${enhancedVendors.length} vendor recommendations`);
 
@@ -474,7 +522,8 @@ router.get('/recommend', recommendLimiter, async (req, res) => {
           recentRequests: recentQuotes.length,
           serviceTypes: serviceTypes,
           latestBudget: budgets[0] || null,
-          aiRecommendations: aiRecommendations.length
+          aiRecommendations: aiRecommendations.length,
+          type: 'based_on_history'
         }
       }
     });
@@ -502,8 +551,8 @@ router.get('/all', async (req, res) => {
 
     console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
 
-    // Build filter query
-    let filter = { status };
+    // Build filter query using your Vendor schema
+    let filter = { 'account.status': status };
     
     if (serviceType) {
       filter.services = { $in: [serviceType] };
@@ -518,20 +567,40 @@ router.get('/all', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const vendors = await Vendor.find(filter)
-      .select('name email company services status uploads createdAt')
-      .sort({ createdAt: -1 })
+      .select('name email company services account.status location performance businessProfile createdAt')
+      .sort({ 'performance.rating': -1, createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean();
 
     const total = await Vendor.countDocuments(filter);
 
+    // Get product counts for each vendor
+    const vendorIds = vendors.map(v => v._id);
+    const productCounts = await VendorProduct.aggregate([
+      { $match: { vendorId: { $in: vendorIds } } },
+      { $group: { _id: '$vendorId', count: { $sum: 1 } } }
+    ]);
+
     // Enhance vendor data
-    const enhancedVendors = vendors.map(vendor => ({
-      ...vendor,
-      hasProducts: vendor.uploads && vendor.uploads.length > 0,
-      uploadCount: vendor.uploads ? vendor.uploads.length : 0
-    }));
+    const enhancedVendors = vendors.map(vendor => {
+      const productCount = productCounts.find(pc => pc._id.toString() === vendor._id.toString());
+      return {
+        _id: vendor._id,
+        name: vendor.name,
+        email: vendor.email,
+        company: vendor.company,
+        services: vendor.services,
+        status: vendor.account?.status || 'active',
+        rating: vendor.performance?.rating || 0,
+        reviewCount: vendor.performance?.reviewCount || 0,
+        location: vendor.location?.city || vendor.location?.region || '',
+        yearsInBusiness: vendor.businessProfile?.yearsInBusiness || 0,
+        hasProducts: (productCount?.count || 0) > 0,
+        uploadCount: productCount?.count || 0,
+        createdAt: vendor.createdAt
+      };
+    });
 
     res.json({
       success: true,
@@ -608,42 +677,9 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    // Record the upload attempt
-    await Vendor.updateOne(
-      { _id: vendor._id },
-      {
-        $push: {
-          uploads: {
-            fileName,
-            filePath,
-            fileType: fileExtension.substring(1), // Remove the dot
-            uploadDate: new Date(),
-            status: 'processing'
-          },
-        },
-      }
-    );
-
     try {
       // Use enhanced import function with validation
       const result = await importVendorProducts(filePath, vendorId);
-
-      // Update upload status
-      await Vendor.updateOne(
-        { _id: vendor._id, 'uploads.fileName': fileName },
-        {
-          $set: {
-            'uploads.$.status': result.success ? 'completed' : 'failed',
-            'uploads.$.processedAt': new Date(),
-            'uploads.$.results': {
-              total: result.stats?.total || 0,
-              saved: result.stats?.saved || 0,
-              errors: result.errors?.length || 0,
-              warnings: result.warnings?.length || 0
-            }
-          }
-        }
-      );
 
       // Clean up uploaded file after processing
       if (fs.existsSync(filePath)) {
@@ -696,18 +732,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       }
 
     } catch (processingError) {
-      // Update upload status to failed
-      await Vendor.updateOne(
-        { _id: vendor._id, 'uploads.fileName': fileName },
-        {
-          $set: {
-            'uploads.$.status': 'failed',
-            'uploads.$.processedAt': new Date(),
-            'uploads.$.error': processingError.message
-          }
-        }
-      );
-
       // Clean up uploaded file
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -973,7 +997,7 @@ router.get("/upload-template", (req, res) => {
 
 /**
  * GET /api/vendors/upload-history
- * Get upload history for the vendor
+ * Get upload history for the vendor (using VendorProduct data)
  */
 router.get("/upload-history", async (req, res) => {
   try {
@@ -985,18 +1009,21 @@ router.get("/upload-history", async (req, res) => {
       });
     }
 
-    const vendor = await Vendor.findById(vendorId).select('uploads').lean();
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: "Vendor not found"
-      });
-    }
+    // Get product upload history from VendorProduct records
+    const products = await VendorProduct.find({ vendorId })
+      .sort({ createdAt: -1 })
+      .select('model createdAt updatedAt')
+      .lean();
 
-    // Sort uploads by date (newest first)
-    const uploads = (vendor.uploads || []).sort((a, b) => 
-      new Date(b.uploadDate) - new Date(a.uploadDate)
-    );
+    // Transform to upload history format
+    const uploads = products.map(product => ({
+      fileName: `${product.model || 'Product'}_${product._id}.json`,
+      uploadDate: product.createdAt,
+      status: 'completed',
+      fileType: 'product',
+      productId: product._id,
+      processedAt: product.updatedAt
+    }));
 
     res.status(200).json({
       success: true,
