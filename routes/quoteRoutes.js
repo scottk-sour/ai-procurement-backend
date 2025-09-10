@@ -274,6 +274,157 @@ router.post('/requests', userAuth, async (req, res) => {
   }
 });
 
+// POST /api/quotes/request-selected - Submit quote requests to selected vendors
+router.post('/request-selected', userAuth, async (req, res) => {
+  try {
+    const {
+      quoteId,
+      userId,
+      selectedVendors,
+      companyName,
+      serviceType,
+      category,
+      description,
+      budget,
+      timeline,
+      requirements
+    } = req.body;
+
+    console.log('📤 Processing quote request for selected vendors:', {
+      quoteId,
+      userId,
+      vendorCount: selectedVendors?.length,
+      companyName,
+      serviceType
+    });
+
+    // Validation
+    if (!userId || !selectedVendors || !Array.isArray(selectedVendors) || selectedVendors.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and selected vendors are required'
+      });
+    }
+
+    if (selectedVendors.length > 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 10 vendors can be selected at once'
+      });
+    }
+
+    const results = [];
+    const createdRequests = [];
+
+    // Create quote request for each selected vendor
+    for (const vendorId of selectedVendors) {
+      try {
+        // Create a new quote request for each vendor
+        const quoteRequestData = {
+          companyName: companyName || 'Unknown Company',
+          contactName: 'Contact via Platform',
+          email: req.user.email || 'noreply@tendorai.com',
+          industryType: 'Various',
+          serviceType: serviceType || 'Photocopiers',
+          monthlyVolume: {
+            mono: 1000,
+            colour: 500,
+            total: 1500
+          },
+          budget: {
+            maxLeasePrice: budget || 300,
+            preferredTerm: '60 months',
+            includeService: true
+          },
+          requirements: {
+            priority: 'cost',
+            essentialFeatures: requirements || []
+          },
+          submittedBy: userId,
+          userId: userId,
+          status: 'vendor_requested',
+          vendorRequested: vendorId,
+          originalQuoteId: quoteId,
+          
+          // Additional metadata
+          requestType: 'vendor_selection',
+          selectedVendors: selectedVendors,
+          
+          // Timeline
+          urgency: {
+            timeframe: timeline || '3-6 months'
+          },
+          
+          // AI Analysis placeholder
+          aiAnalysis: {
+            processed: false,
+            suggestedCategories: [],
+            riskFactors: [],
+            recommendations: []
+          },
+          
+          // System fields
+          submissionSource: 'vendor_selection',
+          quotes: [],
+          internalNotes: [`Request sent to specific vendor: ${vendorId}`]
+        };
+
+        const quoteRequest = new QuoteRequest(quoteRequestData);
+        const savedRequest = await quoteRequest.save();
+        
+        createdRequests.push(savedRequest);
+        results.push({
+          vendorId: vendorId,
+          success: true,
+          quoteRequestId: savedRequest._id
+        });
+
+        console.log(`✅ Quote request created for vendor: ${vendorId}`);
+
+      } catch (error) {
+        console.error(`❌ Failed to create quote request for vendor ${vendorId}:`, error);
+        results.push({
+          vendorId: vendorId,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.filter(r => !r.success).length;
+
+    console.log(`✅ Quote request processing complete: ${successCount} successful, ${failureCount} failed`);
+
+    res.status(201).json({
+      success: true,
+      message: `Quote requests sent to ${successCount} vendors${failureCount > 0 ? `, ${failureCount} failed` : ''}`,
+      data: {
+        summary: {
+          total: selectedVendors.length,
+          successful: successCount,
+          failed: failureCount
+        },
+        results: results,
+        createdRequests: createdRequests.map(req => ({
+          id: req._id,
+          vendorId: req.vendorRequested,
+          status: req.status,
+          submittedAt: req.createdAt
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error processing quote requests:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process quote requests',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
 // GET /api/quotes/requests - Get quote requests for user (with proper filtering)
 router.get('/requests', userAuth, async (req, res) => {
   try {
