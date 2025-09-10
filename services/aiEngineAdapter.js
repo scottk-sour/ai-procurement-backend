@@ -6,7 +6,7 @@ import logger from './logger.js';
 
 /**
  * Production-ready adapter to use AIRecommendationEngine with QuoteRequest/Quote models
- * Includes comprehensive error handling and validation
+ * Includes comprehensive error handling, validation, and vendor deduplication
  */
 class AIEngineAdapter {
   
@@ -128,6 +128,66 @@ class AIEngineAdapter {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Deduplicate recommendations by vendor - keeps the best score per vendor
+   */
+  static deduplicateByVendor(recommendations) {
+    try {
+      logger.info(`Deduplicating ${recommendations.length} recommendations by vendor`);
+      
+      const vendorMap = new Map();
+      
+      for (const rec of recommendations) {
+        const product = rec.product;
+        if (!product?.manufacturer || !product?.model) {
+          logger.warn('Skipping recommendation with missing manufacturer/model');
+          continue;
+        }
+        
+        // Create vendor key using manufacturer + model
+        const vendorKey = `${product.manufacturer.trim()}-${product.model.trim()}`;
+        
+        const currentScore = rec.overallScore || rec.suitability?.score || 0;
+        
+        if (!vendorMap.has(vendorKey)) {
+          // First recommendation for this vendor
+          vendorMap.set(vendorKey, {
+            recommendation: rec,
+            score: currentScore,
+            vendorKey
+          });
+          logger.info(`Added new vendor: ${vendorKey} (score: ${currentScore})`);
+        } else {
+          // Check if this recommendation has better score
+          const existing = vendorMap.get(vendorKey);
+          if (currentScore > existing.score) {
+            vendorMap.set(vendorKey, {
+              recommendation: rec,
+              score: currentScore,
+              vendorKey
+            });
+            logger.info(`Updated vendor ${vendorKey} with better score: ${currentScore} > ${existing.score}`);
+          } else {
+            logger.info(`Skipping duplicate vendor ${vendorKey} (score: ${currentScore} <= ${existing.score})`);
+          }
+        }
+      }
+      
+      // Extract unique recommendations sorted by score
+      const uniqueRecommendations = Array.from(vendorMap.values())
+        .sort((a, b) => b.score - a.score)
+        .map(item => item.recommendation);
+      
+      logger.info(`Deduplication complete: ${recommendations.length} -> ${uniqueRecommendations.length} unique vendors`);
+      
+      return uniqueRecommendations;
+    } catch (error) {
+      logger.error('Error during vendor deduplication:', error);
+      // Fall back to original recommendations if deduplication fails
+      return recommendations;
+    }
   }
 
   /**
@@ -288,7 +348,9 @@ class AIEngineAdapter {
           aiEngineVersion: '2.0',
           generatedAt: new Date(),
           scoringAlgorithm: 'AIRecommendationEngine',
-          quoteRequestId: quoteRequest._id
+          quoteRequestId: quoteRequest._id,
+          originalRanking: ranking,
+          vendorKey: `${product.manufacturer}-${product.model}`
         }
       };
     } catch (error) {
@@ -349,7 +411,7 @@ class AIEngineAdapter {
   }
 
   /**
-   * Main function to use your AI engine with new models - PRODUCTION READY
+   * Main function to use your AI engine with new models - PRODUCTION READY WITH DEDUPLICATION
    */
   static async generateQuotesFromRequest(quoteRequest, userId = null, invoiceFiles = []) {
     try {
@@ -362,12 +424,12 @@ class AIEngineAdapter {
         throw new Error('QuoteRequest must have an _id');
       }
 
-      logger.info(`🤖 Using advanced AIRecommendationEngine for ${quoteRequest.companyName}`);
+      logger.info(`AI Engine processing request for ${quoteRequest.companyName}`);
       
       // Convert new QuoteRequest format to your engine's format
       const convertedRequest = this.convertQuoteRequestFormat(quoteRequest);
       
-      logger.info('🔄 Converted request format:', {
+      logger.info('Request converted:', {
         description: convertedRequest.description,
         monthlyVolume: convertedRequest.monthlyVolume,
         type: convertedRequest.type,
@@ -387,10 +449,10 @@ class AIEngineAdapter {
         throw new Error(`AI recommendation engine failed: ${aiError.message}`);
       }
       
-      logger.info(`📊 AI Engine returned ${recommendations?.length || 0} recommendations`);
+      logger.info(`AI Engine returned ${recommendations?.length || 0} recommendations`);
       
       if (!recommendations || recommendations.length === 0) {
-        logger.warn('⚠️ No recommendations found from AI engine');
+        logger.warn('No recommendations found from AI engine');
         return [];
       }
 
@@ -398,16 +460,24 @@ class AIEngineAdapter {
       const validRecommendations = recommendations.filter(rec => !rec.error);
       
       if (validRecommendations.length === 0) {
-        logger.warn('⚠️ All recommendations contained errors');
+        logger.warn('All recommendations contained errors');
+        return [];
+      }
+
+      // CRITICAL FIX: Deduplicate by vendor BEFORE creating quotes
+      const uniqueRecommendations = this.deduplicateByVendor(validRecommendations);
+      
+      if (uniqueRecommendations.length === 0) {
+        logger.warn('No unique vendor recommendations after deduplication');
         return [];
       }
 
       // Convert recommendations to Quote format and save
       const quotes = [];
-      const maxQuotes = Math.min(validRecommendations.length, 3);
+      const maxQuotes = Math.min(uniqueRecommendations.length, 3); // Limit to top 3 unique vendors
       
       for (let i = 0; i < maxQuotes; i++) {
-        const recommendation = validRecommendations[i];
+        const recommendation = uniqueRecommendations[i];
         
         try {
           // Validate this specific recommendation
@@ -423,9 +493,9 @@ class AIEngineAdapter {
           await quote.save();
           quotes.push(quote._id);
           
-          logger.info(`✅ Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'}`);
+          logger.info(`Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'}`);
         } catch (saveError) {
-          logger.error(`❌ Error saving quote ${i + 1}:`, {
+          logger.error(`Error saving quote ${i + 1}:`, {
             error: saveError.message,
             recommendation: {
               manufacturer: recommendation.product?.manufacturer,
@@ -437,11 +507,11 @@ class AIEngineAdapter {
         }
       }
       
-      logger.info(`📋 Successfully created ${quotes.length} quotes from ${validRecommendations.length} recommendations`);
+      logger.info(`Successfully created ${quotes.length} unique vendor quotes from ${validRecommendations.length} total recommendations`);
       return quotes;
       
     } catch (error) {
-      logger.error('❌ Error in AIEngineAdapter:', {
+      logger.error('Error in AIEngineAdapter:', {
         error: error.message,
         stack: error.stack,
         quoteRequestId: quoteRequest?._id,
@@ -456,7 +526,7 @@ class AIEngineAdapter {
    */
   static async generateSampleQuotes(quoteRequest) {
     try {
-      logger.info('🧪 Generating sample quotes for testing');
+      logger.info('Generating sample quotes for testing');
       
       if (!quoteRequest || !quoteRequest._id) {
         throw new Error('Valid quote request with _id required for sample quotes');
@@ -619,7 +689,8 @@ class AIEngineAdapter {
         message: 'AI Engine Adapter is functioning correctly',
         lastCheck: new Date(),
         conversionTest: 'passed',
-        convertedFields: Object.keys(converted).length
+        convertedFields: Object.keys(converted).length,
+        deduplicationEnabled: true
       };
     } catch (error) {
       logger.error('AI Engine Adapter health check failed:', error);
@@ -637,12 +708,13 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.0.0',
+      version: '2.1.0',
       status: 'production',
       features: [
         'AI Recommendation Engine Integration',
         'Production Error Handling',
         'Comprehensive Validation',
+        'Vendor Deduplication',
         'Fallback Quote Generation',
         'Health Monitoring'
       ],
@@ -651,7 +723,7 @@ class AIEngineAdapter {
         'Quote',
         'VendorProduct'
       ],
-      lastUpdate: new Date('2025-01-08')
+      lastUpdate: new Date('2025-09-10')
     };
   }
 }
