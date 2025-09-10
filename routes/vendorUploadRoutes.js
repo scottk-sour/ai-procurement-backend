@@ -1,4 +1,4 @@
-// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload
+// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (CONFLICT REMOVED)
 import express from "express";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -41,18 +41,6 @@ const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 attempts per window per IP
   message: { message: 'Too many signup attempts. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-  trustProxy: true,
-  keyGenerator: (req) => {
-    return req.ip || req.connection.remoteAddress;
-  }
-});
-
-const recommendLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per window per IP
-  message: { message: 'Too many recommendation requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   trustProxy: true,
@@ -361,70 +349,8 @@ router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res)
   }
 });
 
-// CORRECTED: Vendor recommendations that work with your actual data structure
-router.get('/recommend', recommendLimiter, async (req, res) => {
-  try {
-    const userId = req.query.userId;
-    if (!userId) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Missing userId in query.' 
-      });
-    }
-    
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Invalid userId format.' 
-      });
-    }
-
-    console.log(`🔍 Fetching vendor recommendations for user: ${userId}`);
-
-    // Use your actual field structure - status instead of account.status
-    const vendors = await Vendor.find({ 
-      status: 'active'
-    })
-    .limit(10)
-    .lean();
-
-    console.log(`✅ Found ${vendors.length} vendors`);
-
-    // Transform to expected format
-    const enhancedVendors = vendors.map(vendor => ({
-      _id: vendor._id,
-      name: vendor.name,
-      email: vendor.email,
-      company: vendor.company,
-      services: vendor.services || ['Photocopiers'],
-      status: vendor.status,
-      hasUploads: (vendor.uploads && vendor.uploads.length > 0),
-      productCount: vendor.uploads ? vendor.uploads.length : 0,
-      matchReason: 'Available vendor'
-    }));
-
-    res.status(200).json({
-      success: true,
-      data: {
-        vendors: enhancedVendors,
-        basedOn: {
-          type: 'general',
-          message: `Found ${enhancedVendors.length} available vendors`,
-          recentRequests: 0,
-          serviceTypes: ['Photocopiers']
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error in /recommend endpoint:', error.message);
-    res.status(500).json({ 
-      success: false,
-      message: 'Failed to get vendor recommendations.',
-      error: error.message
-    });
-  }
-});
+// REMOVED: The conflicting /recommend route that was causing the AI system to not work
+// The AI-powered vendor recommendations are now properly handled by vendorListings.js
 
 // Additional endpoint for getting all vendors with filtering
 router.get('/all', async (req, res) => {
