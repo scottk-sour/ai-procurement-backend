@@ -1,4 +1,4 @@
-// File: routes/vendorListings.js
+// File: routes/vendorListings.js - Complete AI-powered vendor recommendations
 import express from 'express';
 import Listing from '../models/Listing.js';
 import QuoteRequest from '../models/QuoteRequest.js';
@@ -6,18 +6,23 @@ import Quote from '../models/Quote.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 import userAuth from '../middleware/userAuth.js';
 import AIEngineAdapter from '../services/aiEngineAdapter.js';
-import logger from '../services/logger.js';
 
 const router = express.Router();
 
-// GET /api/vendors/recommend - AI-powered vendor recommendations with comprehensive fallbacks
+// Simple logger fallback
+const logger = {
+  info: (message, meta) => console.log('ℹ️', message, meta ? JSON.stringify(meta) : ''),
+  warn: (message, meta) => console.warn('⚠️', message, meta ? JSON.stringify(meta) : ''),
+  error: (message, meta) => console.error('❌', message, meta ? JSON.stringify(meta) : '')
+};
+
+// GET /api/vendors/recommend - AI-powered vendor recommendations
 router.get('/recommend', userAuth, async (req, res) => {
   const startTime = Date.now();
   
   try {
     const { userId } = req.query;
     
-    // Input validation
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -28,7 +33,7 @@ router.get('/recommend', userAuth, async (req, res) => {
     
     logger.info('Fetching AI-powered vendor recommendations', { userId });
     
-    // Strategy 1: Get user's most recent quote request for AI matching
+    // Get user's most recent quote request
     const latestQuoteRequest = await QuoteRequest.findOne({
       $or: [
         { userId: userId },
@@ -41,16 +46,16 @@ router.get('/recommend', userAuth, async (req, res) => {
     let recommendations = [];
     let recommendationType = 'basic';
     let aiPowered = false;
+    let message = 'No vendor recommendations available';
     
-    // Strategy 2: AI-powered recommendations if quote request exists
     if (latestQuoteRequest) {
       try {
-        logger.info('Attempting AI-powered recommendations', { 
+        logger.info('Found quote request, checking for AI quotes', { 
           quoteRequestId: latestQuoteRequest._id,
           companyName: latestQuoteRequest.companyName
         });
         
-        // Check if AI quotes already exist
+        // Check for existing AI-generated quotes
         const existingQuotes = await Quote.find({ 
           quoteRequest: latestQuoteRequest._id 
         })
@@ -60,73 +65,76 @@ router.get('/recommend', userAuth, async (req, res) => {
         .lean();
         
         if (existingQuotes && existingQuotes.length > 0) {
-          // Use existing AI-generated quotes
           logger.info(`Found ${existingQuotes.length} existing AI quotes`);
-          recommendations = await convertQuotesToRecommendations(existingQuotes);
+          recommendations = convertQuotesToRecommendations(existingQuotes);
           recommendationType = 'existing_ai';
           aiPowered = true;
+          message = `AI-powered recommendations based on your ${latestQuoteRequest.serviceType} requirements`;
         } else {
-          // Generate new AI quotes
-          logger.info('Generating new AI recommendations');
-          const quoteIds = await AIEngineAdapter.generateQuotesFromRequest(
-            latestQuoteRequest, 
-            userId
-          );
-          
-          if (quoteIds && quoteIds.length > 0) {
-            const newQuotes = await Quote.find({ 
-              _id: { $in: quoteIds } 
-            })
-            .populate('product')
-            .populate('vendor')
-            .sort({ ranking: 1 })
-            .lean();
+          // Try to generate new AI quotes
+          logger.info('No existing quotes found, attempting to generate new ones');
+          try {
+            const quoteIds = await AIEngineAdapter.generateQuotesFromRequest(
+              latestQuoteRequest, 
+              userId
+            );
             
-            if (newQuotes.length > 0) {
-              recommendations = await convertQuotesToRecommendations(newQuotes);
-              recommendationType = 'fresh_ai';
-              aiPowered = true;
-              logger.info(`Generated ${recommendations.length} fresh AI recommendations`);
+            if (quoteIds && quoteIds.length > 0) {
+              const newQuotes = await Quote.find({ 
+                _id: { $in: quoteIds } 
+              })
+              .populate('product')
+              .populate('vendor')
+              .sort({ ranking: 1 })
+              .lean();
+              
+              if (newQuotes.length > 0) {
+                recommendations = convertQuotesToRecommendations(newQuotes);
+                recommendationType = 'fresh_ai';
+                aiPowered = true;
+                message = `Newly generated AI recommendations for ${latestQuoteRequest.serviceType}`;
+                logger.info(`Generated ${recommendations.length} fresh AI recommendations`);
+              }
             }
+          } catch (aiError) {
+            logger.warn('AI quote generation failed', { error: aiError.message });
           }
         }
-      } catch (aiError) {
-        logger.warn('AI recommendation generation failed', { 
-          error: aiError.message, 
-          userId, 
-          quoteRequestId: latestQuoteRequest._id 
-        });
-        // Continue to fallback strategies
+      } catch (quoteError) {
+        logger.warn('Error processing quote request', { error: quoteError.message });
       }
     }
     
-    // Strategy 3: Fallback to enhanced listing-based recommendations
+    // Fallback to enhanced listings if no AI quotes available
     if (recommendations.length === 0) {
-      logger.info('Using fallback listing-based recommendations', { userId });
+      logger.info('Using fallback listing-based recommendations');
       
       const listings = await Listing.find({ 
         isActive: true 
       })
-      .populate('vendor', 'name email phone website company performance')
+      .populate('vendor', 'name email phone website company')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean();
       
       if (listings && listings.length > 0) {
-        recommendations = await convertListingsToRecommendations(listings, latestQuoteRequest);
+        recommendations = convertListingsToRecommendations(listings, latestQuoteRequest);
         recommendationType = latestQuoteRequest ? 'enhanced_listing' : 'basic_listing';
-        logger.info(`Generated ${recommendations.length} listing-based recommendations`);
+        message = latestQuoteRequest ? 
+          `Enhanced recommendations based on your preferences (${recommendations.length} options)` :
+          `Available vendor listings (${recommendations.length} options)`;
       }
     }
     
-    // Strategy 4: Emergency fallback with sample data
+    // Emergency fallback if still no recommendations
     if (recommendations.length === 0) {
-      logger.warn('All recommendation strategies failed, using emergency fallback');
+      logger.warn('All strategies failed, using emergency fallback');
       recommendations = generateEmergencyRecommendations();
       recommendationType = 'emergency';
+      message = 'Standard recommendations - submit a quote request for personalized matches';
     }
     
-    // Enhance recommendations with metadata
+    // Add metadata to recommendations
     const enhancedRecommendations = recommendations.map((rec, index) => ({
       ...rec,
       rank: index + 1,
@@ -147,6 +155,7 @@ router.get('/recommend', userAuth, async (req, res) => {
       responseTime
     });
     
+    // Return in the exact format your frontend expects
     res.json({
       success: true,
       data: enhancedRecommendations,
@@ -157,7 +166,7 @@ router.get('/recommend', userAuth, async (req, res) => {
         aiPowered,
         responseTime,
         basedOnQuoteRequest: latestQuoteRequest?._id || null,
-        message: getRecommendationMessage(recommendationType, enhancedRecommendations.length)
+        message
       }
     });
     
@@ -190,8 +199,8 @@ router.get('/recommend', userAuth, async (req, res) => {
   }
 });
 
-// Helper function: Convert AI quotes to recommendation format
-async function convertQuotesToRecommendations(quotes) {
+// Convert AI quotes to recommendation format
+function convertQuotesToRecommendations(quotes) {
   try {
     return quotes.map((quote, index) => {
       const product = quote.product || {};
@@ -225,7 +234,7 @@ async function convertQuotesToRecommendations(quotes) {
         
         // AI-specific metadata
         aiMatchScore: matchScore.total || 0.5,
-        aiConfidence: matchScore.confidence || 'Medium',
+        aiConfidence: matchScore.confidence || 'High',
         aiReasoning: Array.isArray(matchScore.reasoning) ? matchScore.reasoning : [],
         monthlyVolumeSuitability: quote.userRequirements?.monthlyVolume?.total || 0,
         costBreakdown: costs.monthlyCosts || {},
@@ -239,8 +248,8 @@ async function convertQuotesToRecommendations(quotes) {
   }
 }
 
-// Helper function: Convert listings to enhanced recommendations
-async function convertListingsToRecommendations(listings, quoteRequest) {
+// Convert listings to enhanced recommendations
+function convertListingsToRecommendations(listings, quoteRequest) {
   try {
     return listings.map((listing, index) => {
       const vendor = listing.vendor || {};
@@ -288,7 +297,6 @@ async function convertListingsToRecommendations(listings, quoteRequest) {
         
         // Additional metadata
         listingId: listing._id.toString(),
-        vendorPerformance: vendor.performance || 'Standard',
         isListing: true
       };
     });
@@ -298,7 +306,7 @@ async function convertListingsToRecommendations(listings, quoteRequest) {
   }
 }
 
-// Helper function: Generate emergency fallback recommendations
+// Generate emergency fallback recommendations
 function generateEmergencyRecommendations() {
   return [
     {
@@ -358,25 +366,7 @@ function generateEmergencyRecommendations() {
   ];
 }
 
-// Helper function: Generate appropriate message based on recommendation type
-function getRecommendationMessage(type, count) {
-  switch (type) {
-    case 'fresh_ai':
-      return `AI-powered recommendations based on your specific requirements (${count} matches)`;
-    case 'existing_ai':
-      return `AI-analyzed recommendations from your previous quote request (${count} matches)`;
-    case 'enhanced_listing':
-      return `Enhanced recommendations based on your preferences (${count} options)`;
-    case 'basic_listing':
-      return `Available vendor listings (${count} options)`;
-    case 'emergency':
-      return `Standard recommendations - submit a quote request for personalized matches`;
-    default:
-      return `Found ${count} vendor recommendations`;
-  }
-}
-
-// Health check endpoint for monitoring
+// Health check endpoint
 router.get('/recommend/health', async (req, res) => {
   try {
     const healthData = {
@@ -474,43 +464,28 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/vendors/listings - Create a new listing with enhanced validation
+// POST /api/vendors/listings - Create a new listing
 router.post('/', async (req, res) => {
   try {
     const { title, description, price, category, features, speed, rating } = req.body;
     
-    // Enhanced validation
-    const errors = [];
-    if (!title || title.trim().length < 3) {
-      errors.push('Title must be at least 3 characters long');
-    }
-    if (!price || price <= 0) {
-      errors.push('Price must be a positive number');
-    }
-    if (!description || description.trim().length < 10) {
-      errors.push('Description must be at least 10 characters long');
-    }
-    
-    if (errors.length > 0) {
+    if (!title || !price) {
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        errors
+        message: 'Title and price are required'
       });
     }
     
     const newListing = new Listing({
       vendor: req.vendorId,
       title: title.trim(),
-      description: description.trim(),
+      description: description?.trim() || '',
       price: parseFloat(price),
       category: category || 'Equipment',
       features: Array.isArray(features) ? features : [],
       speed: speed ? parseInt(speed) : undefined,
       rating: rating ? parseFloat(rating) : undefined,
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      isActive: true
     });
     
     await newListing.save();
@@ -538,13 +513,12 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/vendors/listings/:id - Update an existing listing with validation
+// PUT /api/vendors/listings/:id - Update an existing listing
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body, updatedAt: new Date() };
     
-    // Remove fields that shouldn't be updated
     delete updateData._id;
     delete updateData.vendor;
     delete updateData.createdAt;
@@ -585,7 +559,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/vendors/listings/:id - Delete a listing with confirmation
+// DELETE /api/vendors/listings/:id - Delete a listing
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
