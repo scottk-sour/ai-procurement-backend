@@ -8,6 +8,92 @@ import logger from '../services/logger.js';
 
 const router = express.Router();
 
+// Validation helper
+const validateRequiredFields = (fields, data) => {
+  const missing = fields.filter(field => !data[field]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required fields: ${missing.join(', ')}`);
+  }
+};
+
+// GET /api/quotes/user/:userId - Get user's generated quotes for comparison
+router.get('/user/:userId', userAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🔍 Fetching user quotes for:', userId);
+    
+    // Validate user access
+    if (userId !== req.user.userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
+    }
+    
+    // Find quote requests for this user
+    const quoteRequests = await QuoteRequest.find({
+      $or: [
+        { userId: userId },
+        { submittedBy: userId }
+      ],
+      status: 'matched' // Only get requests that have quotes
+    }).populate('quotes').lean();
+    
+    console.log(`📋 Found ${quoteRequests.length} quote requests with quotes`);
+    
+    // Extract all quotes from all requests
+    const allQuotes = [];
+    for (const request of quoteRequests) {
+      if (request.quotes && request.quotes.length > 0) {
+        // Get the actual quote documents
+        const quotes = await Quote.find({ 
+          _id: { $in: request.quotes } 
+        })
+        .populate('vendor')
+        .populate('product')
+        .lean();
+        
+        // Add request context to each quote
+        const quotesWithContext = quotes.map(quote => ({
+          ...quote,
+          quoteRequestId: request._id,
+          companyName: request.companyName,
+          monthlyVolume: request.monthlyVolume,
+          requestBudget: request.budget
+        }));
+        
+        allQuotes.push(...quotesWithContext);
+      }
+    }
+    
+    console.log(`✅ Returning ${allQuotes.length} quotes for comparison`);
+    
+    res.json({ 
+      success: true,
+      quotes: allQuotes,
+      count: allQuotes.length,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        requestedBy: userId,
+        quoteRequestsFound: quoteRequests.length,
+        aiPowered: true,
+        recommendationType: 'user_generated_quotes'
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching user quotes:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quotes',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_020'
+    });
+  }
+});
+
 // POST /api/quotes/requests - Create new quote request and trigger AI matching
 router.post('/requests', userAuth, async (req, res) => {
   try {
@@ -47,14 +133,7 @@ router.post('/requests', userAuth, async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!companyName || !email || !monthlyVolume) {
-      return res.status(400).json({
-        success: false,
-        error: 'VALIDATION_ERROR',
-        message: 'Missing required fields: companyName, email, and monthlyVolume are required',
-        code: 'QUOTE_001'
-      });
-    }
+    validateRequiredFields(['companyName', 'email', 'monthlyVolume'], req.body);
 
     // Create quote request data structure
     const quoteRequestData = {
@@ -782,35 +861,9 @@ router.post('/contact', userAuth, async (req, res) => {
   }
 });
 
-// LEGACY ROUTE SUPPORT - for backward compatibility with your existing frontend
-
-// POST /api/quotes/request - Alternative endpoint for quote request creation
-router.post('/request', userAuth, async (req, res) => {
-  // Redirect to the new endpoint by calling the handler directly
-  const originalUrl = req.url;
-  req.url = '/requests';
-  
-  // Call the requests handler
-  const requestsHandler = router.stack.find(layer => 
-    layer.route && layer.route.path === '/requests' && layer.route.methods.post
-  );
-  
-  if (requestsHandler) {
-    requestsHandler.route.stack[1].handle(req, res);
-  } else {
-    res.status(500).json({
-      success: false,
-      error: 'ROUTE_ERROR',
-      message: 'Legacy route handler not found',
-      code: 'QUOTE_019'
-    });
-  }
-});
-
-// GET /api/quotes - Alternative endpoint for getting quotes
+// GET /api/quotes - Get quotes for user
 router.get('/', userAuth, async (req, res) => {
   try {
-    // If no specific ID requested, return user's quotes
     const userId = req.user.userId;
     const { page = 1, limit = 10, status } = req.query;
     
@@ -865,9 +918,19 @@ router.get('/', userAuth, async (req, res) => {
       error: 'FETCH_ERROR',
       message: 'Failed to fetch quotes',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_020'
+      code: 'QUOTE_019'
     });
   }
+});
+
+// LEGACY ROUTE SUPPORT - for backward compatibility with your existing frontend
+
+// POST /api/quotes/request - Alternative endpoint for quote request creation
+router.post('/request', userAuth, (req, res) => {
+  // Redirect to the new endpoint
+  req.url = req.url.replace('/request', '/requests');
+  // Call the requests handler directly
+  return router.handle(req, res);
 });
 
 export default router;
