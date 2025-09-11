@@ -1,4 +1,4 @@
-// models/Quote.js - Improved version
+// models/Quote.js - Complete updated version with status management
 import mongoose from 'mongoose';
 
 const quoteSchema = new mongoose.Schema({
@@ -167,7 +167,7 @@ const quoteSchema = new mongoose.Schema({
     autoRenewal: { type: Boolean, default: false }
   },
 
-  // Quote Status
+  // Quote Status - ENHANCED
   status: { 
     type: String, 
     enum: ['draft', 'generated', 'sent', 'viewed', 'downloaded', 'accepted', 'rejected', 'expired', 'withdrawn', 'converted'],
@@ -229,7 +229,32 @@ const quoteSchema = new mongoose.Schema({
     timeToView: { type: Number }, // minutes from creation to first view
     timeToDecision: { type: Number }, // minutes from creation to accept/reject
     competitorQuotesReceived: { type: Number, default: 0 }
-  }
+  },
+
+  // NEW: Quote Decision Tracking
+  decisionDetails: {
+    acceptedAt: { type: Date },
+    acceptedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejectedAt: { type: Date },
+    rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejectionReason: { type: String },
+    decisionNotes: { type: String }
+  },
+
+  // NEW: Order Creation (when quote is accepted)
+  createdOrder: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Order' 
+  },
+
+  // Contact attempts tracking
+  contactAttempts: [{
+    contactedAt: { type: Date, default: Date.now },
+    contactedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    method: { type: String, enum: ['platform_request', 'email', 'phone'], default: 'platform_request' },
+    message: { type: String },
+    status: { type: String, enum: ['pending', 'responded', 'no_response'], default: 'pending' }
+  }]
 
 }, { 
   timestamps: true,
@@ -274,6 +299,23 @@ quoteSchema.virtual('cpcDisplay').get(function() {
   } else {
     return `${mono}p mono only (${size})`;
   }
+});
+
+// NEW: Virtual for status display
+quoteSchema.virtual('statusDisplay').get(function() {
+  const statusDisplayMap = {
+    'draft': 'Draft',
+    'generated': 'Generated',
+    'sent': 'Sent to Customer',
+    'viewed': 'Viewed by Customer',
+    'downloaded': 'Downloaded',
+    'accepted': 'Accepted',
+    'rejected': 'Declined',
+    'expired': 'Expired',
+    'withdrawn': 'Withdrawn',
+    'converted': 'Converted to Order'
+  };
+  return statusDisplayMap[this.status] || this.status;
 });
 
 // Pre-save middleware to calculate totals and CPC costs
@@ -331,6 +373,11 @@ quoteSchema.pre('save', function(next) {
     };
   }
 
+  // Calculate time to decision if status changed to accepted/rejected
+  if ((this.status === 'accepted' || this.status === 'rejected') && !this.metrics.timeToDecision) {
+    this.metrics.timeToDecision = Math.round((Date.now() - this.createdAt) / (1000 * 60)); // minutes
+  }
+
   next();
 });
 
@@ -342,6 +389,8 @@ quoteSchema.index({ 'matchScore.total': -1 });
 quoteSchema.index({ 'costs.monthlyCosts.totalMonthlyCost': 1 });
 quoteSchema.index({ createdAt: -1 });
 quoteSchema.index({ 'userRequirements.monthlyVolume.total': 1 });
+quoteSchema.index({ 'decisionDetails.acceptedAt': -1 });
+quoteSchema.index({ 'decisionDetails.rejectedAt': -1 });
 
 const Quote = mongoose.model('Quote', quoteSchema);
 export default Quote;
