@@ -1,8 +1,10 @@
-// routes/quoteRoutes.js - Complete quote management with AI matching
+// routes/quoteRoutes.js - Complete quote management with accept/decline functionality
 import express from 'express';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
+import Order from '../models/Order.js';
 import AIEngineAdapter from '../services/aiEngineAdapter.js';
+import notificationService from '../services/notificationService.js';
 import userAuth from '../middleware/userAuth.js';
 import logger from '../services/logger.js';
 
@@ -103,6 +105,286 @@ router.get('/user/:userId/latest', userAuth, async (req, res) => {
       message: 'Failed to fetch latest quotes',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
       code: 'QUOTE_021'
+    });
+  }
+});
+
+// POST /api/quotes/accept - Accept a quote and create order
+router.post('/accept', userAuth, async (req, res) => {
+  try {
+    const { quoteId, vendorName } = req.body;
+    const userId = req.user.userId;
+    
+    console.log('✅ Accepting quote:', { quoteId, vendorName, userId });
+    
+    // Validate required fields
+    if (!quoteId) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_010'
+      });
+    }
+    
+    // Find and verify quote
+    const quote = await Quote.findById(quoteId)
+      .populate('quoteRequest')
+      .populate('vendor')
+      .populate('product');
+    
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_011'
+      });
+    }
+    
+    // Verify user owns the quote request
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || 
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+    
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_012'
+      });
+    }
+    
+    // Check if quote is already accepted
+    if (quote.status === 'accepted') {
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ACCEPTED',
+        message: 'Quote has already been accepted',
+        code: 'QUOTE_013'
+      });
+    }
+    
+    // Create Order when quote is accepted
+    const orderData = {
+      vendor: quote.vendor._id,
+      user: userId,
+      items: [{
+        product: quote.productSummary?.model || 'Copier/Printer',
+        quantity: 1,
+        price: quote.costs?.monthlyCosts?.totalMonthlyCost || quote.costs?.machineCost || 0
+      }],
+      totalPrice: quote.costs?.monthlyCosts?.totalMonthlyCost || quote.costs?.machineCost || 0,
+      status: 'Pending',
+      quoteReference: quoteId,
+      orderType: 'quote_acceptance',
+      orderDetails: {
+        contactPerson: quote.quoteRequest?.contactName,
+        specialInstructions: `Order created from accepted quote ${quoteId}`
+      },
+      payment: {
+        method: 'lease',
+        paymentFrequency: 'quarterly'
+      }
+    };
+    
+    const order = new Order(orderData);
+    await order.save();
+    
+    // Update quote status with order reference
+    quote.status = 'accepted';
+    quote.decisionDetails = {
+      acceptedAt: new Date(),
+      acceptedBy: userId
+    };
+    quote.createdOrder = order._id;
+    
+    // Add to customer actions
+    if (!quote.customerActions) {
+      quote.customerActions = [];
+    }
+    
+    quote.customerActions.push({
+      action: 'accepted',
+      timestamp: new Date(),
+      notes: `Quote accepted - Order ${order._id} created`
+    });
+    
+    await quote.save();
+    
+    // Update quote request status
+    if (quote.quoteRequest) {
+      quote.quoteRequest.status = 'completed';
+      quote.quoteRequest.acceptedQuote = quoteId;
+      await quote.quoteRequest.save();
+    }
+    
+    // Send notification to vendor
+    try {
+      await notificationService.sendQuoteAcceptedNotification({
+        vendorId: quote.vendor._id,
+        vendorName: quote.vendor.name || vendorName,
+        quoteId: quote._id,
+        orderId: order._id,
+        customerName: quote.quoteRequest?.companyName,
+        customerEmail: quote.quoteRequest?.email
+      });
+    } catch (notificationError) {
+      console.error('⚠️ Failed to send vendor notification:', notificationError);
+      // Don't fail the whole request if notification fails
+    }
+    
+    console.log(`✅ Quote ${quoteId} accepted, Order ${order._id} created`);
+    
+    res.json({
+      success: true,
+      message: `Quote from ${vendorName || quote.vendor?.name || 'vendor'} accepted successfully`,
+      quote: {
+        id: quote._id,
+        status: quote.status,
+        acceptedAt: quote.decisionDetails.acceptedAt
+      },
+      order: {
+        id: order._id,
+        status: order.status,
+        totalPrice: order.totalPrice
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error accepting quote:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ACCEPT_ERROR',
+      message: 'Failed to accept quote',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_014'
+    });
+  }
+});
+
+// POST /api/quotes/decline - Decline a quote
+router.post('/decline', userAuth, async (req, res) => {
+  try {
+    const { quoteId, reason, notes } = req.body;
+    const userId = req.user.userId;
+    
+    console.log('❌ Declining quote:', { quoteId, userId, reason });
+    
+    // Validate required fields
+    if (!quoteId) {
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_030'
+      });
+    }
+    
+    // Find and verify quote
+    const quote = await Quote.findById(quoteId)
+      .populate('quoteRequest')
+      .populate('vendor');
+    
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_031'
+      });
+    }
+    
+    // Verify user owns the quote request
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || 
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+    
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_032'
+      });
+    }
+    
+    // Check if quote is already processed
+    if (quote.status === 'accepted') {
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ACCEPTED',
+        message: 'Quote has already been accepted',
+        code: 'QUOTE_033'
+      });
+    }
+    
+    if (quote.status === 'rejected') {
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_REJECTED',
+        message: 'Quote has already been rejected',
+        code: 'QUOTE_034'
+      });
+    }
+    
+    // Update quote status
+    quote.status = 'rejected';
+    quote.decisionDetails = {
+      rejectedAt: new Date(),
+      rejectedBy: userId,
+      rejectionReason: reason || 'Not specified',
+      decisionNotes: notes
+    };
+    
+    // Add to customer actions
+    if (!quote.customerActions) {
+      quote.customerActions = [];
+    }
+    
+    quote.customerActions.push({
+      action: 'rejected',
+      timestamp: new Date(),
+      notes: reason || 'Quote declined by user'
+    });
+    
+    await quote.save();
+    
+    // Send notification to vendor
+    try {
+      await notificationService.sendQuoteDeclinedNotification({
+        vendorId: quote.vendor._id,
+        vendorName: quote.vendor.name,
+        quoteId: quote._id,
+        customerName: quote.quoteRequest?.companyName,
+        reason: reason || 'No reason provided',
+        notes: notes
+      });
+    } catch (notificationError) {
+      console.error('⚠️ Failed to send vendor notification:', notificationError);
+      // Don't fail the whole request if notification fails
+    }
+    
+    console.log(`✅ Quote ${quoteId} declined by user ${userId}`);
+    
+    res.json({
+      success: true,
+      message: 'Quote declined successfully',
+      quote: {
+        id: quote._id,
+        status: quote.status,
+        rejectedAt: quote.decisionDetails.rejectedAt,
+        reason: quote.decisionDetails.rejectionReason
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error declining quote:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DECLINE_ERROR',
+      message: 'Failed to decline quote',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_035'
     });
   }
 });
@@ -444,291 +726,6 @@ router.post('/requests', userAuth, async (req, res) => {
   }
 });
 
-// POST /api/quotes/request-selected - Submit quote requests to selected vendors
-router.post('/request-selected', userAuth, async (req, res) => {
-  try {
-    const {
-      quoteId,
-      userId,
-      selectedVendors,
-      companyName,
-      serviceType,
-      category,
-      description,
-      budget,
-      timeline,
-      requirements
-    } = req.body;
-
-    console.log('📤 Processing quote request for selected vendors:', {
-      quoteId,
-      userId,
-      vendorCount: selectedVendors?.length,
-      companyName,
-      serviceType
-    });
-
-    // Validation
-    if (!userId || !selectedVendors || !Array.isArray(selectedVendors) || selectedVendors.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID and selected vendors are required'
-      });
-    }
-
-    if (selectedVendors.length > 10) {
-      return res.status(400).json({
-        success: false,
-        message: 'Maximum 10 vendors can be selected at once'
-      });
-    }
-
-    const results = [];
-    const createdRequests = [];
-
-    // Create quote request for each selected vendor
-    for (const vendorId of selectedVendors) {
-      try {
-        // Create a new quote request for each vendor
-        const quoteRequestData = {
-          companyName: companyName || 'Unknown Company',
-          contactName: 'Contact via Platform',
-          email: req.user.email || 'noreply@tendorai.com',
-          industryType: 'Various',
-          serviceType: serviceType || 'Photocopiers',
-          monthlyVolume: {
-            mono: 1000,
-            colour: 500,
-            total: 1500
-          },
-          budget: {
-            maxLeasePrice: budget || 300,
-            preferredTerm: '60 months',
-            includeService: true
-          },
-          requirements: {
-            priority: 'cost',
-            essentialFeatures: requirements || []
-          },
-          submittedBy: userId,
-          userId: userId,
-          status: 'vendor_requested',
-          vendorRequested: vendorId,
-          originalQuoteId: quoteId,
-          
-          // Additional metadata
-          requestType: 'vendor_selection',
-          selectedVendors: selectedVendors,
-          
-          // Timeline
-          urgency: {
-            timeframe: timeline || '3-6 months'
-          },
-          
-          // AI Analysis placeholder
-          aiAnalysis: {
-            processed: false,
-            suggestedCategories: [],
-            riskFactors: [],
-            recommendations: []
-          },
-          
-          // System fields
-          submissionSource: 'vendor_selection',
-          quotes: [],
-          internalNotes: [`Request sent to specific vendor: ${vendorId}`]
-        };
-
-        const quoteRequest = new QuoteRequest(quoteRequestData);
-        const savedRequest = await quoteRequest.save();
-        
-        createdRequests.push(savedRequest);
-        results.push({
-          vendorId: vendorId,
-          success: true,
-          quoteRequestId: savedRequest._id
-        });
-
-        console.log(`✅ Quote request created for vendor: ${vendorId}`);
-
-      } catch (error) {
-        console.error(`❌ Failed to create quote request for vendor ${vendorId}:`, error);
-        results.push({
-          vendorId: vendorId,
-          success: false,
-          error: error.message
-        });
-      }
-    }
-
-    const successCount = results.filter(r => r.success).length;
-    const failureCount = results.filter(r => !r.success).length;
-
-    console.log(`✅ Quote request processing complete: ${successCount} successful, ${failureCount} failed`);
-
-    res.status(201).json({
-      success: true,
-      message: `Quote requests sent to ${successCount} vendors${failureCount > 0 ? `, ${failureCount} failed` : ''}`,
-      data: {
-        summary: {
-          total: selectedVendors.length,
-          successful: successCount,
-          failed: failureCount
-        },
-        results: results,
-        createdRequests: createdRequests.map(req => ({
-          id: req._id,
-          vendorId: req.vendorRequested,
-          status: req.status,
-          submittedAt: req.createdAt
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error processing quote requests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process quote requests',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
-  }
-});
-
-// GET /api/quotes/requests - Get quote requests for user (with proper filtering)
-router.get('/requests', userAuth, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { page = 1, limit = 10, status, userId: queryUserId, submittedBy } = req.query;
-    
-    console.log('🔍 Fetching quote requests for user:', userId);
-    
-    // Build query - handle both userId and submittedBy fields
-    const query = {
-      $or: [
-        { userId: userId },
-        { submittedBy: userId }
-      ]
-    };
-    
-    // Also check for URL parameters (for backward compatibility)
-    if (queryUserId && queryUserId === userId) {
-      query.$or.push({ userId: queryUserId });
-    }
-    if (submittedBy && submittedBy === userId) {
-      query.$or.push({ submittedBy: submittedBy });
-    }
-    
-    // Add status filter if provided
-    if (status && status !== 'all') {
-      query.status = status;
-    }
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    const quoteRequests = await QuoteRequest.find(query)
-      .populate('quotes')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
-    
-    const total = await QuoteRequest.countDocuments(query);
-    
-    console.log(`📊 Found ${quoteRequests.length} quote requests for user ${userId}`);
-    
-    // Return in the format your frontend expects
-    res.json({
-      success: true,
-      requests: quoteRequests, // Use 'requests' key for compatibility
-      data: quoteRequests,     // Also include 'data' for flexibility
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit)),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error fetching quote requests:', error);
-    res.status(500).json({
-      success: false,
-      error: 'FETCH_ERROR',
-      message: 'Failed to fetch quote requests',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_003'
-    });
-  }
-});
-
-// POST /api/quotes/retry-matching/:requestId - Retry AI matching for a specific request
-router.post('/retry-matching/:requestId', userAuth, async (req, res) => {
-  try {
-    const { requestId } = req.params;
-    const userId = req.user.userId;
-    
-    console.log('🔄 Retrying AI matching for request:', requestId);
-    
-    // Find the quote request and verify ownership
-    const quoteRequest = await QuoteRequest.findOne({
-      _id: requestId,
-      $or: [{ userId }, { submittedBy: userId }]
-    });
-    
-    if (!quoteRequest) {
-      return res.status(404).json({
-        success: false,
-        error: 'NOT_FOUND',
-        message: 'Quote request not found',
-        code: 'QUOTE_004'
-      });
-    }
-    
-    if (quoteRequest.status === 'matched' && quoteRequest.quotes.length > 0) {
-      return res.json({
-        success: true,
-        message: 'Quote request already has matches',
-        quotesCount: quoteRequest.quotes.length
-      });
-    }
-    
-    // Retry AI matching
-    const quotes = await AIEngineAdapter.generateQuotesFromRequest(quoteRequest, userId);
-    
-    if (quotes && quotes.length > 0) {
-      quoteRequest.quotes = quotes;
-      quoteRequest.status = 'matched';
-      quoteRequest.aiAnalysis.processed = true;
-      await quoteRequest.save();
-      
-      res.json({
-        success: true,
-        message: `Successfully generated ${quotes.length} quotes`,
-        quotesCount: quotes.length
-      });
-    } else {
-      res.json({
-        success: false,
-        error: 'NO_MATCHES',
-        message: 'No suitable matches found',
-        quotesCount: 0,
-        code: 'QUOTE_005'
-      });
-    }
-    
-  } catch (error) {
-    console.error('❌ Error retrying AI matching:', error);
-    res.status(500).json({
-      success: false,
-      error: 'RETRY_ERROR',
-      message: 'Failed to retry matching',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_006'
-    });
-  }
-});
-
 // GET /api/quotes/:id - Get specific quote details
 router.get('/:id', userAuth, async (req, res) => {
   try {
@@ -742,6 +739,7 @@ router.get('/:id', userAuth, async (req, res) => {
       .populate('quoteRequest')
       .populate('product')
       .populate('vendor')
+      .populate('createdOrder')
       .lean();
     
     if (!quote) {
@@ -754,8 +752,8 @@ router.get('/:id', userAuth, async (req, res) => {
     }
     
     // Verify user has access to this quote
-    const hasAccess = quote.quoteRequest?.userId === userId || 
-                     quote.quoteRequest?.submittedBy === userId;
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || 
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
     
     if (!hasAccess) {
       return res.status(403).json({
@@ -783,90 +781,65 @@ router.get('/:id', userAuth, async (req, res) => {
   }
 });
 
-// POST /api/quotes/accept - Accept a quote
-router.post('/accept', userAuth, async (req, res) => {
+// GET /api/quotes - Get quotes for user
+router.get('/', userAuth, async (req, res) => {
   try {
-    const { quoteId, vendorName } = req.body;
     const userId = req.user.userId;
+    const { page = 1, limit = 10, status } = req.query;
     
-    console.log('✅ Accepting quote:', { quoteId, vendorName, userId });
+    console.log('🔍 Fetching quotes for user:', userId);
     
-    // Validate required fields
-    if (!quoteId) {
-      return res.status(400).json({
-        success: false,
-        error: 'VALIDATION_ERROR',
-        message: 'Quote ID is required',
-        code: 'QUOTE_010'
-      });
+    // Build query to find quotes belonging to user's quote requests
+    const userQuoteRequests = await QuoteRequest.find({
+      $or: [
+        { userId: userId },
+        { submittedBy: userId }
+      ]
+    }).select('_id').lean();
+    
+    const quoteRequestIds = userQuoteRequests.map(qr => qr._id);
+    
+    const query = {
+      quoteRequest: { $in: quoteRequestIds }
+    };
+    
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      query.status = status;
     }
     
-    // Find and verify quote
-    const quote = await Quote.findById(quoteId).populate('quoteRequest');
+    const quotes = await Quote.find(query)
+      .populate('quoteRequest')
+      .populate('product')
+      .populate('vendor')
+      .populate('createdOrder')
+      .sort({ createdAt: -1 })
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit))
+      .lean();
     
-    if (!quote) {
-      return res.status(404).json({
-        success: false,
-        error: 'NOT_FOUND',
-        message: 'Quote not found',
-        code: 'QUOTE_011'
-      });
-    }
-    
-    // Verify user owns the quote request
-    const hasAccess = quote.quoteRequest?.userId === userId || 
-                     quote.quoteRequest?.submittedBy === userId;
-    
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        error: 'ACCESS_DENIED',
-        message: 'Access denied',
-        code: 'QUOTE_012'
-      });
-    }
-    
-    // Check if quote is already accepted
-    if (quote.status === 'accepted') {
-      return res.status(409).json({
-        success: false,
-        error: 'ALREADY_ACCEPTED',
-        message: 'Quote has already been accepted',
-        code: 'QUOTE_013'
-      });
-    }
-    
-    // Update quote status
-    quote.status = 'accepted';
-    quote.acceptedAt = new Date();
-    quote.acceptedBy = userId;
-    await quote.save();
-    
-    // Update quote request status
-    if (quote.quoteRequest) {
-      quote.quoteRequest.status = 'accepted';
-      quote.quoteRequest.acceptedQuote = quoteId;
-      await quote.quoteRequest.save();
-    }
+    const total = await Quote.countDocuments(query);
     
     res.json({
       success: true,
-      message: `Quote from ${vendorName || 'vendor'} accepted successfully`,
-      quote: {
-        id: quote._id,
-        status: quote.status,
-        acceptedAt: quote.acceptedAt
+      quotes,
+      count: quotes.length,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
       }
     });
     
   } catch (error) {
-    console.error('❌ Error accepting quote:', error);
+    console.error('❌ Error fetching quotes:', error);
     res.status(500).json({
       success: false,
-      error: 'ACCEPT_ERROR',
-      message: 'Failed to accept quote',
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quotes',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_014'
+      code: 'QUOTE_019'
     });
   }
 });
@@ -904,8 +877,8 @@ router.post('/contact', userAuth, async (req, res) => {
     }
     
     // Verify user owns the quote request
-    const hasAccess = quote.quoteRequest?.userId === userId || 
-                     quote.quoteRequest?.submittedBy === userId;
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || 
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
     
     if (!hasAccess) {
       return res.status(403).json({
@@ -931,6 +904,20 @@ router.post('/contact', userAuth, async (req, res) => {
     
     await quote.save();
     
+    // Send notification to vendor
+    try {
+      await notificationService.sendVendorContactRequest({
+        vendorId: quote.vendor._id,
+        vendorName: quote.vendor.name || vendorName,
+        quoteId: quote._id,
+        customerName: quote.quoteRequest?.companyName,
+        customerMessage: message,
+        customerEmail: quote.quoteRequest?.email
+      });
+    } catch (notificationError) {
+      console.error('⚠️ Failed to send vendor notification:', notificationError);
+    }
+    
     res.json({
       success: true,
       message: `Contact request sent to ${vendorName || 'vendor'}`,
@@ -950,78 +937,6 @@ router.post('/contact', userAuth, async (req, res) => {
       code: 'QUOTE_018'
     });
   }
-});
-
-// GET /api/quotes - Get quotes for user
-router.get('/', userAuth, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { page = 1, limit = 10, status } = req.query;
-    
-    console.log('🔍 Fetching quotes for user:', userId);
-    
-    // Build query to find quotes belonging to user's quote requests
-    const userQuoteRequests = await QuoteRequest.find({
-      $or: [
-        { userId: userId },
-        { submittedBy: userId }
-      ]
-    }).select('_id').lean();
-    
-    const quoteRequestIds = userQuoteRequests.map(qr => qr._id);
-    
-    const query = {
-      quoteRequest: { $in: quoteRequestIds }
-    };
-    
-    // Add status filter if provided
-    if (status && status !== 'all') {
-      query.status = status;
-    }
-    
-    const quotes = await Quote.find(query)
-      .populate('quoteRequest')
-      .populate('product')
-      .populate('vendor')
-      .sort({ createdAt: -1 })
-      .skip((parseInt(page) - 1) * parseInt(limit))
-      .limit(parseInt(limit))
-      .lean();
-    
-    const total = await Quote.countDocuments(query);
-    
-    res.json({
-      success: true,
-      quotes,
-      count: quotes.length,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit)),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      }
-    });
-    
-  } catch (error) {
-    console.error('❌ Error fetching quotes:', error);
-    res.status(500).json({
-      success: false,
-      error: 'FETCH_ERROR',
-      message: 'Failed to fetch quotes',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_019'
-    });
-  }
-});
-
-// LEGACY ROUTE SUPPORT - for backward compatibility with your existing frontend
-
-// POST /api/quotes/request - Alternative endpoint for quote request creation
-router.post('/request', userAuth, (req, res) => {
-  // Redirect to the new endpoint
-  req.url = req.url.replace('/request', '/requests');
-  // Call the requests handler directly
-  return router.handle(req, res);
 });
 
 export default router;
