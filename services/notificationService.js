@@ -7,7 +7,7 @@ dotenv.config(); // Load environment variables
 export const sendQuoteNotification = async (vendorEmail, quoteDetails) => {
     try {
         // Set up the email transporter
-        const transporter = nodemailer.createTransport({
+        const transporter = nodemailer.createTransporter({
             service: 'Gmail', // Change if using another provider (e.g., SendGrid, SMTP)
             auth: {
                 user: process.env.EMAIL_USER, // Your email (from .env)
@@ -36,8 +36,12 @@ export const sendQuoteNotification = async (vendorEmail, quoteDetails) => {
         // Send the email
         await transporter.sendMail(mailOptions);
         console.log(`✅ Email sent to vendor: ${vendorEmail}`);
-
     } catch (error) {
         console.error(`❌ Error sending email to ${vendorEmail}:`, error);
     }
+};
+
+// Default export for compatibility with existing imports
+export default {
+    sendQuoteNotification
 };
