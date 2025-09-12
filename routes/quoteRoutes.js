@@ -246,6 +246,111 @@ router.post('/request', userAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/quotes/requests
+ * List authenticated user's quote requests (paginated)
+ */
+router.get('/requests', userAuth, async (req, res) => {
+  try {
+    const { userId, submittedBy, page = 1, limit = 10 } = req.query;
+    const requestingUserId = req.user.userId;
+    log.info('Fetch quote requests for', requestingUserId);
+
+    const query = { $or: [{ userId: requestingUserId }, { submittedBy: requestingUserId }] };
+
+    if (userId && userId !== requestingUserId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
+    }
+
+    const quoteRequests = await QuoteRequest.find(query)
+      .populate('quotes')
+      .sort({ createdAt: -1 })
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .limit(parseInt(limit))
+      .lean();
+
+    const total = await QuoteRequest.countDocuments(query);
+
+    return res.json({
+      success: true,
+      quoteRequests,
+      count: quoteRequests.length,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    log.error('Error fetching quote requests:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quote requests',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_001'
+    });
+  }
+});
+
+/**
+ * GET /api/quotes/:id
+ * Get specific quote details
+ */
+router.get('/:id', userAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+    log.info('Fetching quote details', id);
+
+    const quote = await Quote.findById(id)
+      .populate('quoteRequest')
+      .populate('product')
+      .populate('vendor')
+      .populate('createdOrder')
+      .lean();
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_007'
+      });
+    }
+
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_008'
+      });
+    }
+
+    return res.json({
+      success: true,
+      quote
+    });
+  } catch (error) {
+    log.error('Error fetching quote details:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quote details',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_009'
+    });
+  }
+});
+
+/**
  * GET /api/quotes
  * Get quotes for current user (paginated)
  */
@@ -382,110 +487,6 @@ router.post('/contact', userAuth, async (req, res) => {
       message: 'Failed to contact vendor',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
       code: 'QUOTE_018'
-    });
-  }
-});
-
-/**
- * GET /api/quotes/requests
- * List authenticated user's quote requests (paginated)
- */
-router.get('/requests', userAuth, async (req, res) => {
-  try {
-    const { userId, submittedBy, page = 1, limit = 10 } = req.query;
-    const requestingUserId = req.user.userId;
-    log.info('Fetch quote requests for', requestingUserId);
-
-    const query = { $or: [{ userId: requestingUserId }, { submittedBy: requestingUserId }] };
-
-    if (userId && userId !== requestingUserId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - user ID mismatch'
-      });
-    }
-
-    const quoteRequests = await QuoteRequest.find(query)
-      .sort({ createdAt: -1 })
-      .skip((parseInt(page) - 1) * parseInt(limit))
-      .limit(parseInt(limit))
-      .lean();
-
-    const total = await QuoteRequest.countDocuments(query);
-
-    return res.json({
-      success: true,
-      quoteRequests,
-      count: quoteRequests.length,
-      pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit)),
-        totalItems: total,
-        itemsPerPage: parseInt(limit)
-      }
-    });
-  } catch (error) {
-    log.error('Error fetching quote requests:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'FETCH_ERROR',
-      message: 'Failed to fetch quote requests',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_001'
-    });
-  }
-});
-
-/**
- * GET /api/quotes/:id
- * Get specific quote details
- */
-router.get('/:id', userAuth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
-    log.info('Fetching quote details', id);
-
-    const quote = await Quote.findById(id)
-      .populate('quoteRequest')
-      .populate('product')
-      .populate('vendor')
-      .populate('createdOrder')
-      .lean();
-
-    if (!quote) {
-      return res.status(404).json({
-        success: false,
-        error: 'NOT_FOUND',
-        message: 'Quote not found',
-        code: 'QUOTE_007'
-      });
-    }
-
-    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
-                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
-
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        error: 'ACCESS_DENIED',
-        message: 'Access denied',
-        code: 'QUOTE_008'
-      });
-    }
-
-    return res.json({
-      success: true,
-      quote
-    });
-  } catch (error) {
-    log.error('Error fetching quote details:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'FETCH_ERROR',
-      message: 'Failed to fetch quote details',
-      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
-      code: 'QUOTE_009'
     });
   }
 });
