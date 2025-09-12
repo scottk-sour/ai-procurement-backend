@@ -43,49 +43,130 @@ const app = express();
 // ✅ CRITICAL FIX: Trust proxy for rate limiting and IP detection
 app.set('trust proxy', 1);
 
-// ✅ IMPROVED CORS CONFIG — Handles all Vercel deployment URLs automatically
+// ✅ IMPROVED CORS CONFIG — Handles all deployment URLs with better logging
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    console.log(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
+    
+    // Allow requests with no origin (like mobile apps, Postman, or curl requests)
+    if (!origin) {
+      console.log('✅ CORS: Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    const staticOrigins = [
+      'https://www.tendorai.com',
+      'https://tendorai.com',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:3001', // Additional local port
+      'https://localhost:3000', // HTTPS local (sometimes needed)
+    ];
+    
+    // Allow any Vercel deployment URL for your project
+    const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
+    
+    // Check static origins
+    const isStaticOrigin = staticOrigins.includes(origin);
+    
+    if (isStaticOrigin) {
+      console.log(`✅ CORS: Allowing static origin - ${origin}`);
+      callback(null, true);
+    } else if (isVercelPreview) {
+      console.log(`✅ CORS: Allowing Vercel preview - ${origin}`);
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS BLOCKED: ${origin}`);
+      console.log(`🔍 Available origins:`, staticOrigins);
+      console.log(`🔍 Vercel pattern match:`, isVercelPreview);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'X-File-Name'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  maxAge: 86400 // 24 hours
+}));
+
+// Handle preflight requests explicitly
+app.options('*', cors({
+  origin: function (origin, callback) {
+    console.log(`🔍 PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
+    
     if (!origin) return callback(null, true);
     
     const staticOrigins = [
       'https://www.tendorai.com',
       'https://tendorai.com',
       'http://localhost:3000',
-      'http://127.0.0.1:3000'
+      'http://127.0.0.1:3000',
+      'http://localhost:3001',
+      'https://localhost:3000',
     ];
     
-    // Allow any Vercel deployment URL for your project
     const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
     
     if (staticOrigins.includes(origin) || isVercelPreview) {
+      console.log(`✅ PREFLIGHT: Allowing ${origin}`);
       callback(null, true);
     } else {
-      console.log(`❌ CORS blocked: ${origin}`);
+      console.log(`❌ PREFLIGHT BLOCKED: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'X-File-Name'
+  ]
 }));
-app.options('*', cors());
 
-// Global error handler for CORS errors
+// Enhanced global error handler for CORS errors
 app.use((error, req, res, next) => {
   if (error.message === 'Not allowed by CORS') {
-    console.log(`❌ Global Error: ${error.message}`);
-    console.log(`❌ Stack trace: ${error.stack}`);
+    const origin = req.headers.origin || 'unknown';
+    console.log(`❌ CORS Error Details:`);
+    console.log(`   - Origin: ${origin}`);
+    console.log(`   - Method: ${req.method}`);
+    console.log(`   - Path: ${req.path}`);
+    console.log(`   - User-Agent: ${req.headers['user-agent']}`);
+    console.log(`   - Headers:`, JSON.stringify(req.headers, null, 2));
+    
     return res.status(403).json({
       error: 'CORS Error',
       message: 'This origin is not allowed to access this resource',
-      origin: req.headers.origin || 'unknown',
+      origin: origin,
+      method: req.method,
+      path: req.path,
+      timestamp: new Date().toISOString(),
       allowedPatterns: [
         'https://www.tendorai.com',
-        'https://tendorai.com',
+        'https://tendorai.com', 
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'https://ai-procurement-frontend-*.vercel.app'
-      ]
+      ],
+      troubleshooting: {
+        step1: 'Verify your frontend is making requests to the correct backend URL',
+        step2: 'Check that your frontend domain matches exactly (including www)',
+        step3: 'Ensure requests include proper headers',
+        step4: 'Check browser network tab for actual origin being sent'
+      }
     });
   }
   next(error);
