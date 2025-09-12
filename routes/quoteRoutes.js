@@ -115,7 +115,9 @@ router.post('/request', userAuth, async (req, res) => {
       urgency: urgency || {
         timeframe: urgencyLevel === 'Critical' ? 'Immediately' : '3-6 months'
       },
-      location: location || { postcode: 'Not specified' },
+      location: location || {
+        postcode: 'Not specified'
+      },
       aiAnalysis: {
         processed: false,
         suggestedCategories: [],
@@ -154,28 +156,42 @@ router.post('/request', userAuth, async (req, res) => {
     log.info('Quote request saved:', quoteRequest._id);
 
     // Trigger AI matching (try/catch to avoid failing request on AI issues)
-    let aiMatchingResult = { success: false, quotesGenerated: 0, error: null };
+    let aiMatchingResult = {
+      success: false,
+      quotesGenerated: 0,
+      error: null
+    };
     try {
       log.info('Triggering AIEngineAdapter.generateQuotesFromRequest for', quoteRequest._id);
       const quotes = await AIEngineAdapter.generateQuotesFromRequest(quoteRequest, userId);
-
       if (Array.isArray(quotes) && quotes.length > 0) {
         quoteRequest.quotes = quotes;
         quoteRequest.status = 'matched';
         quoteRequest.aiAnalysis.processed = true;
         quoteRequest.aiAnalysis.recommendations = quotes.map((q, i) => `Generated quote ${i + 1}: ${q}`);
         await quoteRequest.save();
-
-        aiMatchingResult = { success: true, quotesGenerated: quotes.length, error: null };
+        aiMatchingResult = {
+          success: true,
+          quotesGenerated: quotes.length,
+          error: null
+        };
         log.info(`AI matching succeeded: ${quotes.length} quotes for ${quoteRequest._id}`);
       } else {
-        aiMatchingResult = { success: false, quotesGenerated: 0, error: 'No suitable matches found' };
+        aiMatchingResult = {
+          success: false,
+          quotesGenerated: 0,
+          error: 'No suitable matches found'
+        };
         quoteRequest.aiAnalysis.riskFactors.push('No immediate matches found - will retry');
         await quoteRequest.save();
         log.warn('AI matching returned no quotes for', quoteRequest._id);
       }
     } catch (aiError) {
-      aiMatchingResult = { success: false, quotesGenerated: 0, error: aiError?.message || 'AI matching error' };
+      aiMatchingResult = {
+        success: false,
+        quotesGenerated: 0,
+        error: aiError?.message || 'AI matching error'
+      };
       quoteRequest.aiAnalysis.riskFactors.push(`AI matching failed: ${aiError?.message || aiError}`);
       await quoteRequest.save();
       log.error('AI matching error for', quoteRequest._id, aiError);
@@ -247,18 +263,30 @@ router.get('/:id', userAuth, async (req, res) => {
       .lean();
 
     if (!quote) {
-      return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Quote not found', code: 'QUOTE_007' });
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_007'
+      });
     }
 
-    const hasAccess =
-      quote.quoteRequest?.userId?.toString() === userId.toString() ||
-      quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
 
     if (!hasAccess) {
-      return res.status(403).json({ success: false, error: 'ACCESS_DENIED', message: 'Access denied', code: 'QUOTE_008' });
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_008'
+      });
     }
 
-    return res.json({ success: true, quote });
+    return res.json({
+      success: true,
+      quote
+    });
   } catch (error) {
     log.error('Error fetching quote details:', error);
     return res.status(500).json({
@@ -286,6 +314,7 @@ router.get('/', userAuth, async (req, res) => {
     }).select('_id').lean();
 
     const quoteRequestIds = userQuoteRequests.map(q => q._id);
+
     const query = { quoteRequest: { $in: quoteRequestIds } };
     if (status && status !== 'all') query.status = status;
 
@@ -344,19 +373,30 @@ router.post('/contact', userAuth, async (req, res) => {
     }
 
     const quote = await Quote.findById(quoteId).populate('quoteRequest').populate('vendor');
+
     if (!quote) {
-      return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Quote not found', code: 'QUOTE_016' });
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote not found',
+        code: 'QUOTE_016'
+      });
     }
 
-    const hasAccess =
-      quote.quoteRequest?.userId?.toString() === userId.toString() ||
-      quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
 
     if (!hasAccess) {
-      return res.status(403).json({ success: false, error: 'ACCESS_DENIED', message: 'Access denied', code: 'QUOTE_017' });
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied',
+        code: 'QUOTE_017'
+      });
     }
 
     if (!Array.isArray(quote.contactAttempts)) quote.contactAttempts = [];
+
     quote.contactAttempts.push({
       contactedAt: new Date(),
       contactedBy: userId,
@@ -383,7 +423,10 @@ router.post('/contact', userAuth, async (req, res) => {
     return res.json({
       success: true,
       message: `Contact request sent to ${vendorName || 'vendor'}`,
-      contactAttempt: { timestamp: new Date(), method: 'platform_request' }
+      contactAttempt: {
+        timestamp: new Date(),
+        method: 'platform_request'
+      }
     });
   } catch (error) {
     log.error('Error in /contact:', error);
@@ -407,12 +450,13 @@ router.get('/requests', userAuth, async (req, res) => {
     const requestingUserId = req.user.userId;
     log.info('Fetch quote requests for', requestingUserId);
 
-    const query = {
-      $or: [{ userId: requestingUserId }, { submittedBy: requestingUserId }]
-    };
+    const query = { $or: [{ userId: requestingUserId }, { submittedBy: requestingUserId }] };
 
     if (userId && userId !== requestingUserId.toString()) {
-      return res.status(403).json({ success: false, message: 'Access denied - user ID mismatch' });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
     }
 
     const quoteRequests = await QuoteRequest.find(query)
@@ -456,7 +500,10 @@ router.get('/user/:userId/latest', userAuth, async (req, res) => {
     const requestingUserId = req.user.userId;
 
     if (userId !== requestingUserId.toString()) {
-      return res.status(403).json({ success: false, message: 'Access denied - user ID mismatch' });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
     }
 
     const latestRequest = await QuoteRequest.findOne({
@@ -471,15 +518,21 @@ router.get('/user/:userId/latest', userAuth, async (req, res) => {
         quotes: [],
         count: 0,
         message: 'No quotes found',
-        metadata: { timestamp: new Date().toISOString(), requestedBy: userId, recommendationType: 'latest_quotes' }
+        metadata: {
+          timestamp: new Date().toISOString(),
+          requestedBy: userId,
+          recommendationType: 'latest_quotes'
+        }
       });
     }
 
-    const quotes = await Quote.find({ _id: { $in: latestRequest.quotes } })
-      .populate('vendor')
-      .populate('product')
-      .limit(3)
-      .lean();
+    const quotes = await Quote.find({
+      _id: { $in: latestRequest.quotes }
+    })
+    .populate('vendor')
+    .populate('product')
+    .limit(3)
+    .lean();
 
     const quotesWithContext = quotes.map(q => ({
       ...q,
@@ -528,17 +581,40 @@ router.post('/accept', userAuth, async (req, res) => {
     log.info('Accepting quote', quoteId, 'by user', userId);
 
     if (!quoteId) {
-      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Quote ID is required', code: 'QUOTE_010' });
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_010'
+      });
     }
 
     const quote = await Quote.findById(quoteId).populate('quoteRequest').populate('vendor').populate('product');
-    if (!quote) return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Quote not found', code: 'QUOTE_011' });
 
-    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || quote.quoteRequest?.submittedBy?.toString() === userId.toString();
-    if (!hasAccess) return res.status(403).json({ success: false, error: 'ACCESS_DENIED', message: 'Access denied', code: 'QUOTE_012' });
+    if (!quote) return res.status(404).json({
+      success: false,
+      error: 'NOT_FOUND',
+      message: 'Quote not found',
+      code: 'QUOTE_011'
+    });
+
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+
+    if (!hasAccess) return res.status(403).json({
+      success: false,
+      error: 'ACCESS_DENIED',
+      message: 'Access denied',
+      code: 'QUOTE_012'
+    });
 
     if (quote.status === 'accepted') {
-      return res.status(409).json({ success: false, error: 'ALREADY_ACCEPTED', message: 'Quote already accepted', code: 'QUOTE_013' });
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ACCEPTED',
+        message: 'Quote already accepted',
+        code: 'QUOTE_013'
+      });
     }
 
     const orderData = {
@@ -557,17 +633,30 @@ router.post('/accept', userAuth, async (req, res) => {
         contactPerson: quote.quoteRequest?.contactName,
         specialInstructions: `Order created from accepted quote ${quoteId}`
       },
-      payment: { method: 'lease', paymentFrequency: 'quarterly' }
+      payment: {
+        method: 'lease',
+        paymentFrequency: 'quarterly'
+      }
     };
 
     const order = new Order(orderData);
     await order.save();
 
     quote.status = 'accepted';
-    quote.decisionDetails = { acceptedAt: new Date(), acceptedBy: userId };
+    quote.decisionDetails = {
+      acceptedAt: new Date(),
+      acceptedBy: userId
+    };
     quote.createdOrder = order._id;
+
     if (!Array.isArray(quote.customerActions)) quote.customerActions = [];
-    quote.customerActions.push({ action: 'accepted', timestamp: new Date(), notes: `Quote accepted - Order ${order._id} created` });
+
+    quote.customerActions.push({
+      action: 'accepted',
+      timestamp: new Date(),
+      notes: `Quote accepted - Order ${order._id} created`
+    });
+
     await quote.save();
 
     if (quote.quoteRequest) {
@@ -590,11 +679,20 @@ router.post('/accept', userAuth, async (req, res) => {
     }
 
     log.info('Quote accepted and order created', order._id);
+
     return res.json({
       success: true,
-      message: `Quote accepted successfully`,
-      quote: { id: quote._id, status: quote.status, acceptedAt: quote.decisionDetails.acceptedAt },
-      order: { id: order._id, status: order.status, totalPrice: order.totalPrice }
+      message: 'Quote accepted successfully',
+      quote: {
+        id: quote._id,
+        status: quote.status,
+        acceptedAt: quote.decisionDetails.acceptedAt
+      },
+      order: {
+        id: order._id,
+        status: order.status,
+        totalPrice: order.totalPrice
+      }
     });
   } catch (error) {
     log.error('Error accepting quote:', error);
@@ -619,26 +717,67 @@ router.post('/decline', userAuth, async (req, res) => {
     log.info('Declining quote', quoteId, 'by user', userId);
 
     if (!quoteId) {
-      return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', message: 'Quote ID is required', code: 'QUOTE_030' });
+      return res.status(400).json({
+        success: false,
+        error: 'VALIDATION_ERROR',
+        message: 'Quote ID is required',
+        code: 'QUOTE_030'
+      });
     }
 
     const quote = await Quote.findById(quoteId).populate('quoteRequest').populate('vendor');
-    if (!quote) return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Quote not found', code: 'QUOTE_031' });
 
-    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() || quote.quoteRequest?.submittedBy?.toString() === userId.toString();
-    if (!hasAccess) return res.status(403).json({ success: false, error: 'ACCESS_DENIED', message: 'Access denied', code: 'QUOTE_032' });
+    if (!quote) return res.status(404).json({
+      success: false,
+      error: 'NOT_FOUND',
+      message: 'Quote not found',
+      code: 'QUOTE_031'
+    });
+
+    const hasAccess = quote.quoteRequest?.userId?.toString() === userId.toString() ||
+                     quote.quoteRequest?.submittedBy?.toString() === userId.toString();
+
+    if (!hasAccess) return res.status(403).json({
+      success: false,
+      error: 'ACCESS_DENIED',
+      message: 'Access denied',
+      code: 'QUOTE_032'
+    });
 
     if (quote.status === 'accepted') {
-      return res.status(409).json({ success: false, error: 'ALREADY_ACCEPTED', message: 'Quote already accepted', code: 'QUOTE_033' });
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ACCEPTED',
+        message: 'Quote already accepted',
+        code: 'QUOTE_033'
+      });
     }
+
     if (quote.status === 'rejected') {
-      return res.status(409).json({ success: false, error: 'ALREADY_REJECTED', message: 'Quote already rejected', code: 'QUOTE_034' });
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_REJECTED',
+        message: 'Quote already rejected',
+        code: 'QUOTE_034'
+      });
     }
 
     quote.status = 'rejected';
-    quote.decisionDetails = { rejectedAt: new Date(), rejectedBy: userId, rejectionReason: reason || 'Not specified', decisionNotes: notes };
+    quote.decisionDetails = {
+      rejectedAt: new Date(),
+      rejectedBy: userId,
+      rejectionReason: reason || 'Not specified',
+      decisionNotes: notes
+    };
+
     if (!Array.isArray(quote.customerActions)) quote.customerActions = [];
-    quote.customerActions.push({ action: 'rejected', timestamp: new Date(), notes: reason || 'Quote declined by user' });
+
+    quote.customerActions.push({
+      action: 'rejected',
+      timestamp: new Date(),
+      notes: reason || 'Quote declined by user'
+    });
+
     await quote.save();
 
     try {
@@ -655,10 +794,16 @@ router.post('/decline', userAuth, async (req, res) => {
     }
 
     log.info('Quote declined', quoteId);
+
     return res.json({
       success: true,
       message: 'Quote declined successfully',
-      quote: { id: quote._id, status: quote.status, rejectedAt: quote.decisionDetails.rejectedAt, reason: quote.decisionDetails.rejectionReason }
+      quote: {
+        id: quote._id,
+        status: quote.status,
+        rejectedAt: quote.decisionDetails.rejectedAt,
+        reason: quote.decisionDetails.rejectionReason
+      }
     });
   } catch (error) {
     log.error('Error declining quote:', error);
@@ -679,8 +824,12 @@ router.post('/decline', userAuth, async (req, res) => {
 router.get('/user/:userId', userAuth, async (req, res) => {
   try {
     const { userId } = req.params;
+
     if (userId !== req.user.userId.toString()) {
-      return res.status(403).json({ success: false, message: 'Access denied - user ID mismatch' });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - user ID mismatch'
+      });
     }
 
     const quoteRequests = await QuoteRequest.find({
@@ -691,10 +840,12 @@ router.get('/user/:userId', userAuth, async (req, res) => {
     const allQuotes = [];
     for (const request of quoteRequests) {
       if (request.quotes && request.quotes.length > 0) {
-        const quotes = await Quote.find({ _id: { $in: request.quotes } })
-          .populate('vendor')
-          .populate('product')
-          .lean();
+        const quotes = await Quote.find({
+          _id: { $in: request.quotes }
+        })
+        .populate('vendor')
+        .populate('product')
+        .lean();
 
         const withContext = quotes.map(q => ({
           ...q,
