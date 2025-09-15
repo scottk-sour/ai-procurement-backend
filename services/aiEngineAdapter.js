@@ -131,7 +131,7 @@ class AIEngineAdapter {
   }
 
   /**
-   * Deduplicate recommendations by vendor - keeps the best score per vendor
+   * FIXED: Deduplicate recommendations by vendor - keeps the best score per vendor
    */
   static deduplicateByVendor(recommendations) {
     try {
@@ -141,13 +141,13 @@ class AIEngineAdapter {
       
       for (const rec of recommendations) {
         const product = rec.product;
-        if (!product?.manufacturer || !product?.model) {
-          logger.warn('Skipping recommendation with missing manufacturer/model');
+        if (!product?.manufacturer || !product?.model || !product?.vendorId) {
+          logger.warn('Skipping recommendation with missing manufacturer/model/vendorId');
           continue;
         }
         
-        // Create vendor key using manufacturer + model
-        const vendorKey = `${product.manufacturer.trim()}-${product.model.trim()}`;
+        // FIXED: Create vendor key using vendorId + manufacturer + model to ensure uniqueness per vendor
+        const vendorKey = `${product.vendorId}-${product.manufacturer.trim()}-${product.model.trim()}`;
         
         const currentScore = rec.overallScore || rec.suitability?.score || 0;
         
@@ -156,9 +156,10 @@ class AIEngineAdapter {
           vendorMap.set(vendorKey, {
             recommendation: rec,
             score: currentScore,
-            vendorKey
+            vendorKey,
+            vendorId: product.vendorId
           });
-          logger.info(`Added new vendor: ${vendorKey} (score: ${currentScore})`);
+          logger.info(`Added new vendor product: ${vendorKey} (score: ${currentScore})`);
         } else {
           // Check if this recommendation has better score
           const existing = vendorMap.get(vendorKey);
@@ -166,11 +167,12 @@ class AIEngineAdapter {
             vendorMap.set(vendorKey, {
               recommendation: rec,
               score: currentScore,
-              vendorKey
+              vendorKey,
+              vendorId: product.vendorId
             });
             logger.info(`Updated vendor ${vendorKey} with better score: ${currentScore} > ${existing.score}`);
           } else {
-            logger.info(`Skipping duplicate vendor ${vendorKey} (score: ${currentScore} <= ${existing.score})`);
+            logger.info(`Skipping duplicate vendor product ${vendorKey} (score: ${currentScore} <= ${existing.score})`);
           }
         }
       }
@@ -180,7 +182,8 @@ class AIEngineAdapter {
         .sort((a, b) => b.score - a.score)
         .map(item => item.recommendation);
       
-      logger.info(`Deduplication complete: ${recommendations.length} -> ${uniqueRecommendations.length} unique vendors`);
+      logger.info(`Deduplication complete: ${recommendations.length} -> ${uniqueRecommendations.length} unique vendor products`);
+      logger.info(`Unique vendors represented: ${Array.from(new Set(Array.from(vendorMap.values()).map(v => v.vendorId))).length}`);
       
       return uniqueRecommendations;
     } catch (error) {
@@ -350,7 +353,7 @@ class AIEngineAdapter {
           scoringAlgorithm: 'AIRecommendationEngine',
           quoteRequestId: quoteRequest._id,
           originalRanking: ranking,
-          vendorKey: `${product.manufacturer}-${product.model}`
+          vendorKey: `${product.vendorId}-${product.manufacturer}-${product.model}`
         }
       };
     } catch (error) {
@@ -411,7 +414,7 @@ class AIEngineAdapter {
   }
 
   /**
-   * Main function to use your AI engine with new models - PRODUCTION READY WITH DEDUPLICATION
+   * Main function to use your AI engine with new models - PRODUCTION READY WITH FIXED DEDUPLICATION
    */
   static async generateQuotesFromRequest(quoteRequest, userId = null, invoiceFiles = []) {
     try {
@@ -464,7 +467,7 @@ class AIEngineAdapter {
         return [];
       }
 
-      // CRITICAL FIX: Deduplicate by vendor BEFORE creating quotes
+      // CRITICAL FIX: Deduplicate by vendor BEFORE creating quotes with improved logic
       const uniqueRecommendations = this.deduplicateByVendor(validRecommendations);
       
       if (uniqueRecommendations.length === 0) {
@@ -493,14 +496,15 @@ class AIEngineAdapter {
           await quote.save();
           quotes.push(quote._id);
           
-          logger.info(`Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'}`);
+          logger.info(`Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'} from vendor ${recommendation.product?.vendorId}`);
         } catch (saveError) {
           logger.error(`Error saving quote ${i + 1}:`, {
             error: saveError.message,
             recommendation: {
               manufacturer: recommendation.product?.manufacturer,
               model: recommendation.product?.model,
-              productId: recommendation.product?._id
+              productId: recommendation.product?._id,
+              vendorId: recommendation.product?.vendorId
             }
           });
           // Continue with other quotes even if one fails
@@ -690,7 +694,8 @@ class AIEngineAdapter {
         lastCheck: new Date(),
         conversionTest: 'passed',
         convertedFields: Object.keys(converted).length,
-        deduplicationEnabled: true
+        deduplicationEnabled: true,
+        deduplicationMethod: 'vendorId + manufacturer + model'
       };
     } catch (error) {
       logger.error('AI Engine Adapter health check failed:', error);
@@ -708,13 +713,13 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.1.0',
+      version: '2.1.1',
       status: 'production',
       features: [
         'AI Recommendation Engine Integration',
         'Production Error Handling',
         'Comprehensive Validation',
-        'Vendor Deduplication',
+        'Fixed Vendor Deduplication',
         'Fallback Quote Generation',
         'Health Monitoring'
       ],
@@ -723,7 +728,10 @@ class AIEngineAdapter {
         'Quote',
         'VendorProduct'
       ],
-      lastUpdate: new Date('2025-09-10')
+      lastUpdate: new Date('2025-09-15'),
+      bugFixes: [
+        'Fixed vendor deduplication to preserve quotes from different vendors with same products'
+      ]
     };
   }
 }
