@@ -25,6 +25,7 @@ const verifyToken = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.userId || decoded.id;
     req.userRole = decoded.role;
+    req.userName = decoded.name;
     
     next();
   } catch (error) {
@@ -175,6 +176,90 @@ router.get('/profile', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('❌ Error fetching user profile:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ✅ GET /api/users/dashboard - COMBINED DASHBOARD ENDPOINT
+router.get('/dashboard', verifyToken, async (req, res) => {
+  try {
+    const userId = req.userId;
+    
+    console.log(`🔍 Fetching dashboard data for user: ${userId}`);
+
+    // Fetch all data in parallel for better performance
+    const [recentQuotes, userQuotes] = await Promise.all([
+      QuoteRequest.find({ userId }).sort({ createdAt: -1 }).limit(5),
+      QuoteRequest.find({ 
+        $or: [{ userId }, { submittedBy: userId }] 
+      }).populate('quotes').sort({ createdAt: -1 }).limit(10)
+    ]);
+
+    // Transform quote requests into activity items
+    const activities = recentQuotes.map(quote => ({
+      type: 'quote',
+      description: `Quote request submitted for ${quote.serviceType} - ${quote.companyName || 'Company'}`,
+      date: quote.createdAt,
+      id: quote._id
+    }));
+
+    // Add login activity
+    activities.push({
+      type: 'login',
+      description: 'Logged in to dashboard',
+      date: new Date().toISOString(),
+      id: 'login-today'
+    });
+
+    // Mock files - replace with real file storage later
+    const mockFiles = [
+      {
+        _id: 'file1',
+        name: 'quote_requirements.pdf',
+        documentType: 'specification',
+        size: 1024000, // 1MB
+        uploadedAt: new Date().toISOString(),
+        userId: userId
+      }
+    ];
+
+    // Create notifications based on quote requests
+    const notifications = userQuotes.map(quote => ({
+      _id: `notif-${quote._id}`,
+      message: `Your quote request for ${quote.serviceType} has been received and is being processed.`,
+      status: 'unread',
+      createdAt: quote.createdAt,
+      userId: userId
+    }));
+
+    // Add welcome notification
+    notifications.unshift({
+      _id: 'welcome-notif',
+      message: 'Welcome to TendorAI! Your account has been created successfully.',
+      status: 'unread',
+      createdAt: new Date().toISOString(),
+      userId: userId
+    });
+
+    // Return combined dashboard data in expected format
+    res.json({
+      user: { 
+        userId, 
+        name: req.userName || 'User' 
+      },
+      requests: userQuotes,
+      recentActivity: activities,
+      uploadedFiles: mockFiles,
+      notifications: notifications
+    });
+
+    console.log('✅ Dashboard data fetched successfully for user:', userId);
+
+  } catch (error) {
+    console.error('❌ Dashboard fetch error:', error);
+    res.status(500).json({ 
+      message: 'Failed to fetch dashboard data', 
+      error: error.message 
+    });
   }
 });
 
