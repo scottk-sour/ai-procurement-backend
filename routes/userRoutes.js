@@ -179,25 +179,33 @@ router.get('/profile', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ GET /api/users/dashboard - COMBINED DASHBOARD ENDPOINT
+// ✅ GET /api/users/dashboard - FIXED COMBINED DASHBOARD ENDPOINT
 router.get('/dashboard', verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
     
     console.log(`🔍 Fetching dashboard data for user: ${userId}`);
 
-    // Fetch all data in parallel for better performance
-    const [recentQuotes, userQuotes] = await Promise.all([
-      QuoteRequest.find({ userId }).sort({ createdAt: -1 }).limit(5),
-      QuoteRequest.find({ 
-        $or: [{ userId }, { submittedBy: userId }] 
-      }).populate('quotes').sort({ createdAt: -1 }).limit(10)
-    ]);
+    // Fetch user quote requests with error handling
+    let userQuotes = [];
+    let recentQuotes = [];
+    
+    try {
+      [recentQuotes, userQuotes] = await Promise.all([
+        QuoteRequest.find({ userId }).sort({ createdAt: -1 }).limit(5),
+        QuoteRequest.find({ 
+          $or: [{ userId }, { submittedBy: userId }] 
+        }).populate('quotes').sort({ createdAt: -1 }).limit(10)
+      ]);
+    } catch (dbError) {
+      console.error('❌ Database query error:', dbError.message);
+      // Continue with empty arrays rather than failing completely
+    }
 
     // Transform quote requests into activity items
-    const activities = recentQuotes.map(quote => ({
+    const activities = (recentQuotes || []).map(quote => ({
       type: 'quote',
-      description: `Quote request submitted for ${quote.serviceType} - ${quote.companyName || 'Company'}`,
+      description: `Quote request submitted for ${quote.serviceType || 'Service'} - ${quote.companyName || 'Company'}`,
       date: quote.createdAt,
       id: quote._id
     }));
@@ -223,12 +231,13 @@ router.get('/dashboard', verifyToken, async (req, res) => {
     ];
 
     // Create notifications based on quote requests
-    const notifications = userQuotes.map(quote => ({
+    const notifications = (userQuotes || []).map(quote => ({
       _id: `notif-${quote._id}`,
-      message: `Your quote request for ${quote.serviceType} has been received and is being processed.`,
+      message: `Your quote request for ${quote.serviceType || 'service'} has been received and is being processed.`,
       status: 'unread',
       createdAt: quote.createdAt,
-      userId: userId
+      userId: userId,
+      type: 'quote'
     }));
 
     // Add welcome notification
@@ -237,28 +246,46 @@ router.get('/dashboard', verifyToken, async (req, res) => {
       message: 'Welcome to TendorAI! Your account has been created successfully.',
       status: 'unread',
       createdAt: new Date().toISOString(),
-      userId: userId
+      userId: userId,
+      type: 'welcome'
     });
 
-    // Return combined dashboard data in expected format
-    res.json({
+    // CRITICAL FIX: Ensure all arrays are properly defined and not null/undefined
+    const response = {
       user: { 
         userId, 
         name: req.userName || 'User' 
       },
-      requests: userQuotes,
-      recentActivity: activities,
-      uploadedFiles: mockFiles,
-      notifications: notifications
-    });
+      requests: Array.isArray(userQuotes) ? userQuotes : [],
+      recentActivity: Array.isArray(activities) ? activities : [],
+      uploadedFiles: Array.isArray(mockFiles) ? mockFiles : [],
+      notifications: Array.isArray(notifications) ? notifications : []
+    };
 
+    res.status(200).json(response);
     console.log('✅ Dashboard data fetched successfully for user:', userId);
+    console.log('📊 Response contains:', {
+      requests: response.requests.length,
+      activities: response.recentActivity.length,
+      files: response.uploadedFiles.length,
+      notifications: response.notifications.length
+    });
 
   } catch (error) {
     console.error('❌ Dashboard fetch error:', error);
+    
+    // Return safe fallback data to prevent frontend crashes
     res.status(500).json({ 
       message: 'Failed to fetch dashboard data', 
-      error: error.message 
+      error: error.message,
+      user: { 
+        userId: req.userId, 
+        name: req.userName || 'User' 
+      },
+      requests: [],           // Always return empty arrays
+      recentActivity: [],     // This prevents .filter errors
+      uploadedFiles: [],
+      notifications: []
     });
   }
 });
@@ -277,9 +304,9 @@ router.get('/recent-activity', verifyToken, async (req, res) => {
       .limit(5);
 
     // Transform quote requests into activity items
-    const activities = recentQuotes.map(quote => ({
+    const activities = (recentQuotes || []).map(quote => ({
       type: 'quote',
-      description: `Quote request submitted for ${quote.serviceType} - ${quote.companyName || 'Company'}`,
+      description: `Quote request submitted for ${quote.serviceType || 'Service'} - ${quote.companyName || 'Company'}`,
       date: quote.createdAt,
       id: quote._id
     }));
@@ -304,7 +331,11 @@ router.get('/recent-activity', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error fetching recent activity:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message,
+      activities: [] // Safe fallback
+    });
   }
 });
 
@@ -336,7 +367,11 @@ router.get('/uploaded-files', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error fetching uploaded files:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message,
+      files: [] // Safe fallback
+    });
   }
 });
 
@@ -353,12 +388,13 @@ router.get('/notifications', verifyToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5);
 
-    const notifications = userQuotes.map(quote => ({
+    const notifications = (userQuotes || []).map(quote => ({
       _id: `notif-${quote._id}`,
-      message: `Your quote request for ${quote.serviceType} has been received and is being processed.`,
+      message: `Your quote request for ${quote.serviceType || 'service'} has been received and is being processed.`,
       status: 'unread',
       createdAt: quote.createdAt,
-      userId: userId
+      userId: userId,
+      type: 'quote'
     }));
 
     // Add welcome notification
@@ -367,7 +403,8 @@ router.get('/notifications', verifyToken, async (req, res) => {
       message: 'Welcome to TendorAI! Your account has been created successfully.',
       status: 'unread',
       createdAt: new Date().toISOString(),
-      userId: userId
+      userId: userId,
+      type: 'welcome'
     };
 
     const allNotifications = [welcomeNotification, ...notifications];
@@ -380,7 +417,11 @@ router.get('/notifications', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error fetching notifications:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message,
+      notifications: [] // Safe fallback
+    });
   }
 });
 
