@@ -135,14 +135,15 @@ const vendorAuth = async (req, res, next) => {
       });
     }
 
-    // Validate vendor account status
-    const vendorStatus = vendor.status?.toLowerCase();
+    // FIXED: Validate vendor account status - handle both old and new data formats
+    const vendorStatus = (vendor.status || vendor.account?.status || '').toLowerCase();
     if (vendorStatus !== 'active') {
       console.warn('🔒 Inactive vendor login attempt:', {
         vendorId: vendor._id,
         status: vendorStatus,
         email: vendor.email,
-        ip: req.ip
+        ip: req.ip,
+        statusLocation: vendor.status ? 'vendor.status' : 'vendor.account.status'
       });
 
       const statusMessages = {
@@ -194,7 +195,7 @@ const vendorAuth = async (req, res, next) => {
       companyName: vendor.companyName,
       role: vendor.role || 'vendor',
       permissions: vendor.permissions || [],
-      status: vendor.status,
+      status: vendor.status || vendor.account?.status, // FIXED: Handle both data formats
       accountType: vendor.accountType || 'standard',
       // Include any other relevant vendor data
       contactInfo: vendor.contactInfo,
