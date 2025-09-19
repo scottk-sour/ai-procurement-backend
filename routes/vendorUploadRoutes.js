@@ -105,23 +105,63 @@ router.post('/signup', signupLimiter, async (req, res) => {
   }
 });
 
-// Vendor login
+// FIXED Vendor login with comprehensive debugging and status handling
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+    console.log('🔍 Login attempt for:', email);
+    
+    if (!email || !password) {
+      console.log('❌ Missing email or password');
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
     
     const vendor = await Vendor.findOne({ email });
-    if (!vendor) return res.status(401).json({ message: 'Invalid email or password.' });
+    console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
+    console.log('🔍 Vendor ID:', vendor?._id);
+    console.log('🔍 Vendor status structure:', {
+      topLevelStatus: vendor?.status,
+      accountStatus: vendor?.account?.status,
+      hasAccount: !!vendor?.account
+    });
+    
+    if (!vendor) {
+      console.log('❌ No vendor found with email:', email);
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
 
+    console.log('🔍 Comparing passwords...');
+    console.log('🔍 Stored password hash length:', vendor.password?.length);
     const isMatch = await bcrypt.compare(password, vendor.password);
-    if (!isMatch) return res.status(401).json({ message: 'Invalid email or password.' });
+    console.log('🔍 Password match:', isMatch);
+    
+    if (!isMatch) {
+      console.log('❌ Password comparison failed');
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    // FIXED: Check vendor status from both possible locations
+    const vendorStatus = (vendor.status || vendor.account?.status || '').toLowerCase();
+    console.log('🔍 Vendor status check:', {
+      status: vendorStatus,
+      isActive: vendorStatus === 'active'
+    });
+    
+    if (vendorStatus !== 'active') {
+      console.log('❌ Vendor account not active:', vendorStatus);
+      return res.status(403).json({ 
+        message: 'Account is not active. Contact support.',
+        status: vendorStatus
+      });
+    }
 
     const token = jwt.sign(
       { vendorId: vendor._id.toString(), email: vendor.email, role: 'vendor' },
       JWT_SECRET,
       { expiresIn: '4h' }
     );
+
+    console.log('✅ Login successful for:', email);
 
     try {
       await VendorActivity.createActivity({
@@ -153,6 +193,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error during vendor login:', error.message);
+    console.error('❌ Login error stack:', error.stack);
     res.status(500).json({ message: 'Internal server error.', error: error.message });
   }
 });
@@ -196,7 +237,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status
+        status: vendor.status || vendor.account?.status
       },
     });
   } catch (error) {
@@ -366,8 +407,14 @@ router.get('/recommend', userAuth, async (req, res) => {
     }
     
     // Get all active vendors
-    const vendors = await Vendor.find({ status: 'active' })
-      .select('name email company services status location createdAt')
+    const vendors = await Vendor.find({ 
+      $or: [
+        { status: 'active' },
+        { 'account.status': 'Active' },
+        { 'account.status': 'active' }
+      ]
+    })
+      .select('name email company services status account location createdAt')
       .limit(20)
       .lean();
     
@@ -403,7 +450,7 @@ router.get('/recommend', userAuth, async (req, res) => {
         rating: Math.round((Math.random() * 2 + 3) * 10) / 10, // Random rating between 3.0-5.0
         reviewCount: Math.floor(Math.random() * 50) + 5, // Random review count 5-55
         yearsInBusiness: Math.floor(Math.random() * 20) + 5, // Random years 5-25
-        status: vendor.status,
+        status: vendor.status || vendor.account?.status,
         joinedDate: vendor.createdAt,
         specialties: vendor.services || ['Photocopiers'],
         verified: true,
@@ -453,7 +500,13 @@ router.get('/all', async (req, res) => {
 
     console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
 
-    let filter = { status: status };
+    let filter = { 
+      $or: [
+        { status: status },
+        { 'account.status': status },
+        { 'account.status': status.charAt(0).toUpperCase() + status.slice(1) }
+      ]
+    };
     
     if (serviceType) {
       filter.services = { $in: [serviceType] };
@@ -468,7 +521,7 @@ router.get('/all', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const vendors = await Vendor.find(filter)
-      .select('name email company services status location createdAt uploads')
+      .select('name email company services status account location createdAt uploads')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -490,7 +543,7 @@ router.get('/all', async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status,
+        status: vendor.status || vendor.account?.status,
         rating: 0,
         reviewCount: 0,
         location: vendor.location || '',
@@ -540,7 +593,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
@@ -643,7 +695,6 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 // GET /api/vendors/products
 router.get("/products", async (req, res) => {
   try {
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
@@ -672,7 +723,6 @@ router.get("/products", async (req, res) => {
 // DELETE /api/vendors/products/:productId
 router.delete("/products/:productId", async (req, res) => {
   try {
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     const { productId } = req.params;
 
@@ -732,7 +782,6 @@ router.delete("/products/:productId", async (req, res) => {
 // PUT /api/vendors/products/:productId
 router.put("/products/:productId", async (req, res) => {
   try {
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     const { productId } = req.params;
     const updateData = req.body;
@@ -876,7 +925,6 @@ router.get("/upload-template", (req, res) => {
 // GET /api/vendors/upload-history
 router.get("/upload-history", async (req, res) => {
   try {
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
@@ -917,7 +965,6 @@ router.get("/upload-history", async (req, res) => {
 // GET /api/vendors/listings
 router.get("/listings", async (req, res) => {
   try {
-    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
     const vendorId = req.vendorId;
     if (!vendorId) return res.status(401).json({ message: "Unauthorized" });
 
