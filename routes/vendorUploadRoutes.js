@@ -540,7 +540,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
         success: false,
@@ -642,7 +643,8 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 // GET /api/vendors/products
 router.get("/products", async (req, res) => {
   try {
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
         success: false,
@@ -670,7 +672,8 @@ router.get("/products", async (req, res) => {
 // DELETE /api/vendors/products/:productId
 router.delete("/products/:productId", async (req, res) => {
   try {
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     const { productId } = req.params;
 
     if (!vendorId) {
@@ -729,7 +732,8 @@ router.delete("/products/:productId", async (req, res) => {
 // PUT /api/vendors/products/:productId
 router.put("/products/:productId", async (req, res) => {
   try {
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     const { productId } = req.params;
     const updateData = req.body;
 
@@ -872,7 +876,8 @@ router.get("/upload-template", (req, res) => {
 // GET /api/vendors/upload-history
 router.get("/upload-history", async (req, res) => {
   try {
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     if (!vendorId) {
       return res.status(401).json({ 
         success: false,
@@ -912,7 +917,8 @@ router.get("/upload-history", async (req, res) => {
 // GET /api/vendors/listings
 router.get("/listings", async (req, res) => {
   try {
-    const vendorId = req.vendor?._id;
+    // ✅ FIXED: Use req.vendorId instead of req.vendor?._id
+    const vendorId = req.vendorId;
     if (!vendorId) return res.status(401).json({ message: "Unauthorized" });
 
     const listings = await CopierListing.find({ vendor: vendorId }).lean();
