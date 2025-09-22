@@ -123,8 +123,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
         console.log('🔍 Vendor ID:', vendor?._id);
 
-        // FIXED: Check both possible status locations
-        const vendorStatus = (vendor?.account?.status || vendor?.status || '').toLowerCase();
+        // FIXED: Check both possible status locations - PRIORITIZE OLD STATUS FIELD
+        const vendorStatus = (vendor?.status || vendor?.account?.status || '').toLowerCase();
         console.log('🔍 Vendor status structure:', {
             directStatus: vendor?.status,
             accountStatus: vendor?.account?.status,
