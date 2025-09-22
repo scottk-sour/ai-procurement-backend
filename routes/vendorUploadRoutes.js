@@ -1,4 +1,4 @@
-// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (CONFLICT REMOVED)
+// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS CHECKING)
 import express from "express";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -105,7 +105,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   }
 });
 
-// FIXED Vendor login with comprehensive debugging and status handling
+// FIXED Vendor login with correct status field checking
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -119,9 +119,10 @@ router.post('/login', loginLimiter, async (req, res) => {
     const vendor = await Vendor.findOne({ email });
     console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
     console.log('🔍 Vendor ID:', vendor?._id);
+    
+    // FIXED: Check the correct status field from the database
     console.log('🔍 Vendor status structure:', {
-      topLevelStatus: vendor?.status,
-      accountStatus: vendor?.account?.status,
+      status: vendor?.status,
       hasAccount: !!vendor?.account
     });
     
@@ -140,8 +141,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    // FIXED: Check vendor status from both possible locations
-    const vendorStatus = (vendor.status || vendor.account?.status || '').toLowerCase();
+    // FIXED: Check the correct status field - your database uses 'status', not 'accountStatus'
+    const vendorStatus = vendor.status?.toLowerCase() || '';
     console.log('🔍 Vendor status check:', {
       status: vendorStatus,
       isActive: vendorStatus === 'active'
@@ -237,7 +238,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status || vendor.account?.status
+        status: vendor.status
       },
     });
   } catch (error) {
@@ -406,15 +407,11 @@ router.get('/recommend', userAuth, async (req, res) => {
       });
     }
     
-    // Get all active vendors
+    // Get all active vendors - FIXED: Check correct status field
     const vendors = await Vendor.find({ 
-      $or: [
-        { status: 'active' },
-        { 'account.status': 'Active' },
-        { 'account.status': 'active' }
-      ]
+      status: 'active'
     })
-      .select('name email company services status account location createdAt')
+      .select('name email company services status location createdAt')
       .limit(20)
       .lean();
     
@@ -450,7 +447,7 @@ router.get('/recommend', userAuth, async (req, res) => {
         rating: Math.round((Math.random() * 2 + 3) * 10) / 10, // Random rating between 3.0-5.0
         reviewCount: Math.floor(Math.random() * 50) + 5, // Random review count 5-55
         yearsInBusiness: Math.floor(Math.random() * 20) + 5, // Random years 5-25
-        status: vendor.status || vendor.account?.status,
+        status: vendor.status,
         joinedDate: vendor.createdAt,
         specialties: vendor.services || ['Photocopiers'],
         verified: true,
@@ -500,12 +497,9 @@ router.get('/all', async (req, res) => {
 
     console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
 
+    // FIXED: Use correct status field
     let filter = { 
-      $or: [
-        { status: status },
-        { 'account.status': status },
-        { 'account.status': status.charAt(0).toUpperCase() + status.slice(1) }
-      ]
+      status: status
     };
     
     if (serviceType) {
@@ -521,7 +515,7 @@ router.get('/all', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const vendors = await Vendor.find(filter)
-      .select('name email company services status account location createdAt uploads')
+      .select('name email company services status location createdAt uploads')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -543,7 +537,7 @@ router.get('/all', async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status || vendor.account?.status,
+        status: vendor.status,
         rating: 0,
         reviewCount: 0,
         location: vendor.location || '',
