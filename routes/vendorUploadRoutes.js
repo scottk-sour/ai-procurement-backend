@@ -1,4 +1,4 @@
-// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS CHECKING)
+// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS FIELD SELECTION)
 import express from "express";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -105,7 +105,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   }
 });
 
-// FIXED Vendor login with correct status field checking
+// FIXED Vendor login with correct status field selection
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -116,7 +116,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
     
-    const vendor = await Vendor.findOne({ email });
+    // FIXED: Explicitly select status field even if it's excluded by default
+    const vendor = await Vendor.findOne({ email }).select('+status +password +name +email +company +services');
     console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
     console.log('🔍 Vendor ID:', vendor?._id);
     
@@ -208,7 +209,7 @@ router.get('/verify', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (!decoded.vendorId) return res.status(401).json({ message: 'Invalid token payload.' });
 
-    const vendor = await Vendor.findById(decoded.vendorId).select('-password');
+    const vendor = await Vendor.findById(decoded.vendorId).select('-password +status');
     if (!vendor) return res.status(401).json({ message: 'Invalid token.' });
 
     res.json({
@@ -228,7 +229,7 @@ router.get('/verify', async (req, res) => {
 // Vendor profile
 router.get('/profile', vendorAuth, async (req, res) => {
   try {
-    const vendor = await Vendor.findById(req.vendorId).select('-password');
+    const vendor = await Vendor.findById(req.vendorId).select('-password +status');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
     res.status(200).json({
@@ -293,7 +294,7 @@ router.get('/notifications', vendorAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     
-    const vendor = await Vendor.findById(req.vendorId);
+    const vendor = await Vendor.findById(req.vendorId).select('+status');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
     const recentQuotes = await CopierQuoteRequest.find({
@@ -407,11 +408,11 @@ router.get('/recommend', userAuth, async (req, res) => {
       });
     }
     
-    // Get all active vendors - FIXED: Check correct status field
+    // Get all active vendors - FIXED: Check correct status field with explicit selection
     const vendors = await Vendor.find({ 
       status: 'active'
     })
-      .select('name email company services status location createdAt')
+      .select('name email company services status location createdAt +status')
       .limit(20)
       .lean();
     
@@ -497,7 +498,7 @@ router.get('/all', async (req, res) => {
 
     console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
 
-    // FIXED: Use correct status field
+    // FIXED: Use correct status field with explicit selection
     let filter = { 
       status: status
     };
@@ -515,7 +516,7 @@ router.get('/all', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const vendors = await Vendor.find(filter)
-      .select('name email company services status location createdAt uploads')
+      .select('name email company services status location createdAt uploads +status')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -596,7 +597,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    const vendor = await Vendor.findById(vendorId);
+    const vendor = await Vendor.findById(vendorId).select('+status');
     if (!vendor) {
       return res.status(404).json({ 
         success: false,
