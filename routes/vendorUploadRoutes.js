@@ -52,6 +52,36 @@ const signupLimiter = rateLimit({
 
 // ===== VENDOR AUTHENTICATION ROUTES =====
 
+// Temporary password reset route - REMOVE AFTER USE
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { email, newPassword } = req.body;
+        
+        if (!email || !newPassword) {
+            return res.status(400).json({ message: 'Email and newPassword are required' });
+        }
+        
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        
+        const result = await Vendor.findOneAndUpdate(
+            { email: email },
+            { $set: { password: hashedPassword } },
+            { new: true }
+        );
+        
+        if (!result) {
+            return res.status(404).json({ message: 'Vendor not found' });
+        }
+        
+        res.json({ 
+            message: 'Password updated successfully',
+            email: result.email 
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Vendor signup
 router.post('/signup', signupLimiter, async (req, res) => {
     try {
