@@ -69,7 +69,9 @@ router.post('/signup', signupLimiter, async (req, res) => {
       password: hashedPassword,
       company,
       services,
-      status: 'active'
+      account: {
+        status: 'active'
+      }
     });
     await newVendor.save();
 
@@ -116,14 +118,15 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
     
-    // FIXED: Explicitly select status field even if it's excluded by default
-    const vendor = await Vendor.findOne({ email }).select('+status +password +name +email +company +services');
+    // FIXED: Select both old (status) and new (account.status) field formats
+    const vendor = await Vendor.findOne({ email }).select('password name email company services status account');
     console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
     console.log('🔍 Vendor ID:', vendor?._id);
     
-    // FIXED: Check the correct status field from the database
+    // FIXED: Check both possible status locations
     console.log('🔍 Vendor status structure:', {
-      status: vendor?.status,
+      directStatus: vendor?.status,
+      accountStatus: vendor?.account?.status,
       hasAccount: !!vendor?.account
     });
     
@@ -142,8 +145,8 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    // FIXED: Check the correct status field - your database uses 'status', not 'accountStatus'
-    const vendorStatus = vendor.status?.toLowerCase() || '';
+    // FIXED: Check status from both possible locations
+    const vendorStatus = (vendor.status || vendor.account?.status || '').toLowerCase();
     console.log('🔍 Vendor status check:', {
       status: vendorStatus,
       isActive: vendorStatus === 'active'
@@ -209,7 +212,7 @@ router.get('/verify', async (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (!decoded.vendorId) return res.status(401).json({ message: 'Invalid token payload.' });
 
-    const vendor = await Vendor.findById(decoded.vendorId).select('-password +status');
+    const vendor = await Vendor.findById(decoded.vendorId).select('-password status account');
     if (!vendor) return res.status(401).json({ message: 'Invalid token.' });
 
     res.json({
@@ -229,7 +232,7 @@ router.get('/verify', async (req, res) => {
 // Vendor profile
 router.get('/profile', vendorAuth, async (req, res) => {
   try {
-    const vendor = await Vendor.findById(req.vendorId).select('-password +status');
+    const vendor = await Vendor.findById(req.vendorId).select('-password status account');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
     res.status(200).json({
@@ -239,7 +242,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status
+        status: vendor.status || vendor.account?.status
       },
     });
   } catch (error) {
@@ -294,7 +297,7 @@ router.get('/notifications', vendorAuth, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     
-    const vendor = await Vendor.findById(req.vendorId).select('+status');
+    const vendor = await Vendor.findById(req.vendorId).select('status account');
     if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
     const recentQuotes = await CopierQuoteRequest.find({
@@ -408,11 +411,14 @@ router.get('/recommend', userAuth, async (req, res) => {
       });
     }
     
-    // Get all active vendors - FIXED: Check correct status field with explicit selection
+    // Get all active vendors - FIXED: Check both status locations
     const vendors = await Vendor.find({ 
-      status: 'active'
+      $or: [
+        { status: 'active' },
+        { 'account.status': 'active' }
+      ]
     })
-      .select('name email company services status location createdAt +status')
+      .select('name email company services status account location createdAt')
       .limit(20)
       .lean();
     
@@ -448,7 +454,7 @@ router.get('/recommend', userAuth, async (req, res) => {
         rating: Math.round((Math.random() * 2 + 3) * 10) / 10, // Random rating between 3.0-5.0
         reviewCount: Math.floor(Math.random() * 50) + 5, // Random review count 5-55
         yearsInBusiness: Math.floor(Math.random() * 20) + 5, // Random years 5-25
-        status: vendor.status,
+        status: vendor.status || vendor.account?.status,
         joinedDate: vendor.createdAt,
         specialties: vendor.services || ['Photocopiers'],
         verified: true,
@@ -498,9 +504,12 @@ router.get('/all', async (req, res) => {
 
     console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
 
-    // FIXED: Use correct status field with explicit selection
+    // FIXED: Use both status field locations
     let filter = { 
-      status: status
+      $or: [
+        { status: status },
+        { 'account.status': status }
+      ]
     };
     
     if (serviceType) {
@@ -516,7 +525,7 @@ router.get('/all', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const vendors = await Vendor.find(filter)
-      .select('name email company services status location createdAt uploads +status')
+      .select('name email company services status account location createdAt uploads')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -538,7 +547,7 @@ router.get('/all', async (req, res) => {
         email: vendor.email,
         company: vendor.company,
         services: vendor.services,
-        status: vendor.status,
+        status: vendor.status || vendor.account?.status,
         rating: 0,
         reviewCount: 0,
         location: vendor.location || '',
@@ -597,7 +606,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
       });
     }
 
-    const vendor = await Vendor.findById(vendorId).select('+status');
+    const vendor = await Vendor.findById(vendorId).select('status account');
     if (!vendor) {
       return res.status(404).json({ 
         success: false,
