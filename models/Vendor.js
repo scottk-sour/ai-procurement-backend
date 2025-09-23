@@ -1,6 +1,7 @@
-// models/Vendor.js - Streamlined version
+// models/Vendor.js - FIXED VERSION
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto'; // ADDED: ES modules import
 
 const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software'];
 
@@ -191,12 +192,7 @@ const vendorSchema = new mongoose.Schema({
     addedAt: { type: Date, default: Date.now },
     type: { type: String, enum: ['admin', 'system', 'vendor'], default: 'admin' },
     priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
-  }],
-
-  // Remove legacy fields that are now in VendorProduct model:
-  // - machines[] (use VendorProduct collection instead)
-  // - uploads[] (handle file uploads separately)
-  // - pricing (use VendorProduct.costs instead)
+  }]
 
 }, { 
   timestamps: true,
@@ -233,10 +229,10 @@ vendorSchema.pre('save', async function(next) {
   }
 });
 
-// Generate API key if needed
+// FIXED: Generate API key if needed - using ES modules crypto import
 vendorSchema.pre('save', function(next) {
   if (!this.integration.apiKey && this.account.status === 'active') {
-    this.integration.apiKey = require('crypto').randomBytes(32).toString('hex');
+    this.integration.apiKey = crypto.randomBytes(32).toString('hex');
   }
   next();
 });
