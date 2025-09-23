@@ -1,4 +1,4 @@
-// controllers/vendorProductImportController.js - FIXED to match VendorProduct schema
+// controllers/vendorProductImportController.js - CORRECTED VERSION
 import fs from 'fs';
 import Papa from 'papaparse';
 import VendorProduct from "../models/VendorProduct.js";
@@ -6,7 +6,7 @@ import { readExcelFile } from '../utils/readExcel.js';
 import { processCSVFile } from '../utils/readCSV.js';
 
 /**
- * FIXED: Enhanced validation with correct schema mapping
+ * FIXED: Enhanced validation with correct VendorProduct schema mapping
  */
 export class VendorUploadValidator {
   
@@ -183,7 +183,7 @@ export class VendorUploadValidator {
   }
 
   /**
-   * FIXED: Parse CSV row to match VendorProduct schema EXACTLY
+   * CRITICAL FIX: Parse CSV row to match VendorProduct schema EXACTLY
    */
   static parseRow(row, originalHeaders) {
     const normalizedHeaders = this.normalizeHeaders(originalHeaders);
@@ -202,8 +202,8 @@ export class VendorUploadValidator {
       }
     });
     
-    // FIXED: Create structure that matches VendorProduct schema exactly
-    return {
+    // CRITICAL: Create structure that matches VendorProduct schema exactly
+    const productData = {
       // Basic required fields
       manufacturer: product.manufacturer ? product.manufacturer.toString().trim() : '',
       model: product.model ? product.model.toString().trim() : '',
@@ -226,11 +226,15 @@ export class VendorUploadValidator {
         supported: this.parsePaperSizes(product.paper_sizes_supported)
       },
       
-      // FIXED: Costs - nested structure matching schema
+      // CRITICAL FIX: Costs - nested structure matching schema exactly
       costs: {
         machineCost: product.machine_cost ? parseFloat(product.machine_cost) : this.defaultValues.machine_cost,
         installation: product.installation_cost ? parseFloat(product.installation_cost) : this.defaultValues.installation_cost,
         profitMargin: product.profit_margin ? parseFloat(product.profit_margin) : this.defaultValues.profit_margin,
+        // Calculate totalMachineCost
+        totalMachineCost: (product.machine_cost ? parseFloat(product.machine_cost) : this.defaultValues.machine_cost) +
+                         (product.installation_cost ? parseFloat(product.installation_cost) : this.defaultValues.installation_cost) +
+                         (product.profit_margin ? parseFloat(product.profit_margin) : this.defaultValues.profit_margin),
         cpcRates: {
           A4Mono: product.cpc_mono_pence ? parseFloat(product.cpc_mono_pence) : this.defaultValues.cpc_mono_pence,
           A4Colour: product.cpc_colour_pence ? parseFloat(product.cpc_colour_pence) : this.defaultValues.cpc_colour_pence,
@@ -264,6 +268,17 @@ export class VendorUploadValidator {
       createdAt: new Date(),
       updatedAt: new Date()
     };
+
+    // Calculate volumeRange based on maxVolume
+    if (productData.maxVolume <= 6000) productData.volumeRange = '0-6k';
+    else if (productData.maxVolume <= 13000) productData.volumeRange = '6k-13k';
+    else if (productData.maxVolume <= 20000) productData.volumeRange = '13k-20k';
+    else if (productData.maxVolume <= 30000) productData.volumeRange = '20k-30k';
+    else if (productData.maxVolume <= 40000) productData.volumeRange = '30k-40k';
+    else if (productData.maxVolume <= 50000) productData.volumeRange = '40k-50k';
+    else productData.volumeRange = '50k+';
+
+    return productData;
   }
 
   /**
@@ -372,7 +387,7 @@ export class VendorUploadValidator {
  * FIXED: Import function that creates proper VendorProduct documents
  */
 export async function importVendorProducts(filePath, vendorId) {
-  console.log('🔍 Starting import for vendor:', vendorId);
+  console.log('Starting import for vendor:', vendorId);
   
   try {
     const ext = filePath.split('.').pop().toLowerCase();
@@ -401,7 +416,7 @@ export async function importVendorProducts(filePath, vendorId) {
       throw new Error('Unsupported file format. Please upload CSV or Excel file.');
     }
     
-    console.log(`📋 File parsed: ${rows.length} total rows`);
+    console.log(`File parsed: ${rows.length} total rows`);
     
     if (!rows || rows.length < 2) {
       throw new Error('File must contain at least a header row and one data row');
@@ -410,13 +425,13 @@ export async function importVendorProducts(filePath, vendorId) {
     const originalHeaders = rows[0];
     const dataRows = rows.slice(1);
     
-    console.log('📄 Headers:', originalHeaders);
-    console.log('📊 Data rows:', dataRows.length);
+    console.log('Headers:', originalHeaders);
+    console.log('Data rows:', dataRows.length);
     
     // Validate upload
     const validation = VendorUploadValidator.validateUpload(dataRows, originalHeaders);
     
-    console.log('✅ Validation result:', {
+    console.log('Validation result:', {
       success: validation.success,
       valid: validation.stats.valid,
       invalid: validation.stats.invalid,
@@ -457,14 +472,14 @@ export async function importVendorProducts(filePath, vendorId) {
           savedProducts.push(product);
         }
         
-        console.log(`✅ Saved product: ${productData.manufacturer} ${productData.model}`);
+        console.log(`Saved product: ${productData.manufacturer} ${productData.model}`);
       } catch (saveError) {
-        console.error(`❌ Error saving ${productData.manufacturer} ${productData.model}:`, saveError.message);
+        console.error(`Error saving ${productData.manufacturer} ${productData.model}:`, saveError.message);
         validation.errors.push(`Error saving ${productData.manufacturer} ${productData.model}: ${saveError.message}`);
       }
     }
     
-    console.log(`🎉 Import complete: ${savedProducts.length} products saved`);
+    console.log(`Import complete: ${savedProducts.length} products saved`);
     
     return {
       success: savedProducts.length > 0,
@@ -478,7 +493,7 @@ export async function importVendorProducts(filePath, vendorId) {
     };
     
   } catch (error) {
-    console.error('❌ Import failed:', error);
+    console.error('Import failed:', error);
     return {
       success: false,
       savedProducts: 0,
@@ -507,10 +522,10 @@ export async function deleteVendorProducts(vendorId, productIds = []) {
       deletedCount = result.deletedCount;
     }
     
-    console.log(`🗑️ Deleted ${deletedCount} products for vendor ${vendorId}`);
+    console.log(`Deleted ${deletedCount} products for vendor ${vendorId}`);
     return { success: true, deletedCount };
   } catch (error) {
-    console.error('❌ Error deleting products:', error);
+    console.error('Error deleting products:', error);
     return { success: false, error: error.message };
   }
 }
@@ -537,7 +552,7 @@ export async function getVendorUploadStats(vendorId) {
       }
     };
   } catch (error) {
-    console.error('❌ Error getting upload stats:', error);
+    console.error('Error getting upload stats:', error);
     return { success: false, error: error.message };
   }
 }
