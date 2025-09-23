@@ -1,4 +1,4 @@
-// controllers/vendorProductImportController.js - Complete version with FIXED schema mapping
+// controllers/vendorProductImportController.js - FIXED to match VendorProduct schema
 import fs from 'fs';
 import Papa from 'papaparse';
 import VendorProduct from "../models/VendorProduct.js";
@@ -6,7 +6,7 @@ import { readExcelFile } from '../utils/readExcel.js';
 import { processCSVFile } from '../utils/readCSV.js';
 
 /**
- * Enhanced validation with header mapping - FIXED to match VendorProduct schema
+ * FIXED: Enhanced validation with correct schema mapping
  */
 export class VendorUploadValidator {
   
@@ -61,38 +61,30 @@ export class VendorUploadValidator {
     'installation': 'installation_cost'
   };
 
-  // FIXED: Enum mappings that match your VendorProduct model exactly
+  // FIXED: Enum mappings that match VendorProduct model exactly
   static PAPER_SIZE_ENUM = {
     'A4': 'A4',
     'A3': 'A3', 
     'A5': 'A5',
     'SRA3': 'SRA3',
-    'A6': 'A6',
-    'Letter': 'Letter',
-    'Legal': 'Legal',
-    'Tabloid': 'Tabloid',
     'a4': 'A4',
     'a3': 'A3',
     'sra3': 'SRA3'
   };
 
   static RESPONSE_TIME_ENUM = {
-    '4hr': '4 hours',
-    '8hr': '8 hours', 
-    '24hr': '24 hours',
-    '48hr': '48 hours',
-    'Same day': 'Same day',
+    '4hr': '4hr',
+    '8hr': '8hr', 
     'Next day': 'Next day',
-    '4 hours': '4 hours',
-    '8 hours': '8 hours',
-    '24 hours': '24 hours',
-    '48 hours': '48 hours'
+    '4 hours': '4hr',
+    '8 hours': '8hr',
+    '24 hours': 'Next day',
+    '48 hours': 'Next day'
   };
 
   static SERVICE_LEVEL_ENUM = {
     'Standard': 'Standard',
     'Premium': 'Premium', 
-    'Enterprise': 'Enterprise',
     'Basic': 'Basic'
   };
 
@@ -113,7 +105,7 @@ export class VendorUploadValidator {
     'features': 'Print,Copy,Scan',
     'lease_terms': '36:0.6,48:0.55,60:0.5',
     'service_level': 'Standard',
-    'response_time': '24 hours',
+    'response_time': 'Next day',
     'quarterly_service': 150,
     'regions_covered': 'UK',
     'industries': 'General',
@@ -126,43 +118,6 @@ export class VendorUploadValidator {
       const cleaned = header.toString().toLowerCase().trim().replace(/[^a-z0-9]/g, '');
       return this.headerMappings[cleaned] || header.toLowerCase().trim();
     });
-  }
-
-  // Validate volume and speed alignment
-  static validateVolumeSpeedAlignment(minVol, maxVol, speed) {
-    const issues = [];
-    
-    if (minVol && maxVol) {
-      const validRanges = [
-        [1, 6000], [6001, 13000], [13001, 20000], 
-        [20001, 30000], [30001, 40000], [40001, 50000], [50001, 999999]
-      ];
-      
-      const rangeValid = validRanges.some(([min, max]) => 
-        minVol >= min && maxVol <= max && maxVol > minVol
-      );
-      
-      if (!rangeValid) {
-        issues.push(`Volume range ${minVol}-${maxVol} doesn't align with standard ranges`);
-      }
-    }
-    
-    return issues;
-  }
-
-  // Validate CPC rates
-  static validateCPCRates(monoCPC, colourCPC) {
-    const issues = [];
-    
-    if (monoCPC && (monoCPC < 0.2 || monoCPC > 3)) {
-      issues.push(`Mono CPC ${monoCPC}p seems unrealistic (typical range: 0.2p-3p)`);
-    }
-    
-    if (colourCPC && colourCPC > 0 && (colourCPC < 2 || colourCPC > 15)) {
-      issues.push(`Colour CPC ${colourCPC}p seems unrealistic (typical range: 2p-15p)`);
-    }
-    
-    return issues;
   }
 
   // Helper to normalize enum values
@@ -183,24 +138,24 @@ export class VendorUploadValidator {
     return validSizes.length > 0 ? validSizes : ['A4'];
   }
 
-  // Parse lease terms
+  // Parse lease terms - FIXED to match schema structure
   static parseLeaseTerms(leaseString) {
     if (!leaseString) {
       return [
-        { term: 36, rate: 0.6 },
-        { term: 48, rate: 0.55 },
-        { term: 60, rate: 0.5 }
+        { term: 36, margin: 0.6 },
+        { term: 48, margin: 0.55 },
+        { term: 60, margin: 0.5 }
       ];
     }
     
     try {
       const separator = leaseString.includes(';') ? ';' : ',';
       return leaseString.split(separator).map(pair => {
-        const [term, rate] = pair.split(':');
-        if (term && rate && !isNaN(term) && !isNaN(rate)) {
+        const [term, margin] = pair.split(':');
+        if (term && margin && !isNaN(term) && !isNaN(margin)) {
           return {
             term: parseInt(term.trim()),
-            rate: parseFloat(rate.trim())
+            margin: parseFloat(margin.trim())
           };
         }
         return null;
@@ -208,9 +163,9 @@ export class VendorUploadValidator {
     } catch (error) {
       console.warn('Error parsing lease terms:', error);
       return [
-        { term: 36, rate: 0.6 },
-        { term: 48, rate: 0.55 },
-        { term: 60, rate: 0.5 }
+        { term: 36, margin: 0.6 },
+        { term: 48, margin: 0.55 },
+        { term: 60, margin: 0.5 }
       ];
     }
   }
@@ -228,7 +183,7 @@ export class VendorUploadValidator {
   }
 
   /**
-   * FIXED: Parse CSV row to match VendorProduct schema exactly
+   * FIXED: Parse CSV row to match VendorProduct schema EXACTLY
    */
   static parseRow(row, originalHeaders) {
     const normalizedHeaders = this.normalizeHeaders(originalHeaders);
@@ -247,7 +202,7 @@ export class VendorUploadValidator {
       }
     });
     
-    // FIXED: Create flat structure that matches your VendorProduct model
+    // FIXED: Create structure that matches VendorProduct schema exactly
     return {
       // Basic required fields
       manufacturer: product.manufacturer ? product.manufacturer.toString().trim() : '',
@@ -256,43 +211,54 @@ export class VendorUploadValidator {
       description: product.description ? product.description.toString().trim() : 
         `${product.manufacturer || ''} ${product.model || ''}`.trim(),
       
-      // Performance - flat fields
+      // Performance
       speed: product.speed ? parseInt(product.speed) : this.defaultValues.speed,
-      
-      // Paper sizes - check your model schema format
-      paperSizePrimary: this.normalizeEnum(product.paper_size_primary, this.PAPER_SIZE_ENUM) || 'A4',
-      paperSizesSupported: this.parsePaperSizes(product.paper_sizes_supported),
-      
-      // Volume - flat fields
-      volumeMinMonthly: product.volume_min_monthly ? parseInt(product.volume_min_monthly) : this.defaultValues.volume_min_monthly,
-      volumeMaxMonthly: product.volume_max_monthly ? parseInt(product.volume_max_monthly) : this.defaultValues.volume_max_monthly,
-      
-      // Costs - flat fields (not nested)
-      machineCost: product.machine_cost ? parseFloat(product.machine_cost) : this.defaultValues.machine_cost,
-      installationCost: product.installation_cost ? parseFloat(product.installation_cost) : this.defaultValues.installation_cost,
-      profitMargin: product.profit_margin ? parseFloat(product.profit_margin) : this.defaultValues.profit_margin,
-      
-      // CPC rates - flat fields
-      cpcMonoPence: product.cpc_mono_pence ? parseFloat(product.cpc_mono_pence) : this.defaultValues.cpc_mono_pence,
-      cpcColourPence: product.cpc_colour_pence ? parseFloat(product.cpc_colour_pence) : this.defaultValues.cpc_colour_pence,
-      cpcA3MonoPence: product.cpc_a3_mono_pence ? parseFloat(product.cpc_a3_mono_pence) : this.defaultValues.cpc_a3_mono_pence,
-      cpcA3ColourPence: product.cpc_a3_colour_pence ? parseFloat(product.cpc_a3_colour_pence) : this.defaultValues.cpc_a3_colour_pence,
-      
-      // Lease terms - array
-      leaseTerms: this.parseLeaseTerms(product.lease_terms),
-      
-      // Features - array
+      isA3: product.paper_size_primary === 'A3' || product.paper_size_primary === 'SRA3',
       features: this.parseFeatures(product.features),
       
-      // Service - check if your model expects flat fields or nested object
-      serviceLevel: this.normalizeEnum(product.service_level, this.SERVICE_LEVEL_ENUM) || 'Standard',
-      responseTime: this.normalizeEnum(product.response_time, this.RESPONSE_TIME_ENUM) || '24 hours',
-      quarterlyService: product.quarterly_service ? 
-        ['yes', 'true', '1'].includes(product.quarterly_service.toString().toLowerCase()) : false,
+      // FIXED: Volume fields to match schema
+      minVolume: product.volume_min_monthly ? parseInt(product.volume_min_monthly) : this.defaultValues.volume_min_monthly,
+      maxVolume: product.volume_max_monthly ? parseInt(product.volume_max_monthly) : this.defaultValues.volume_max_monthly,
       
-      // Coverage - arrays
+      // FIXED: Paper sizes - nested structure matching schema
+      paperSizes: {
+        primary: this.normalizeEnum(product.paper_size_primary, this.PAPER_SIZE_ENUM) || 'A4',
+        supported: this.parsePaperSizes(product.paper_sizes_supported)
+      },
+      
+      // FIXED: Costs - nested structure matching schema
+      costs: {
+        machineCost: product.machine_cost ? parseFloat(product.machine_cost) : this.defaultValues.machine_cost,
+        installation: product.installation_cost ? parseFloat(product.installation_cost) : this.defaultValues.installation_cost,
+        profitMargin: product.profit_margin ? parseFloat(product.profit_margin) : this.defaultValues.profit_margin,
+        cpcRates: {
+          A4Mono: product.cpc_mono_pence ? parseFloat(product.cpc_mono_pence) : this.defaultValues.cpc_mono_pence,
+          A4Colour: product.cpc_colour_pence ? parseFloat(product.cpc_colour_pence) : this.defaultValues.cpc_colour_pence,
+          A3Mono: product.cpc_a3_mono_pence ? parseFloat(product.cpc_a3_mono_pence) : this.defaultValues.cpc_a3_mono_pence,
+          A3Colour: product.cpc_a3_colour_pence ? parseFloat(product.cpc_a3_colour_pence) : this.defaultValues.cpc_a3_colour_pence
+        }
+      },
+      
+      // FIXED: Lease terms - matching schema structure
+      leaseTermsAndMargins: this.parseLeaseTerms(product.lease_terms),
+      
+      // FIXED: Service - nested structure matching schema
+      service: {
+        level: this.normalizeEnum(product.service_level, this.SERVICE_LEVEL_ENUM) || 'Standard',
+        responseTime: this.normalizeEnum(product.response_time, this.RESPONSE_TIME_ENUM) || 'Next day',
+        quarterlyService: product.quarterly_service ? parseFloat(product.quarterly_service) : this.defaultValues.quarterly_service
+      },
+      
+      // Coverage arrays
       regionsCovered: this.parseRegions(product.regions_covered),
       industries: this.parseFeatures(product.industries),
+      
+      // Availability defaults
+      availability: {
+        inStock: true,
+        leadTime: 14,
+        installationWindow: 7
+      },
       
       // Timestamps
       createdAt: new Date(),
@@ -316,20 +282,14 @@ export class VendorUploadValidator {
       }
     });
     
-    // Volume and speed alignment validation
-    if (product.volumeMinMonthly && product.volumeMaxMonthly && product.speed) {
-      const alignmentIssues = this.validateVolumeSpeedAlignment(
-        product.volumeMinMonthly, 
-        product.volumeMaxMonthly, 
-        product.speed
-      );
-      alignmentIssues.forEach(issue => warnings.push(issue));
+    // Validate volume range makes sense
+    if (product.minVolume && product.maxVolume && product.minVolume >= product.maxVolume) {
+      errors.push(`Min volume (${product.minVolume}) must be less than max volume (${product.maxVolume})`);
     }
     
-    // CPC rate validation
-    if (product.cpcMonoPence !== undefined && product.cpcColourPence !== undefined) {
-      const cpcIssues = this.validateCPCRates(product.cpcMonoPence, product.cpcColourPence);
-      cpcIssues.forEach(issue => warnings.push(issue));
+    // Validate CPC rates are reasonable
+    if (product.costs?.cpcRates?.A4Mono && (product.costs.cpcRates.A4Mono < 0.1 || product.costs.cpcRates.A4Mono > 5)) {
+      warnings.push(`Mono CPC ${product.costs.cpcRates.A4Mono}p seems unusual (typical range: 0.2p-3p)`);
     }
     
     return {
@@ -405,22 +365,6 @@ export class VendorUploadValidator {
     
     validation.success = validation.errors.length === 0;
     return validation;
-  }
-
-  static validateProduct(product, mode = 'create') {
-    const errors = [];
-    const warnings = [];
-
-    // Required fields validation
-    if (!product.manufacturer) errors.push('Manufacturer is required');
-    if (!product.model) errors.push('Model is required');
-    if (!product.category) errors.push('Category is required');
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
   }
 }
 
@@ -645,7 +589,7 @@ export function generateCSVTemplate() {
     '36:0.6,48:0.55,60:0.5',
     'Print,Copy,Scan,Fax,Email',
     'Standard',
-    '24 hours',
+    'Next day',
     '200',
     'London,Essex,Kent',
     'Legal,Healthcare,Education'
