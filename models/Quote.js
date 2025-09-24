@@ -1,4 +1,4 @@
-// models/Quote.js - Complete updated version with status management
+// models/Quote.js - Fixed version with corrected costEfficiency validation
 import mongoose from 'mongoose';
 
 const quoteSchema = new mongoose.Schema({
@@ -42,7 +42,7 @@ const quoteSchema = new mongoose.Schema({
     total: { type: Number, required: true, min: 0, max: 1 }, // 0-1 score
     breakdown: {
       volumeMatch: { type: Number, min: 0, max: 1 },
-      costEfficiency: { type: Number, min: 0, max: 1 },
+      costEfficiency: { type: Number, min: -1, max: 1 }, // FIXED: Allow negative values
       speedMatch: { type: Number, min: 0, max: 1 },
       featureMatch: { type: Number, min: 0, max: 1 },
       reliabilityMatch: { type: Number, min: 0, max: 1 },
