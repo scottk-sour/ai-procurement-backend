@@ -1,4 +1,4 @@
-// services/aiEngineAdapter.js - Production-ready bridge with DEBUGGING ENABLED
+// services/aiEngineAdapter.js - Production-ready bridge with FIXED costEfficiency calculation
 import AIRecommendationEngine from './aiRecommendationEngine.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
@@ -8,7 +8,7 @@ import logger from './logger.js';
 /**
  * Production-ready adapter to use AIRecommendationEngine with QuoteRequest/Quote models
  * Includes comprehensive error handling, validation, and vendor deduplication
- * DEBUGGING ENABLED VERSION
+ * FIXED VERSION with proper costEfficiency bounds checking
  */
 class AIEngineAdapter {
   
@@ -197,6 +197,7 @@ class AIEngineAdapter {
 
   /**
    * Convert AIRecommendationEngine results to Quote format with ALL required fields
+   * FIXED: Proper bounds checking for costEfficiency
    */
   static convertToQuoteFormat(recommendation, quoteRequest, ranking) {
     try {
@@ -237,6 +238,10 @@ class AIEngineAdapter {
       const colourCpcCost = monthlyColour * colourRate;
       const totalCpcCost = monoCpcCost + colourCpcCost;
       
+      // FIXED: Calculate costEfficiency with proper bounds checking
+      const rawCostEfficiency = (costInfo.savingsPercentage || 0) / 100;
+      const boundedCostEfficiency = Math.max(-1, Math.min(1, rawCostEfficiency));
+      
       return {
         quoteRequest: quoteRequest._id,
         product: product._id,
@@ -248,7 +253,7 @@ class AIEngineAdapter {
           total: recommendation.overallScore || suitability.score || 0.5,
           breakdown: {
             volumeMatch: suitability.volumeScore || 0,
-            costEfficiency: (costInfo.savingsPercentage || 0) / 100,
+            costEfficiency: boundedCostEfficiency, // FIXED: Now properly bounded between -1 and 1
             speedMatch: suitability.speedScore || 0,
             featureMatch: suitability.featureScore || 0.8,
             reliabilityMatch: 0.7 // Default
@@ -350,12 +355,14 @@ class AIEngineAdapter {
         
         // Metadata for tracking
         metadata: {
-          aiEngineVersion: '2.0',
+          aiEngineVersion: '2.1-FIXED',
           generatedAt: new Date(),
           scoringAlgorithm: 'AIRecommendationEngine',
           quoteRequestId: quoteRequest._id,
           originalRanking: ranking,
-          vendorKey: `${product.vendorId}-${product.manufacturer}-${product.model}`
+          vendorKey: `${product.vendorId}-${product.manufacturer}-${product.model}`,
+          rawCostEfficiency: rawCostEfficiency, // Log original value for debugging
+          boundedCostEfficiency: boundedCostEfficiency
         }
       };
     } catch (error) {
@@ -755,7 +762,7 @@ class AIEngineAdapter {
             reasoning: ['Sample quote for testing'],
             breakdown: {
               volumeMatch: 0.8,
-              costEfficiency: 0.7,
+              costEfficiency: 0.7, // Within bounds
               speedMatch: 0.9,
               featureMatch: 0.8,
               reliabilityMatch: 0.7
@@ -845,7 +852,7 @@ class AIEngineAdapter {
             }
           ],
           metadata: {
-            aiEngineVersion: 'TEST',
+            aiEngineVersion: 'TEST-FIXED',
             generatedAt: new Date(),
             scoringAlgorithm: 'Sample',
             quoteRequestId: quoteRequest._id
@@ -898,7 +905,8 @@ class AIEngineAdapter {
         conversionTest: 'passed',
         convertedFields: Object.keys(converted).length,
         deduplicationEnabled: true,
-        deduplicationMethod: 'vendorId + manufacturer + model'
+        deduplicationMethod: 'vendorId + manufacturer + model',
+        costEfficiencyFixed: true
       };
     } catch (error) {
       logger.error('AI Engine Adapter health check failed:', error);
@@ -916,8 +924,8 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.1.1-DEBUG',
-      status: 'debug',
+      version: '2.1.2-FIXED',
+      status: 'production',
       features: [
         'AI Recommendation Engine Integration',
         'Production Error Handling',
@@ -925,19 +933,25 @@ class AIEngineAdapter {
         'Fixed Vendor Deduplication',
         'Fallback Quote Generation',
         'Health Monitoring',
-        'Database Debug Tools'
+        'Database Debug Tools',
+        'FIXED: CostEfficiency Bounds Checking'
       ],
       supportedModels: [
         'QuoteRequest',
         'Quote',
         'VendorProduct'
       ],
-      lastUpdate: new Date('2025-09-15'),
+      lastUpdate: new Date('2025-09-24'),
       debugFeatures: [
         'Database Content Analysis',
         'Query Step-by-Step Testing',
         'Volume Range Debug',
         'Paper Size Structure Debug'
+      ],
+      fixes: [
+        'CostEfficiency now properly bounded between -1 and 1',
+        'Negative cost efficiency values supported for expensive products',
+        'Raw values logged in metadata for debugging'
       ]
     };
   }
