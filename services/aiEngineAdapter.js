@@ -1,12 +1,14 @@
-// services/aiEngineAdapter.js - Production-ready bridge between AIRecommendationEngine and new models
+// services/aiEngineAdapter.js - Production-ready bridge with DEBUGGING ENABLED
 import AIRecommendationEngine from './aiRecommendationEngine.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
+import VendorProduct from '../models/VendorProduct.js';
 import logger from './logger.js';
 
 /**
  * Production-ready adapter to use AIRecommendationEngine with QuoteRequest/Quote models
  * Includes comprehensive error handling, validation, and vendor deduplication
+ * DEBUGGING ENABLED VERSION
  */
 class AIEngineAdapter {
   
@@ -414,7 +416,161 @@ class AIEngineAdapter {
   }
 
   /**
-   * Main function to use your AI engine with new models - PRODUCTION READY WITH FIXED DEDUPLICATION
+   * DEBUG: Simple database test to check what's in VendorProduct collection
+   */
+  static async debugDatabaseContents() {
+    try {
+      console.log('\n=== DATABASE DEBUG ANALYSIS ===');
+      
+      // Test 1: Total products in database
+      const totalProducts = await VendorProduct.countDocuments({});
+      console.log(`📊 Total products in database: ${totalProducts}`);
+      
+      if (totalProducts === 0) {
+        console.log('❌ NO PRODUCTS FOUND - Database is empty!');
+        return false;
+      }
+      
+      // Test 2: Available products (basic filter)
+      const availableProducts = await VendorProduct.countDocuments({ 'availability.inStock': true });
+      console.log(`✅ Available products (inStock=true): ${availableProducts}`);
+      
+      // Test 3: Sample product structure
+      const sampleProduct = await VendorProduct.findOne({}).lean();
+      if (sampleProduct) {
+        console.log('\n📋 Sample product structure:');
+        console.log(`- _id: ${sampleProduct._id}`);
+        console.log(`- manufacturer: ${sampleProduct.manufacturer}`);
+        console.log(`- model: ${sampleProduct.model}`);
+        console.log(`- volumeRange: ${sampleProduct.volumeRange}`);
+        console.log(`- minVolume: ${sampleProduct.minVolume}`);
+        console.log(`- maxVolume: ${sampleProduct.maxVolume}`);
+        console.log(`- paperSizes:`, sampleProduct.paperSizes);
+        console.log(`- availability:`, sampleProduct.availability);
+        console.log(`- vendorId: ${sampleProduct.vendorId}`);
+      }
+      
+      // Test 4: Volume ranges distribution
+      const volumeRanges = await VendorProduct.aggregate([
+        { $group: { _id: '$volumeRange', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]);
+      console.log('\n📈 Volume range distribution:');
+      volumeRanges.forEach(range => {
+        console.log(`- ${range._id}: ${range.count} products`);
+      });
+      
+      // Test 5: Paper sizes distribution
+      const paperSizes = await VendorProduct.aggregate([
+        { $group: { _id: '$paperSizes.primary', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]);
+      console.log('\n📄 Paper sizes distribution:');
+      paperSizes.forEach(size => {
+        console.log(`- ${size._id || 'undefined'}: ${size.count} products`);
+      });
+      
+      console.log('=== END DATABASE DEBUG ===\n');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Database debug failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * DEBUG: Test the actual query that's failing
+   */
+  static async debugVendorProductQuery(userVolume, requiredPaperSize, volumeRange) {
+    try {
+      console.log('\n=== QUERY DEBUG ANALYSIS ===');
+      console.log(`🎯 User requirements:`);
+      console.log(`- userVolume: ${userVolume}`);
+      console.log(`- requiredPaperSize: ${requiredPaperSize}`);
+      console.log(`- volumeRange: ${volumeRange}`);
+      
+      // Test the original complex query
+      const originalQuery = {
+        'availability.inStock': true,
+        $or: [
+          { volumeRange },
+          { 
+            maxVolume: { $gte: userVolume * 0.6 }, 
+            minVolume: { $lte: userVolume * 2.5 } 
+          }
+        ]
+        // Note: Removed the conflicting $or for paper sizes temporarily
+      };
+      
+      console.log(`\n🔍 Testing original query:`, JSON.stringify(originalQuery, null, 2));
+      const originalResults = await VendorProduct.find(originalQuery).lean();
+      console.log(`📊 Original query results: ${originalResults.length} products`);
+      
+      // Test simplified queries step by step
+      console.log(`\n🧪 Step-by-step query testing:`);
+      
+      // Step 1: Just availability
+      const step1 = await VendorProduct.find({ 'availability.inStock': true }).lean();
+      console.log(`Step 1 - Just availability: ${step1.length} products`);
+      
+      // Step 2: Availability + volume range exact
+      const step2 = await VendorProduct.find({ 
+        'availability.inStock': true,
+        volumeRange 
+      }).lean();
+      console.log(`Step 2 - + volume range (${volumeRange}): ${step2.length} products`);
+      
+      // Step 3: Availability + volume bounds
+      const step3 = await VendorProduct.find({ 
+        'availability.inStock': true,
+        maxVolume: { $gte: userVolume * 0.6 }, 
+        minVolume: { $lte: userVolume * 2.5 }
+      }).lean();
+      console.log(`Step 3 - + volume bounds (${userVolume * 0.6} - ${userVolume * 2.5}): ${step3.length} products`);
+      
+      // Step 4: Test paper size separately
+      if (requiredPaperSize) {
+        const step4a = await VendorProduct.find({ 
+          'availability.inStock': true,
+          'paperSizes.supported': requiredPaperSize
+        }).lean();
+        console.log(`Step 4a - + paperSizes.supported (${requiredPaperSize}): ${step4a.length} products`);
+        
+        const step4b = await VendorProduct.find({ 
+          'availability.inStock': true,
+          'paperSizes.primary': requiredPaperSize
+        }).lean();
+        console.log(`Step 4b - + paperSizes.primary (${requiredPaperSize}): ${step4b.length} products`);
+        
+        const step4c = await VendorProduct.find({ 
+          'availability.inStock': true,
+          paperSizes: { $exists: false }
+        }).lean();
+        console.log(`Step 4c - + paperSizes not defined: ${step4c.length} products`);
+      }
+      
+      // Show first few results if any found
+      if (originalResults.length > 0) {
+        console.log(`\n📋 First result example:`);
+        const first = originalResults[0];
+        console.log(`- ${first.manufacturer} ${first.model}`);
+        console.log(`- Volume: ${first.minVolume}-${first.maxVolume} (range: ${first.volumeRange})`);
+        console.log(`- Paper: primary=${first.paperSizes?.primary}, supported=${first.paperSizes?.supported}`);
+        console.log(`- Vendor: ${first.vendorId}`);
+      }
+      
+      console.log('=== END QUERY DEBUG ===\n');
+      return originalResults;
+      
+    } catch (error) {
+      console.error('❌ Query debug failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Main function to use your AI engine with new models - PRODUCTION READY WITH DEBUG
    */
   static async generateQuotesFromRequest(quoteRequest, userId = null, invoiceFiles = []) {
     try {
@@ -427,17 +583,60 @@ class AIEngineAdapter {
         throw new Error('QuoteRequest must have an _id');
       }
 
-      logger.info(`AI Engine processing request for ${quoteRequest.companyName}`);
+      console.log(`\n🚀 AI Engine processing request for ${quoteRequest.companyName}`);
+      
+      // DEBUGGING: Check database contents first
+      const hasData = await this.debugDatabaseContents();
+      if (!hasData) {
+        console.log('❌ Stopping - no products in database to match against');
+        return [];
+      }
       
       // Convert new QuoteRequest format to your engine's format
       const convertedRequest = this.convertQuoteRequestFormat(quoteRequest);
       
-      logger.info('Request converted:', {
+      console.log(`📋 Request converted:`, {
         description: convertedRequest.description,
         monthlyVolume: convertedRequest.monthlyVolume,
         type: convertedRequest.type,
         requiredFunctions: convertedRequest.requiredFunctions
       });
+      
+      // DEBUGGING: Extract volume data and test query
+      const userVolume = (convertedRequest.monthlyVolume?.mono || 0) + 
+                        (convertedRequest.monthlyVolume?.colour || 0) ||
+                        convertedRequest.monthlyVolume?.total || 0;
+      
+      const requiredPaperSize = convertedRequest.paperRequirements?.primarySize || 
+                                convertedRequest.type || 'A4';
+                                
+      // Calculate volume range
+      let volumeRange;
+      if (userVolume <= 6000) volumeRange = '0-6k';
+      else if (userVolume <= 13000) volumeRange = '6k-13k';
+      else if (userVolume <= 20000) volumeRange = '13k-20k';
+      else if (userVolume <= 30000) volumeRange = '20k-30k';
+      else if (userVolume <= 40000) volumeRange = '30k-40k';
+      else if (userVolume <= 50000) volumeRange = '40k-50k';
+      else volumeRange = '50k+';
+      
+      console.log(`\n🎯 Query parameters:`);
+      console.log(`- User volume: ${userVolume} pages/month`);
+      console.log(`- Volume range: ${volumeRange}`);
+      console.log(`- Required paper size: ${requiredPaperSize}`);
+      
+      // DEBUGGING: Test the database query that's likely failing
+      const queryResults = await this.debugVendorProductQuery(userVolume, requiredPaperSize, volumeRange);
+      
+      if (queryResults.length === 0) {
+        console.log('❌ Database query returned no results - this is the root cause!');
+        console.log('💡 Try these fixes:');
+        console.log('1. Check if volumeRange field is populated in your products');
+        console.log('2. Check if paperSizes field structure matches the query');
+        console.log('3. Verify availability.inStock is set to true');
+        console.log('4. Check if minVolume/maxVolume values make sense');
+        return [];
+      }
       
       // Use your advanced AI engine with proper error handling
       let recommendations;
@@ -452,10 +651,10 @@ class AIEngineAdapter {
         throw new Error(`AI recommendation engine failed: ${aiError.message}`);
       }
       
-      logger.info(`AI Engine returned ${recommendations?.length || 0} recommendations`);
+      console.log(`🤖 AI Engine returned ${recommendations?.length || 0} recommendations`);
       
       if (!recommendations || recommendations.length === 0) {
-        logger.warn('No recommendations found from AI engine');
+        console.log('❌ AI Engine returned no recommendations');
         return [];
       }
 
@@ -463,17 +662,21 @@ class AIEngineAdapter {
       const validRecommendations = recommendations.filter(rec => !rec.error);
       
       if (validRecommendations.length === 0) {
-        logger.warn('All recommendations contained errors');
+        console.log('❌ All recommendations contained errors');
         return [];
       }
+
+      console.log(`✅ Valid recommendations: ${validRecommendations.length}`);
 
       // CRITICAL FIX: Deduplicate by vendor BEFORE creating quotes with improved logic
       const uniqueRecommendations = this.deduplicateByVendor(validRecommendations);
       
       if (uniqueRecommendations.length === 0) {
-        logger.warn('No unique vendor recommendations after deduplication');
+        console.log('❌ No unique vendor recommendations after deduplication');
         return [];
       }
+
+      console.log(`🎯 Creating quotes for ${uniqueRecommendations.length} unique recommendations`);
 
       // Convert recommendations to Quote format and save
       const quotes = [];
@@ -486,7 +689,7 @@ class AIEngineAdapter {
           // Validate this specific recommendation
           const validation = this.validateRecommendation(recommendation, i + 1);
           if (!validation.isValid) {
-            logger.warn(`Skipping invalid recommendation ${i + 1}:`, validation.errors);
+            console.log(`⚠️ Skipping invalid recommendation ${i + 1}:`, validation.errors);
             continue;
           }
 
@@ -496,9 +699,9 @@ class AIEngineAdapter {
           await quote.save();
           quotes.push(quote._id);
           
-          logger.info(`Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'} from vendor ${recommendation.product?.vendorId}`);
+          console.log(`✅ Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'} from vendor ${recommendation.product?.vendorId}`);
         } catch (saveError) {
-          logger.error(`Error saving quote ${i + 1}:`, {
+          console.log(`❌ Error saving quote ${i + 1}:`, {
             error: saveError.message,
             recommendation: {
               manufacturer: recommendation.product?.manufacturer,
@@ -511,7 +714,7 @@ class AIEngineAdapter {
         }
       }
       
-      logger.info(`Successfully created ${quotes.length} unique vendor quotes from ${validRecommendations.length} total recommendations`);
+      console.log(`🎉 Successfully created ${quotes.length} unique vendor quotes from ${validRecommendations.length} total recommendations`);
       return quotes;
       
     } catch (error) {
@@ -713,15 +916,16 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.1.1',
-      status: 'production',
+      version: '2.1.1-DEBUG',
+      status: 'debug',
       features: [
         'AI Recommendation Engine Integration',
         'Production Error Handling',
         'Comprehensive Validation',
         'Fixed Vendor Deduplication',
         'Fallback Quote Generation',
-        'Health Monitoring'
+        'Health Monitoring',
+        'Database Debug Tools'
       ],
       supportedModels: [
         'QuoteRequest',
@@ -729,8 +933,11 @@ class AIEngineAdapter {
         'VendorProduct'
       ],
       lastUpdate: new Date('2025-09-15'),
-      bugFixes: [
-        'Fixed vendor deduplication to preserve quotes from different vendors with same products'
+      debugFeatures: [
+        'Database Content Analysis',
+        'Query Step-by-Step Testing',
+        'Volume Range Debug',
+        'Paper Size Structure Debug'
       ]
     };
   }
