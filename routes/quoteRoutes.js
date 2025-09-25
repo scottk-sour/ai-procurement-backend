@@ -39,7 +39,7 @@ const validateRequiredFields = (fields, data) => {
 router.post('/request', userAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    log.info('Create quote request for user:', userId);
+    log.info('🔄 Create quote request for user:', userId);
 
     // Extract fields (keep backward-compatible names)
     const {
@@ -144,7 +144,7 @@ router.post('/request', userAuth, async (req, res) => {
       threeYearVision
     };
 
-    log.info('Quote request data prepared:', {
+    log.info('📋 Quote request data prepared:', {
       companyName: quoteRequestData.companyName,
       monthlyVolume: quoteRequestData.monthlyVolume,
       budget: quoteRequestData.budget?.maxLeasePrice
@@ -153,29 +153,36 @@ router.post('/request', userAuth, async (req, res) => {
     // Save request
     const quoteRequest = new QuoteRequest(quoteRequestData);
     await quoteRequest.save();
-    log.info('Quote request saved:', quoteRequest._id);
+    log.info('✅ Quote request saved:', quoteRequest._id);
 
-    // Trigger AI matching (try/catch to avoid failing request on AI issues)
+    // Trigger AI matching using your comprehensive AIEngineAdapter
     let aiMatchingResult = {
       success: false,
       quotesGenerated: 0,
       error: null
     };
+    
     try {
-      log.info('Triggering AIEngineAdapter.generateQuotesFromRequest for', quoteRequest._id);
+      log.info('🤖 Triggering AIEngineAdapter.generateQuotesFromRequest for', quoteRequest._id);
+      
+      // OPTION 2: Use your comprehensive AIEngineAdapter directly
       const quotes = await AIEngineAdapter.generateQuotesFromRequest(quoteRequest, userId);
+      
       if (Array.isArray(quotes) && quotes.length > 0) {
+        // Update the quote request with the generated quotes
         quoteRequest.quotes = quotes;
         quoteRequest.status = 'matched';
         quoteRequest.aiAnalysis.processed = true;
+        quoteRequest.aiAnalysis.processedAt = new Date();
         quoteRequest.aiAnalysis.recommendations = quotes.map((q, i) => `Generated quote ${i + 1}: ${q}`);
         await quoteRequest.save();
+        
         aiMatchingResult = {
           success: true,
           quotesGenerated: quotes.length,
           error: null
         };
-        log.info(`AI matching succeeded: ${quotes.length} quotes for ${quoteRequest._id}`);
+        log.info(`✅ AI matching succeeded: ${quotes.length} quotes for ${quoteRequest._id}`);
       } else {
         aiMatchingResult = {
           success: false,
@@ -184,7 +191,7 @@ router.post('/request', userAuth, async (req, res) => {
         };
         quoteRequest.aiAnalysis.riskFactors.push('No immediate matches found - will retry');
         await quoteRequest.save();
-        log.warn('AI matching returned no quotes for', quoteRequest._id);
+        log.warn('⚠️ AI matching returned no quotes for', quoteRequest._id);
       }
     } catch (aiError) {
       aiMatchingResult = {
@@ -194,7 +201,12 @@ router.post('/request', userAuth, async (req, res) => {
       };
       quoteRequest.aiAnalysis.riskFactors.push(`AI matching failed: ${aiError?.message || aiError}`);
       await quoteRequest.save();
-      log.error('AI matching error for', quoteRequest._id, aiError);
+      log.error('❌ AI matching error for', quoteRequest._id, aiError);
+      
+      // Log the full error for debugging
+      if (aiError.stack) {
+        log.error('AI Error Stack:', aiError.stack);
+      }
     }
 
     // Response to client
@@ -231,10 +243,10 @@ router.post('/request', userAuth, async (req, res) => {
       };
     }
 
-    log.info('Returning creation response for', quoteRequest._id);
+    log.info('🎉 Returning creation response for', quoteRequest._id);
     return res.status(201).json(responseData);
   } catch (error) {
-    log.error('Error in POST /request:', error);
+    log.error('❌ Error in POST /request:', error);
     return res.status(500).json({
       success: false,
       error: 'INTERNAL_ERROR',
@@ -247,13 +259,13 @@ router.post('/request', userAuth, async (req, res) => {
 
 /**
  * GET /api/quotes/requests
- * List authenticated user's quote requests (paginated)
+ * List authenticated user's quote requests (paginated) - WITH PROPER QUOTE POPULATION
  */
 router.get('/requests', userAuth, async (req, res) => {
   try {
     const { userId, submittedBy, page = 1, limit = 10 } = req.query;
     const requestingUserId = req.user.userId;
-    log.info('Fetch quote requests for', requestingUserId);
+    log.info('📋 Fetch quote requests for', requestingUserId);
 
     const query = { $or: [{ userId: requestingUserId }, { submittedBy: requestingUserId }] };
 
@@ -264,14 +276,27 @@ router.get('/requests', userAuth, async (req, res) => {
       });
     }
 
+    // CRITICAL: Populate the quotes properly
     const quoteRequests = await QuoteRequest.find(query)
-      .populate('quotes')
+      .populate({
+        path: 'quotes',
+        populate: [
+          { path: 'vendor', select: 'name email contactInfo' },
+          { path: 'product', select: 'manufacturer model features' }
+        ]
+      })
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
       .lean();
 
     const total = await QuoteRequest.countDocuments(query);
+
+    // Debug logging
+    log.info(`📊 Found ${quoteRequests.length} quote requests:`);
+    quoteRequests.forEach((qr, index) => {
+      log.info(`  ${index + 1}. Request ${qr._id}: ${qr.quotes ? qr.quotes.length : 0} quotes`);
+    });
 
     return res.json({
       success: true,
@@ -285,7 +310,7 @@ router.get('/requests', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error fetching quote requests:', error);
+    log.error('❌ Error fetching quote requests:', error);
     return res.status(500).json({
       success: false,
       error: 'FETCH_ERROR',
@@ -304,7 +329,7 @@ router.get('/:id', userAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
-    log.info('Fetching quote details', id);
+    log.info('🔍 Fetching quote details', id);
 
     const quote = await Quote.findById(id)
       .populate('quoteRequest')
@@ -339,7 +364,7 @@ router.get('/:id', userAuth, async (req, res) => {
       quote
     });
   } catch (error) {
-    log.error('Error fetching quote details:', error);
+    log.error('❌ Error fetching quote details:', error);
     return res.status(500).json({
       success: false,
       error: 'FETCH_ERROR',
@@ -352,19 +377,21 @@ router.get('/:id', userAuth, async (req, res) => {
 
 /**
  * GET /api/quotes
- * Get quotes for current user (paginated)
+ * Get quotes for current user (paginated) - IMPROVED WITH BETTER LOGGING
  */
 router.get('/', userAuth, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { page = 1, limit = 10, status } = req.query;
-    log.info('Fetch quotes for user', userId, { page, limit, status });
+    log.info('📋 Fetch quotes for user', userId, { page, limit, status });
 
+    // First find user's quote requests
     const userQuoteRequests = await QuoteRequest.find({
       $or: [{ userId }, { submittedBy: userId }]
     }).select('_id').lean();
 
     const quoteRequestIds = userQuoteRequests.map(q => q._id);
+    log.info(`🔍 Found ${quoteRequestIds.length} quote requests for user ${userId}`);
 
     const query = { quoteRequest: { $in: quoteRequestIds } };
     if (status && status !== 'all') query.status = status;
@@ -381,6 +408,8 @@ router.get('/', userAuth, async (req, res) => {
 
     const total = await Quote.countDocuments(query);
 
+    log.info(`📊 Returning ${quotes.length} quotes (total: ${total}) for user ${userId}`);
+
     return res.json({
       success: true,
       quotes,
@@ -393,7 +422,7 @@ router.get('/', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error fetching quotes:', error);
+    log.error('❌ Error fetching quotes:', error);
     return res.status(500).json({
       success: false,
       error: 'FETCH_ERROR',
@@ -412,7 +441,7 @@ router.post('/contact', userAuth, async (req, res) => {
   try {
     const { quoteId, vendorName, message } = req.body;
     const userId = req.user.userId;
-    log.info('Contact vendor for quote', quoteId, 'by user', userId);
+    log.info('📞 Contact vendor for quote', quoteId, 'by user', userId);
 
     if (!quoteId) {
       return res.status(400).json({
@@ -468,7 +497,7 @@ router.post('/contact', userAuth, async (req, res) => {
         customerEmail: quote.quoteRequest?.email
       });
     } catch (notificationError) {
-      log.warn('Failed to send vendor contact notification:', notificationError);
+      log.warn('⚠️ Failed to send vendor contact notification:', notificationError);
     }
 
     return res.json({
@@ -480,7 +509,7 @@ router.post('/contact', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error in /contact:', error);
+    log.error('❌ Error in /contact:', error);
     return res.status(500).json({
       success: false,
       error: 'CONTACT_ERROR',
@@ -560,7 +589,7 @@ router.get('/user/:userId/latest', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error fetching latest quotes:', error);
+    log.error('❌ Error fetching latest quotes:', error);
     return res.status(500).json({
       success: false,
       error: 'FETCH_ERROR',
@@ -579,7 +608,7 @@ router.post('/accept', userAuth, async (req, res) => {
   try {
     const { quoteId, vendorName } = req.body;
     const userId = req.user.userId;
-    log.info('Accepting quote', quoteId, 'by user', userId);
+    log.info('✅ Accepting quote', quoteId, 'by user', userId);
 
     if (!quoteId) {
       return res.status(400).json({
@@ -676,10 +705,10 @@ router.post('/accept', userAuth, async (req, res) => {
         customerEmail: quote.quoteRequest?.email
       });
     } catch (notificationError) {
-      log.warn('Failed to notify vendor after accept:', notificationError);
+      log.warn('⚠️ Failed to notify vendor after accept:', notificationError);
     }
 
-    log.info('Quote accepted and order created', order._id);
+    log.info('🎉 Quote accepted and order created', order._id);
 
     return res.json({
       success: true,
@@ -696,7 +725,7 @@ router.post('/accept', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error accepting quote:', error);
+    log.error('❌ Error accepting quote:', error);
     return res.status(500).json({
       success: false,
       error: 'ACCEPT_ERROR',
@@ -715,7 +744,7 @@ router.post('/decline', userAuth, async (req, res) => {
   try {
     const { quoteId, reason, notes } = req.body;
     const userId = req.user.userId;
-    log.info('Declining quote', quoteId, 'by user', userId);
+    log.info('❌ Declining quote', quoteId, 'by user', userId);
 
     if (!quoteId) {
       return res.status(400).json({
@@ -791,10 +820,10 @@ router.post('/decline', userAuth, async (req, res) => {
         notes
       });
     } catch (notificationError) {
-      log.warn('Failed to notify vendor on decline:', notificationError);
+      log.warn('⚠️ Failed to notify vendor on decline:', notificationError);
     }
 
-    log.info('Quote declined', quoteId);
+    log.info('❌ Quote declined', quoteId);
 
     return res.json({
       success: true,
@@ -807,7 +836,7 @@ router.post('/decline', userAuth, async (req, res) => {
       }
     });
   } catch (error) {
-    log.error('Error declining quote:', error);
+    log.error('❌ Error declining quote:', error);
     return res.status(500).json({
       success: false,
       error: 'DECLINE_ERROR',
