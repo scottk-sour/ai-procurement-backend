@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import QuoteFeedback from '../models/QuoteFeedback.js';
 import CopierQuoteRequest from '../models/CopierQuoteRequest.js';
+import QuoteRequest from '../models/QuoteRequest.js';
+import Quote from '../models/Quote.js';
 import VendorProduct from '../models/VendorProduct.js';
 import FileParserService from './FileParserService.js';
 import logger from './logger.js';
@@ -639,19 +641,27 @@ class AIRecommendationEngine {
             maxVolume: { $gte: userVolume * 0.6 }, 
             minVolume: { $lte: userVolume * 2.5 } 
           }
-        ],
-        // Paper size support - make this more flexible
-        $or: [
-          { 'paperSizes.supported': requiredPaperSize },
-          { 'paperSizes.primary': requiredPaperSize },
-          { paperSizes: { $exists: false } } // Include products without explicit paper size data
         ]
       };
+
+      // Paper size support - make this more flexible
+      if (requiredPaperSize) {
+        queryFilter.$and = [
+          {
+            $or: [
+              { 'paperSizes.supported': requiredPaperSize },
+              { 'paperSizes.primary': requiredPaperSize },
+              { paperSizes: { $exists: false } } // Include products without explicit paper size data
+            ]
+          }
+        ];
+      }
 
       // Add feature requirements if specified
       const requiredFeatures = quoteRequest.requiredFunctions || quoteRequest.required_functions;
       if (requiredFeatures && requiredFeatures.length > 0) {
-        queryFilter.features = { $in: requiredFeatures };
+        if (!queryFilter.$and) queryFilter.$and = [];
+        queryFilter.$and.push({ features: { $in: requiredFeatures } });
       }
 
       const vendorProducts = await VendorProduct.find(queryFilter)
@@ -818,13 +828,100 @@ class AIRecommendationEngine {
         }
       }));
 
-      logger.info(`Generated ${finalRecommendations.length} recommendations`, {
+      // **NEW: CREATE ACTUAL QUOTE DOCUMENTS**
+      const createdQuotes = [];
+      
+      for (const recommendation of finalRecommendations.slice(0, 3)) {
+        try {
+          const newQuote = new Quote({
+            quoteRequest: quoteRequest._id,
+            product: recommendation.product._id,
+            vendor: recommendation.product.vendorId._id || recommendation.product.vendorId,
+            userRequirements: {
+              monthlyVolume: {
+                mono: quoteRequest.monthlyVolume?.mono || 0,
+                colour: quoteRequest.monthlyVolume?.colour || 0,
+                total: quoteRequest.monthlyVolume?.total || userVolume
+              },
+              paperSize: requiredPaperSize,
+              features: quoteRequest.requiredFunctions || quoteRequest.required_functions || [],
+              priority: quoteRequest.requirements?.priority || 'cost'
+            },
+            pricing: {
+              quarterlyLease: recommendation.quarterlyLease,
+              termMonths: recommendation.termMonths,
+              monthlyCost: recommendation.costInfo.newTotalMonthlyCost,
+              annualSavings: recommendation.costInfo.annualSavings,
+              breakdown: {
+                lease: Math.round((recommendation.quarterlyLease / 3) * 100) / 100,
+                cpcCosts: Math.round(recommendation.costInfo.breakdown.newCPC * 100) / 100,
+                serviceCosts: Math.round(recommendation.costInfo.breakdown.newService * 100) / 100
+              }
+            },
+            aiGenerated: true,
+            aiScore: recommendation.overallScore,
+            confidence: recommendation.confidence,
+            status: 'pending_vendor_approval',
+            expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            recommendation: {
+              ranking: recommendation.ranking,
+              explanation: recommendation.explanation,
+              aiInsights: recommendation.aiInsights,
+              suitabilityScore: recommendation.suitability.score,
+              warning: recommendation.warning
+            },
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          const savedQuote = await newQuote.save();
+          createdQuotes.push(savedQuote);
+          
+          logger.info(`Created quote ${savedQuote._id} for product ${recommendation.product._id}`);
+          
+        } catch (quoteError) {
+          logger.error('Error creating quote:', quoteError);
+        }
+      }
+
+      // **UPDATE QUOTE REQUEST WITH CREATED QUOTES**
+      if (createdQuotes.length > 0) {
+        await QuoteRequest.findByIdAndUpdate(
+          quoteRequest._id,
+          { 
+            $push: { quotes: { $each: createdQuotes.map(q => q._id) } },
+            status: 'completed',
+            'aiAnalysis.processed': true,
+            'aiAnalysis.processedAt': new Date(),
+            'aiAnalysis.suggestedCategories': [volumeRange],
+            'aiAnalysis.recommendations': finalRecommendations.map(rec => ({
+              productId: rec.product._id,
+              score: rec.overallScore,
+              ranking: rec.ranking
+            }))
+          }
+        );
+
+        logger.info(`Updated quote request ${quoteRequest._id} with ${createdQuotes.length} quotes`);
+      }
+
+      logger.info(`Generated ${finalRecommendations.length} recommendations and ${createdQuotes.length} quotes`, {
         suitable: suitableProducts.length,
         unsuitable: unsuitableProducts.length,
         topScore: finalRecommendations[0]?.overallScore
       });
 
-      return finalRecommendations;
+      return {
+        recommendations: finalRecommendations,
+        quotes: createdQuotes,
+        summary: {
+          totalRecommendations: finalRecommendations.length,
+          quotesCreated: createdQuotes.length,
+          suitableProducts: suitableProducts.length,
+          userVolume,
+          preferenceProfile: preferenceProfile.summary
+        }
+      };
 
     } catch (error) {
       logger.error('Error in generateRecommendations:', { 
@@ -855,21 +952,29 @@ class AIRecommendationEngine {
       .sort({ 'costs.totalMachineCost': 1 })
       .lean();
 
-      return fallbackProducts.slice(0, 3).map((product, index) => ({
-        product,
-        ranking: index + 1,
-        confidence: 'Very Low',
-        warning: 'No ideal matches found - these are compromise options',
-        explanation: `⚠️ Limited suitable options available. This machine may not be optimal for your ${userVolume} pages/month requirement.`,
-        recommendation: `Option ${index + 1}: ${product.manufacturer} ${product.model} - requires careful evaluation`,
-        quarterlyLease: 0,
-        overallScore: 0.2,
-        suitability: { score: 0.2, suitable: false },
-        costInfo: { monthlySavings: 0, annualSavings: 0 }
-      }));
+      return {
+        recommendations: fallbackProducts.slice(0, 3).map((product, index) => ({
+          product,
+          ranking: index + 1,
+          confidence: 'Very Low',
+          warning: 'No ideal matches found - these are compromise options',
+          explanation: `⚠️ Limited suitable options available. This machine may not be optimal for your ${userVolume} pages/month requirement.`,
+          recommendation: `Option ${index + 1}: ${product.manufacturer} ${product.model} - requires careful evaluation`,
+          quarterlyLease: 0,
+          overallScore: 0.2,
+          suitability: { score: 0.2, suitable: false },
+          costInfo: { monthlySavings: 0, annualSavings: 0 }
+        })),
+        quotes: [],
+        summary: {
+          totalRecommendations: Math.min(3, fallbackProducts.length),
+          quotesCreated: 0,
+          fallback: true
+        }
+      };
     } catch (error) {
       logger.error('Error generating fallback recommendations:', error);
-      return [];
+      return this.generateErrorFallback(error);
     }
   }
 
@@ -877,14 +982,21 @@ class AIRecommendationEngine {
    * Generate error fallback response
    */
   static generateErrorFallback(error) {
-    return [{
-      error: true,
-      message: 'Unable to generate recommendations at this time',
-      recommendation: 'Please try again or contact support for assistance',
-      technicalError: error.message,
-      ranking: 1,
-      confidence: 'None'
-    }];
+    return {
+      recommendations: [{
+        error: true,
+        message: 'Unable to generate recommendations at this time',
+        recommendation: 'Please try again or contact support for assistance',
+        technicalError: error.message,
+        ranking: 1,
+        confidence: 'None'
+      }],
+      quotes: [],
+      summary: {
+        error: true,
+        message: error.message
+      }
+    };
   }
 
   /**
@@ -996,7 +1108,7 @@ class AIRecommendationEngine {
   }
 
   /**
-   * Main entry point with validation
+   * Main entry point with validation and quote generation
    */
   static async generateValidatedRecommendations(quoteRequest, userId, invoiceFiles = []) {
     try {
@@ -1007,15 +1119,16 @@ class AIRecommendationEngine {
         return {
           success: false,
           errors: validation.errors,
-          recommendations: []
+          recommendations: [],
+          quotes: []
         };
       }
 
       // Extract contract info from files
       const contractInfo = await this.extractContractInfo(invoiceFiles);
       
-      // Generate recommendations
-      const recommendations = await this.generateRecommendations(
+      // Generate recommendations and create quotes
+      const result = await this.generateRecommendations(
         quoteRequest, 
         userId, 
         invoiceFiles
@@ -1023,12 +1136,15 @@ class AIRecommendationEngine {
 
       return {
         success: true,
-        recommendations,
+        recommendations: result.recommendations || [],
+        quotes: result.quotes || [],
         metadata: {
-          totalProcessed: recommendations.length,
+          totalProcessed: result.recommendations?.length || 0,
+          quotesCreated: result.quotes?.length || 0,
           contractInfoExtracted: Object.keys(contractInfo).length > 0,
           generatedAt: new Date(),
-          userId
+          userId,
+          summary: result.summary
         }
       };
     } catch (error) {
@@ -1036,7 +1152,8 @@ class AIRecommendationEngine {
       return {
         success: false,
         error: error.message,
-        recommendations: []
+        recommendations: [],
+        quotes: []
       };
     }
   }
