@@ -1,4 +1,4 @@
-// services/aiEngineAdapter.js - Production-ready bridge with FIXED costEfficiency calculation
+```javascript
 import AIRecommendationEngine from './aiRecommendationEngine.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
@@ -8,10 +8,10 @@ import logger from './logger.js';
 /**
  * Production-ready adapter to use AIRecommendationEngine with QuoteRequest/Quote models
  * Includes comprehensive error handling, validation, and vendor deduplication
- * FIXED VERSION with proper costEfficiency bounds checking
+ * FIXED VERSION with proper costEfficiency bounds checking and recommendations filter
  */
 class AIEngineAdapter {
-  
+ 
   /**
    * Convert new QuoteRequest format to AIRecommendationEngine format with validation
    */
@@ -20,18 +20,14 @@ class AIEngineAdapter {
       if (!quoteRequest) {
         throw new Error('QuoteRequest is required');
       }
-
       // Validate essential fields
       if (!quoteRequest.companyName) {
         throw new Error('Company name is required');
       }
-
       if (!quoteRequest.monthlyVolume) {
         throw new Error('Monthly volume is required');
       }
-
       return {
-        // Map new model to your engine's expected format
         description: (quoteRequest.companyName || '') + ' ' + (quoteRequest.requirements?.essentialFeatures?.join(' ') || ''),
         monthlyVolume: quoteRequest.monthlyVolume || { mono: 0, colour: 0, total: 0 },
         type: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
@@ -39,28 +35,18 @@ class AIEngineAdapter {
         requiredFunctions: quoteRequest.requirements?.essentialFeatures || quoteRequest.requiredFunctions || [],
         leaseTermMonths: this.getLeaseTermFromBudget(quoteRequest.budget),
         quarterlyPayment: quoteRequest.budget?.maxLeasePrice || 0,
-        
-        // Current setup mapping with defaults
         currentMonoCPC: quoteRequest.currentSetup?.currentCosts?.monoRate || 0.01,
         currentColourCPC: quoteRequest.currentSetup?.currentCosts?.colourRate || 0.08,
-        
-        // Additional fields your AI engine expects
         urgency: quoteRequest.urgency?.timeframe || '3-6 months',
         location: quoteRequest.location || {},
         preference: quoteRequest.requirements?.priority || 'balanced',
         industryType: quoteRequest.industryType || 'Other',
-        
-        // Legacy fields for compatibility with your engine
         serviceType: 'Photocopiers',
         companyName: quoteRequest.companyName,
         numEmployees: quoteRequest.numEmployees || 1,
-        
-        // Add any other fields your AIRecommendationEngine expects
         price: quoteRequest.budget?.maxLeasePrice || 300,
         minSpeed: quoteRequest.requirements?.minSpeed || 0,
-        
-        // Additional context for better matching
-        _id: quoteRequest._id, // Include the ID for tracking
+        _id: quoteRequest._id,
         submittedBy: quoteRequest.submittedBy,
         userId: quoteRequest.userId
       };
@@ -75,17 +61,15 @@ class AIEngineAdapter {
    */
   static getLeaseTermFromBudget(budget) {
     try {
-      if (!budget?.preferredTerm) return 60; // default
-      
+      if (!budget?.preferredTerm) return 60;
       const termMap = {
         '12 months': 12,
-        '24 months': 24, 
+        '24 months': 24,
         '36 months': 36,
         '48 months': 48,
         '60 months': 60,
         '72 months': 72
       };
-      
       return termMap[budget.preferredTerm] || 60;
     } catch (error) {
       logger.warn('Error extracting lease term from budget:', error);
@@ -98,12 +82,10 @@ class AIEngineAdapter {
    */
   static validateRecommendation(recommendation, index) {
     const errors = [];
-    
     if (!recommendation) {
       errors.push(`Recommendation ${index} is null or undefined`);
       return { isValid: false, errors };
     }
-
     if (!recommendation.product) {
       errors.push(`Recommendation ${index} missing product`);
     } else {
@@ -117,15 +99,12 @@ class AIEngineAdapter {
         errors.push(`Recommendation ${index} product missing model`);
       }
     }
-
     if (!recommendation.suitability) {
       errors.push(`Recommendation ${index} missing suitability data`);
     }
-
     if (!recommendation.costInfo) {
       errors.push(`Recommendation ${index} missing cost information`);
     }
-
     return {
       isValid: errors.length === 0,
       errors
@@ -133,28 +112,21 @@ class AIEngineAdapter {
   }
 
   /**
-   * FIXED: Deduplicate recommendations by vendor - keeps the best score per vendor
+   * Deduplicate recommendations by vendor - keeps the best score per vendor
    */
   static deduplicateByVendor(recommendations) {
     try {
       logger.info(`Deduplicating ${recommendations.length} recommendations by vendor`);
-      
       const vendorMap = new Map();
-      
       for (const rec of recommendations) {
         const product = rec.product;
         if (!product?.manufacturer || !product?.model || !product?.vendorId) {
           logger.warn('Skipping recommendation with missing manufacturer/model/vendorId');
           continue;
         }
-        
-        // FIXED: Create vendor key using vendorId + manufacturer + model to ensure uniqueness per vendor
         const vendorKey = `${product.vendorId}-${product.manufacturer.trim()}-${product.model.trim()}`;
-        
         const currentScore = rec.overallScore || rec.suitability?.score || 0;
-        
         if (!vendorMap.has(vendorKey)) {
-          // First recommendation for this vendor
           vendorMap.set(vendorKey, {
             recommendation: rec,
             score: currentScore,
@@ -163,7 +135,6 @@ class AIEngineAdapter {
           });
           logger.info(`Added new vendor product: ${vendorKey} (score: ${currentScore})`);
         } else {
-          // Check if this recommendation has better score
           const existing = vendorMap.get(vendorKey);
           if (currentScore > existing.score) {
             vendorMap.set(vendorKey, {
@@ -178,133 +149,100 @@ class AIEngineAdapter {
           }
         }
       }
-      
-      // Extract unique recommendations sorted by score
       const uniqueRecommendations = Array.from(vendorMap.values())
         .sort((a, b) => b.score - a.score)
         .map(item => item.recommendation);
-      
       logger.info(`Deduplication complete: ${recommendations.length} -> ${uniqueRecommendations.length} unique vendor products`);
       logger.info(`Unique vendors represented: ${Array.from(new Set(Array.from(vendorMap.values()).map(v => v.vendorId))).length}`);
-      
       return uniqueRecommendations;
     } catch (error) {
       logger.error('Error during vendor deduplication:', error);
-      // Fall back to original recommendations if deduplication fails
       return recommendations;
     }
   }
 
   /**
    * Convert AIRecommendationEngine results to Quote format with ALL required fields
-   * FIXED: Proper bounds checking for costEfficiency
    */
   static convertToQuoteFormat(recommendation, quoteRequest, ranking) {
     try {
-      // Validate inputs
       const validation = this.validateRecommendation(recommendation, ranking);
       if (!validation.isValid) {
         logger.error('Invalid recommendation data:', validation.errors);
         throw new Error(`Invalid recommendation: ${validation.errors.join(', ')}`);
       }
-
       if (!quoteRequest || !quoteRequest._id) {
         throw new Error('Valid quote request with _id is required');
       }
-
       const product = recommendation.product;
-      
-      // Ensure all required fields have defaults
       const suitability = recommendation.suitability || { score: 0.5, suitable: false };
-      const costInfo = recommendation.costInfo || { 
-        monthlySavings: 0, 
-        annualSavings: 0, 
+      const costInfo = recommendation.costInfo || {
+        monthlySavings: 0,
+        annualSavings: 0,
         newTotalMonthlyCost: 0,
         savingsPercentage: 0,
         breakdown: {}
       };
-
-      // Extract CPC rates from product or use defaults
       const monoRate = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
       const colourRate = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
-      
-      // Calculate monthly volumes
       const monthlyMono = quoteRequest.monthlyVolume?.mono || 0;
       const monthlyColour = quoteRequest.monthlyVolume?.colour || 0;
       const totalVolume = monthlyMono + monthlyColour;
-
-      // Calculate CPC costs
       const monoCpcCost = monthlyMono * monoRate;
       const colourCpcCost = monthlyColour * colourRate;
       const totalCpcCost = monoCpcCost + colourCpcCost;
-      
-      // FIXED: Calculate costEfficiency with proper bounds checking
       const rawCostEfficiency = (costInfo.savingsPercentage || 0) / 100;
       const boundedCostEfficiency = Math.max(-1, Math.min(1, rawCostEfficiency));
-      
       return {
         quoteRequest: quoteRequest._id,
         product: product._id,
         vendor: product.vendorId || null,
         ranking: ranking || 1,
-        
-        // Map your engine's scoring to new format
         matchScore: {
-          total: recommendation.overallScore || suitability.score || 0.5,
+          total: Math.round((recommendation.overallScore || suitability.score || 0.5) * 100),
+          confidence: recommendation.confidence || (suitability.suitable ? 'High' : 'Medium'),
           breakdown: {
             volumeMatch: suitability.volumeScore || 0,
-            costEfficiency: boundedCostEfficiency, // FIXED: Now properly bounded between -1 and 1
+            costEfficiency: boundedCostEfficiency,
             speedMatch: suitability.speedScore || 0,
             featureMatch: suitability.featureScore || 0.8,
-            reliabilityMatch: 0.7 // Default
+            reliabilityMatch: 0.7
           },
           reasoning: [
             recommendation.explanation || suitability.reason || 'AI-generated recommendation',
             `Monthly cost: £${costInfo.newTotalMonthlyCost || 0}`,
             `Potential savings: £${costInfo.monthlySavings || 0}/month`
-          ].filter(r => r),
-          confidence: suitability.suitable ? 'High' : 'Medium'
+          ].filter(r => r)
         },
-        
         costs: {
           machineCost: product.costs?.machineCost || (product.salePrice || 0) * 0.7,
           installation: product.costs?.installation || 250,
           profitMargin: product.costs?.profitMargin || (product.salePrice || 0) * 0.3,
           totalMachineCost: product.costs?.totalMachineCost || product.salePrice || 0,
-          
-          // REQUIRED: CPC Rates section
           cpcRates: {
             paperSize: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
             monoRate: monoRate,
             colourRate: colourRate
           },
-          
           monthlyCosts: {
             monoPages: monthlyMono,
             colourPages: monthlyColour,
-            
-            // REQUIRED: Individual CPC costs
             monoCpcCost: Math.round(monoCpcCost * 100) / 100,
             colourCpcCost: Math.round(colourCpcCost * 100) / 100,
             totalCpcCost: Math.round(totalCpcCost * 100) / 100,
-            
-            cpcCosts: totalCpcCost, // Legacy field
             leaseCost: (recommendation.quarterlyLease || 300) / 3,
-            serviceCost: costInfo.breakdown?.serviceCost || (costInfo.newTotalMonthlyCost || 0) * 0.1 || 50,
+            serviceCost: costInfo.breakdown?.newService || (costInfo.newTotalMonthlyCost || 0) * 0.1 || 50,
             totalMonthlyCost: costInfo.newTotalMonthlyCost || 0
           },
-          
           savings: {
             monthlyAmount: costInfo.monthlySavings || 0,
             annualAmount: costInfo.annualSavings || 0,
             percentageSaved: costInfo.savingsPercentage || 0,
-            description: (costInfo.monthlySavings || 0) > 0 ? 
+            description: (costInfo.monthlySavings || 0) > 0 ?
               `Save £${costInfo.monthlySavings}/month` :
               `£${Math.abs(costInfo.monthlySavings || 0)}/month more than current`
           }
         },
-        
-        // REQUIRED: User Requirements section
         userRequirements: {
           monthlyVolume: {
             mono: monthlyMono,
@@ -312,22 +250,19 @@ class AIEngineAdapter {
             total: totalVolume
           },
           paperSize: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
-          priority: quoteRequest.requirements?.priority || 'cost',
+          features: quoteRequest.requirements?.essentialFeatures || quoteRequest.requiredFunctions || [],
           maxBudget: quoteRequest.budget?.maxLeasePrice || 300
         },
-        
         leaseOptions: this.createLeaseOptions(product, recommendation.quarterlyLease, recommendation.termMonths),
-        
         productSummary: {
           manufacturer: product.manufacturer || 'Unknown',
           model: product.model || 'Unknown',
-          category: product.category || 'MFP',
+          category: product.volumeRange || 'Standard',
           speed: product.speed || 0,
           features: product.features || [],
           paperSizes: product.paperSizes?.supported || [product.paperSizes?.primary] || ['A4'],
           volumeRange: product.volumeRange || '0-6k'
         },
-        
         serviceDetails: {
           responseTime: product.service?.responseTime || '8hr',
           serviceLevel: product.service?.level || 'Standard',
@@ -337,7 +272,6 @@ class AIEngineAdapter {
           trainingIncluded: true,
           warrantyPeriod: '12 months'
         },
-        
         terms: {
           validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           deliveryTime: `${product.availability?.leadTime || 14} days`,
@@ -346,14 +280,11 @@ class AIEngineAdapter {
           cancellationPolicy: '30 days notice required',
           upgradeOptions: 'Available at any time'
         },
-        
-        // Additional fields that might be useful
         accessories: product.auxiliaries || [],
-        
-        // Warning field for unsuitable products
         warning: recommendation.warning || null,
-        
-        // Metadata for tracking
+        status: 'pending',
+        aiGenerated: true,
+        createdAt: new Date(),
         metadata: {
           aiEngineVersion: '2.1-FIXED',
           generatedAt: new Date(),
@@ -361,7 +292,7 @@ class AIEngineAdapter {
           quoteRequestId: quoteRequest._id,
           originalRanking: ranking,
           vendorKey: `${product.vendorId}-${product.manufacturer}-${product.model}`,
-          rawCostEfficiency: rawCostEfficiency, // Log original value for debugging
+          rawCostEfficiency: rawCostEfficiency,
           boundedCostEfficiency: boundedCostEfficiency
         }
       };
@@ -376,10 +307,8 @@ class AIEngineAdapter {
    */
   static createLeaseOptions(product, quarterlyLease, termMonths) {
     try {
-      // Use your engine's lease calculation or create standard options
       const baseQuarterly = quarterlyLease || 300;
       const baseTerm = termMonths || 60;
-      
       return [
         {
           term: 36,
@@ -408,7 +337,6 @@ class AIEngineAdapter {
       ];
     } catch (error) {
       logger.error('Error creating lease options:', error);
-      // Return basic fallback options
       return [
         {
           term: 60,
@@ -428,21 +356,14 @@ class AIEngineAdapter {
   static async debugDatabaseContents() {
     try {
       console.log('\n=== DATABASE DEBUG ANALYSIS ===');
-      
-      // Test 1: Total products in database
       const totalProducts = await VendorProduct.countDocuments({});
       console.log(`📊 Total products in database: ${totalProducts}`);
-      
       if (totalProducts === 0) {
         console.log('❌ NO PRODUCTS FOUND - Database is empty!');
         return false;
       }
-      
-      // Test 2: Available products (basic filter)
       const availableProducts = await VendorProduct.countDocuments({ 'availability.inStock': true });
       console.log(`✅ Available products (inStock=true): ${availableProducts}`);
-      
-      // Test 3: Sample product structure
       const sampleProduct = await VendorProduct.findOne({}).lean();
       if (sampleProduct) {
         console.log('\n📋 Sample product structure:');
@@ -456,8 +377,6 @@ class AIEngineAdapter {
         console.log(`- availability:`, sampleProduct.availability);
         console.log(`- vendorId: ${sampleProduct.vendorId}`);
       }
-      
-      // Test 4: Volume ranges distribution
       const volumeRanges = await VendorProduct.aggregate([
         { $group: { _id: '$volumeRange', count: { $sum: 1 } } },
         { $sort: { _id: 1 } }
@@ -466,8 +385,6 @@ class AIEngineAdapter {
       volumeRanges.forEach(range => {
         console.log(`- ${range._id}: ${range.count} products`);
       });
-      
-      // Test 5: Paper sizes distribution
       const paperSizes = await VendorProduct.aggregate([
         { $group: { _id: '$paperSizes.primary', count: { $sum: 1 } } },
         { $sort: { count: -1 } }
@@ -476,10 +393,8 @@ class AIEngineAdapter {
       paperSizes.forEach(size => {
         console.log(`- ${size._id || 'undefined'}: ${size.count} products`);
       });
-      
       console.log('=== END DATABASE DEBUG ===\n');
       return true;
-      
     } catch (error) {
       console.error('❌ Database debug failed:', error);
       return false;
@@ -496,68 +411,50 @@ class AIEngineAdapter {
       console.log(`- userVolume: ${userVolume}`);
       console.log(`- requiredPaperSize: ${requiredPaperSize}`);
       console.log(`- volumeRange: ${volumeRange}`);
-      
-      // Test the original complex query
       const originalQuery = {
         'availability.inStock': true,
         $or: [
           { volumeRange },
-          { 
-            maxVolume: { $gte: userVolume * 0.6 }, 
-            minVolume: { $lte: userVolume * 2.5 } 
+          {
+            maxVolume: { $gte: userVolume * 0.6 },
+            minVolume: { $lte: userVolume * 2.5 }
           }
         ]
-        // Note: Removed the conflicting $or for paper sizes temporarily
       };
-      
       console.log(`\n🔍 Testing original query:`, JSON.stringify(originalQuery, null, 2));
       const originalResults = await VendorProduct.find(originalQuery).lean();
       console.log(`📊 Original query results: ${originalResults.length} products`);
-      
-      // Test simplified queries step by step
       console.log(`\n🧪 Step-by-step query testing:`);
-      
-      // Step 1: Just availability
       const step1 = await VendorProduct.find({ 'availability.inStock': true }).lean();
       console.log(`Step 1 - Just availability: ${step1.length} products`);
-      
-      // Step 2: Availability + volume range exact
-      const step2 = await VendorProduct.find({ 
+      const step2 = await VendorProduct.find({
         'availability.inStock': true,
-        volumeRange 
+        volumeRange
       }).lean();
       console.log(`Step 2 - + volume range (${volumeRange}): ${step2.length} products`);
-      
-      // Step 3: Availability + volume bounds
-      const step3 = await VendorProduct.find({ 
+      const step3 = await VendorProduct.find({
         'availability.inStock': true,
-        maxVolume: { $gte: userVolume * 0.6 }, 
+        maxVolume: { $gte: userVolume * 0.6 },
         minVolume: { $lte: userVolume * 2.5 }
       }).lean();
       console.log(`Step 3 - + volume bounds (${userVolume * 0.6} - ${userVolume * 2.5}): ${step3.length} products`);
-      
-      // Step 4: Test paper size separately
       if (requiredPaperSize) {
-        const step4a = await VendorProduct.find({ 
+        const step4a = await VendorProduct.find({
           'availability.inStock': true,
           'paperSizes.supported': requiredPaperSize
         }).lean();
         console.log(`Step 4a - + paperSizes.supported (${requiredPaperSize}): ${step4a.length} products`);
-        
-        const step4b = await VendorProduct.find({ 
+        const step4b = await VendorProduct.find({
           'availability.inStock': true,
           'paperSizes.primary': requiredPaperSize
         }).lean();
         console.log(`Step 4b - + paperSizes.primary (${requiredPaperSize}): ${step4b.length} products`);
-        
-        const step4c = await VendorProduct.find({ 
+        const step4c = await VendorProduct.find({
           'availability.inStock': true,
           paperSizes: { $exists: false }
         }).lean();
         console.log(`Step 4c - + paperSizes not defined: ${step4c.length} products`);
       }
-      
-      // Show first few results if any found
       if (originalResults.length > 0) {
         console.log(`\n📋 First result example:`);
         const first = originalResults[0];
@@ -566,10 +463,8 @@ class AIEngineAdapter {
         console.log(`- Paper: primary=${first.paperSizes?.primary}, supported=${first.paperSizes?.supported}`);
         console.log(`- Vendor: ${first.vendorId}`);
       }
-      
       console.log('=== END QUERY DEBUG ===\n');
       return originalResults;
-      
     } catch (error) {
       console.error('❌ Query debug failed:', error);
       return [];
@@ -581,43 +476,30 @@ class AIEngineAdapter {
    */
   static async generateQuotesFromRequest(quoteRequest, userId = null, invoiceFiles = []) {
     try {
-      // Validate inputs
       if (!quoteRequest) {
         throw new Error('QuoteRequest is required');
       }
-
       if (!quoteRequest._id) {
         throw new Error('QuoteRequest must have an _id');
       }
-
       console.log(`\n🚀 AI Engine processing request for ${quoteRequest.companyName}`);
-      
-      // DEBUGGING: Check database contents first
       const hasData = await this.debugDatabaseContents();
       if (!hasData) {
         console.log('❌ Stopping - no products in database to match against');
         return [];
       }
-      
-      // Convert new QuoteRequest format to your engine's format
       const convertedRequest = this.convertQuoteRequestFormat(quoteRequest);
-      
       console.log(`📋 Request converted:`, {
         description: convertedRequest.description,
         monthlyVolume: convertedRequest.monthlyVolume,
         type: convertedRequest.type,
         requiredFunctions: convertedRequest.requiredFunctions
       });
-      
-      // DEBUGGING: Extract volume data and test query
-      const userVolume = (convertedRequest.monthlyVolume?.mono || 0) + 
+      const userVolume = (convertedRequest.monthlyVolume?.mono || 0) +
                         (convertedRequest.monthlyVolume?.colour || 0) ||
                         convertedRequest.monthlyVolume?.total || 0;
-      
-      const requiredPaperSize = convertedRequest.paperRequirements?.primarySize || 
+      const requiredPaperSize = convertedRequest.paperRequirements?.primarySize ||
                                 convertedRequest.type || 'A4';
-                                
-      // Calculate volume range
       let volumeRange;
       if (userVolume <= 6000) volumeRange = '0-6k';
       else if (userVolume <= 13000) volumeRange = '6k-13k';
@@ -626,15 +508,11 @@ class AIEngineAdapter {
       else if (userVolume <= 40000) volumeRange = '30k-40k';
       else if (userVolume <= 50000) volumeRange = '40k-50k';
       else volumeRange = '50k+';
-      
       console.log(`\n🎯 Query parameters:`);
       console.log(`- User volume: ${userVolume} pages/month`);
       console.log(`- Volume range: ${volumeRange}`);
       console.log(`- Required paper size: ${requiredPaperSize}`);
-      
-      // DEBUGGING: Test the database query that's likely failing
       const queryResults = await this.debugVendorProductQuery(userVolume, requiredPaperSize, volumeRange);
-      
       if (queryResults.length === 0) {
         console.log('❌ Database query returned no results - this is the root cause!');
         console.log('💡 Try these fixes:');
@@ -644,68 +522,49 @@ class AIEngineAdapter {
         console.log('4. Check if minVolume/maxVolume values make sense');
         return [];
       }
-      
-      // Use your advanced AI engine with proper error handling
-      let recommendations;
+      let result;
       try {
-        recommendations = await AIRecommendationEngine.generateRecommendations(
-          convertedRequest, 
-          userId || quoteRequest.submittedBy, 
+        result = await AIRecommendationEngine.generateRecommendations(
+          convertedRequest,
+          userId || quoteRequest.submittedBy,
           invoiceFiles
         );
       } catch (aiError) {
         logger.error('AI Engine error:', aiError);
         throw new Error(`AI recommendation engine failed: ${aiError.message}`);
       }
-      
-      console.log(`🤖 AI Engine returned ${recommendations?.length || 0} recommendations`);
-      
-      if (!recommendations || recommendations.length === 0) {
+      const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
+      console.log(`🤖 AI Engine returned ${recommendations.length} recommendations`);
+      if (recommendations.length === 0) {
         console.log('❌ AI Engine returned no recommendations');
         return [];
       }
-
-      // Filter out any error recommendations
       const validRecommendations = recommendations.filter(rec => !rec.error);
-      
       if (validRecommendations.length === 0) {
         console.log('❌ All recommendations contained errors');
         return [];
       }
-
       console.log(`✅ Valid recommendations: ${validRecommendations.length}`);
-
-      // CRITICAL FIX: Deduplicate by vendor BEFORE creating quotes with improved logic
       const uniqueRecommendations = this.deduplicateByVendor(validRecommendations);
-      
       if (uniqueRecommendations.length === 0) {
         console.log('❌ No unique vendor recommendations after deduplication');
         return [];
       }
-
       console.log(`🎯 Creating quotes for ${uniqueRecommendations.length} unique recommendations`);
-
-      // Convert recommendations to Quote format and save
       const quotes = [];
-      const maxQuotes = Math.min(uniqueRecommendations.length, 3); // Limit to top 3 unique vendors
-      
+      const maxQuotes = Math.min(uniqueRecommendations.length, 3);
       for (let i = 0; i < maxQuotes; i++) {
         const recommendation = uniqueRecommendations[i];
-        
         try {
-          // Validate this specific recommendation
           const validation = this.validateRecommendation(recommendation, i + 1);
           if (!validation.isValid) {
             console.log(`⚠️ Skipping invalid recommendation ${i + 1}:`, validation.errors);
             continue;
           }
-
           const quoteData = this.convertToQuoteFormat(recommendation, quoteRequest, i + 1);
-          
           const quote = new Quote(quoteData);
-          await quote.save();
-          quotes.push(quote._id);
-          
+          const savedQuote = await quote.save();
+          quotes.push(savedQuote._id);
           console.log(`✅ Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'} from vendor ${recommendation.product?.vendorId}`);
         } catch (saveError) {
           console.log(`❌ Error saving quote ${i + 1}:`, {
@@ -717,13 +576,28 @@ class AIEngineAdapter {
               vendorId: recommendation.product?.vendorId
             }
           });
-          // Continue with other quotes even if one fails
         }
       }
-      
       console.log(`🎉 Successfully created ${quotes.length} unique vendor quotes from ${validRecommendations.length} total recommendations`);
+      if (quotes.length > 0) {
+        await QuoteRequest.findByIdAndUpdate(
+          quoteRequest._id,
+          {
+            $push: { quotes: { $each: quotes } },
+            status: 'completed',
+            'aiAnalysis.processed': true,
+            'aiAnalysis.processedAt': new Date(),
+            'aiAnalysis.suggestedCategories': [volumeRange],
+            'aiAnalysis.recommendations': uniqueRecommendations.map(rec => ({
+              productId: rec.product._id,
+              score: rec.overallScore,
+              ranking: rec.ranking
+            }))
+          }
+        );
+        logger.info(`Updated quote request ${quoteRequest._id} with ${quotes.length} quotes`);
+      }
       return quotes;
-      
     } catch (error) {
       logger.error('Error in AIEngineAdapter:', {
         error: error.message,
@@ -741,17 +615,12 @@ class AIEngineAdapter {
   static async generateSampleQuotes(quoteRequest) {
     try {
       logger.info('Generating sample quotes for testing');
-      
       if (!quoteRequest || !quoteRequest._id) {
         throw new Error('Valid quote request with _id required for sample quotes');
       }
-
-      // Calculate sample values based on request
       const monthlyMono = quoteRequest.monthlyVolume?.mono || 1000;
       const monthlyColour = quoteRequest.monthlyVolume?.colour || 500;
       const totalVolume = monthlyMono + monthlyColour;
-
-      // This would be useful for testing the Quote model without AI dependencies
       const sampleQuotes = [
         {
           quoteRequest: quoteRequest._id,
@@ -762,7 +631,7 @@ class AIEngineAdapter {
             reasoning: ['Sample quote for testing'],
             breakdown: {
               volumeMatch: 0.8,
-              costEfficiency: 0.7, // Within bounds
+              costEfficiency: 0.7,
               speedMatch: 0.9,
               featureMatch: 0.8,
               reliabilityMatch: 0.7
@@ -773,24 +642,17 @@ class AIEngineAdapter {
             machineCost: 2100,
             installation: 250,
             profitMargin: 650,
-            
-            // REQUIRED: CPC Rates
             cpcRates: {
               paperSize: 'A4',
               monoRate: 0.01,
               colourRate: 0.04
             },
-            
             monthlyCosts: {
               monoPages: monthlyMono,
               colourPages: monthlyColour,
-              
-              // REQUIRED: Individual CPC costs
               monoCpcCost: monthlyMono * 0.01,
               colourCpcCost: monthlyColour * 0.04,
               totalCpcCost: (monthlyMono * 0.01) + (monthlyColour * 0.04),
-              
-              cpcCosts: 45,
               leaseCost: 100,
               serviceCost: 35,
               totalMonthlyCost: 180
@@ -802,8 +664,6 @@ class AIEngineAdapter {
               description: 'Save £50/month'
             }
           },
-          
-          // REQUIRED: User Requirements
           userRequirements: {
             monthlyVolume: {
               mono: monthlyMono,
@@ -814,7 +674,6 @@ class AIEngineAdapter {
             priority: quoteRequest.requirements?.priority || 'cost',
             maxBudget: quoteRequest.budget?.maxLeasePrice || 300
           },
-          
           productSummary: {
             manufacturer: 'Sample Corp',
             model: 'Test Model 2000',
@@ -851,6 +710,9 @@ class AIEngineAdapter {
               isRecommended: true
             }
           ],
+          status: 'pending',
+          aiGenerated: true,
+          createdAt: new Date(),
           metadata: {
             aiEngineVersion: 'TEST-FIXED',
             generatedAt: new Date(),
@@ -859,7 +721,6 @@ class AIEngineAdapter {
           }
         }
       ];
-      
       const quotes = [];
       for (const quoteData of sampleQuotes) {
         try {
@@ -871,7 +732,6 @@ class AIEngineAdapter {
           logger.error('Error creating sample quote:', error);
         }
       }
-      
       return quotes;
     } catch (error) {
       logger.error('Error generating sample quotes:', error);
@@ -884,7 +744,6 @@ class AIEngineAdapter {
    */
   static async healthCheck() {
     try {
-      // Create a minimal test request
       const testRequest = {
         companyName: 'Health Check Test',
         monthlyVolume: { mono: 1000, colour: 500, total: 1500 },
@@ -895,9 +754,7 @@ class AIEngineAdapter {
         urgency: { timeframe: '3-6 months' },
         location: { postcode: 'TEST' }
       };
-
       const converted = this.convertQuoteRequestFormat(testRequest);
-      
       return {
         status: 'healthy',
         message: 'AI Engine Adapter is functioning correctly',
@@ -924,7 +781,7 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.1.2-FIXED',
+      version: '2.1.3-FIXED',
       status: 'production',
       features: [
         'AI Recommendation Engine Integration',
@@ -934,14 +791,15 @@ class AIEngineAdapter {
         'Fallback Quote Generation',
         'Health Monitoring',
         'Database Debug Tools',
-        'FIXED: CostEfficiency Bounds Checking'
+        'Fixed CostEfficiency Bounds Checking',
+        'Fixed Recommendations Filter'
       ],
       supportedModels: [
         'QuoteRequest',
         'Quote',
         'VendorProduct'
       ],
-      lastUpdate: new Date('2025-09-24'),
+      lastUpdate: new Date('2025-09-25'),
       debugFeatures: [
         'Database Content Analysis',
         'Query Step-by-Step Testing',
@@ -951,10 +809,12 @@ class AIEngineAdapter {
       fixes: [
         'CostEfficiency now properly bounded between -1 and 1',
         'Negative cost efficiency values supported for expensive products',
-        'Raw values logged in metadata for debugging'
+        'Raw values logged in metadata for debugging',
+        'Fixed recommendations.filter is not a function error'
       ]
     };
   }
 }
 
 export default AIEngineAdapter;
+```
