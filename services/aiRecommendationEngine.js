@@ -828,41 +828,91 @@ class AIRecommendationEngine {
         }
       }));
 
-      // **NEW: CREATE ACTUAL QUOTE DOCUMENTS**
+      // **FIXED: CREATE ACTUAL QUOTE DOCUMENTS WITH COMPLETE SCHEMA**
       const createdQuotes = [];
       
       for (const recommendation of finalRecommendations.slice(0, 3)) {
         try {
+          // Calculate all required cost fields
+          const monthlyMonoVolume = quoteRequest.monthlyVolume?.mono || 0;
+          const monthlyColourVolume = quoteRequest.monthlyVolume?.colour || 0;
+          const monoCpcRate = (recommendation.product.costs?.cpcRates?.A4Mono || 1.0) / 100;
+          const colourCpcRate = (recommendation.product.costs?.cpcRates?.A4Colour || 4.0) / 100;
+          const monthlyCpcCostMono = monthlyMonoVolume * monoCpcRate;
+          const monthlyCpcCostColour = monthlyColourVolume * colourCpcRate;
+          const totalCpcCost = monthlyCpcCostMono + monthlyCpcCostColour;
+          const leaseCost = recommendation.quarterlyLease / 3;
+          const serviceCost = 50; // Default service cost
+          const totalMonthlyCost = leaseCost + totalCpcCost + serviceCost;
+
           const newQuote = new Quote({
             quoteRequest: quoteRequest._id,
             product: recommendation.product._id,
             vendor: recommendation.product.vendorId._id || recommendation.product.vendorId,
+            
+            // REQUIRED: ranking
+            ranking: recommendation.ranking,
+            
+            // REQUIRED: productSummary
+            productSummary: {
+              manufacturer: recommendation.product.manufacturer,
+              model: recommendation.product.model,
+              speed: recommendation.product.speed || 25,
+              category: recommendation.product.volumeRange || 'Standard'
+            },
+            
+            // REQUIRED: userRequirements
             userRequirements: {
               monthlyVolume: {
-                mono: quoteRequest.monthlyVolume?.mono || 0,
-                colour: quoteRequest.monthlyVolume?.colour || 0,
-                total: quoteRequest.monthlyVolume?.total || userVolume
+                mono: monthlyMonoVolume,
+                colour: monthlyColourVolume,
+                total: userVolume
               },
               paperSize: requiredPaperSize,
               features: quoteRequest.requiredFunctions || quoteRequest.required_functions || [],
-              priority: quoteRequest.requirements?.priority || 'cost'
+              priority: quoteRequest.requirements?.priority || 'cost',
+              maxBudget: quoteRequest.budget?.maxLeasePrice || 0
             },
-            pricing: {
-              quarterlyLease: recommendation.quarterlyLease,
-              termMonths: recommendation.termMonths,
-              monthlyCost: recommendation.costInfo.newTotalMonthlyCost,
-              annualSavings: recommendation.costInfo.annualSavings,
-              breakdown: {
-                lease: Math.round((recommendation.quarterlyLease / 3) * 100) / 100,
-                cpcCosts: Math.round(recommendation.costInfo.breakdown.newCPC * 100) / 100,
-                serviceCosts: Math.round(recommendation.costInfo.breakdown.newService * 100) / 100
+            
+            // REQUIRED: costs (all nested fields required)
+            costs: {
+              machineCost: recommendation.product.costs?.totalMachineCost || 0,
+              installation: 0,
+              profitMargin: recommendation.product.costs?.profitMargin || 0.55,
+              totalMachineCost: recommendation.product.costs?.totalMachineCost || 0,
+              cpcRates: {
+                monoRate: monoCpcRate * 100, // Store as pence
+                colourRate: colourCpcRate * 100, // Store as pence
+                paperSize: requiredPaperSize
+              },
+              monthlyCosts: {
+                monoPages: monthlyMonoVolume,
+                colourPages: monthlyColourVolume,
+                monoCpcCost: Math.round(monthlyCpcCostMono * 100) / 100,
+                colourCpcCost: Math.round(monthlyCpcCostColour * 100) / 100,
+                totalCpcCost: Math.round(totalCpcCost * 100) / 100,
+                leaseCost: Math.round(leaseCost * 100) / 100,
+                serviceCost: Math.round(serviceCost * 100) / 100,
+                totalMonthlyCost: Math.round(totalMonthlyCost * 100) / 100
               }
             },
+            
+            // REQUIRED: matchScore
+            matchScore: {
+              total: Math.round(recommendation.overallScore * 100),
+              confidence: recommendation.confidence
+            },
+            
+            // REQUIRED: terms
+            terms: {
+              validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+            },
+            
+            // Use valid enum status
+            status: 'pending',
+            
+            // Optional fields
             aiGenerated: true,
-            aiScore: recommendation.overallScore,
-            confidence: recommendation.confidence,
-            status: 'pending_vendor_approval',
-            expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
             recommendation: {
               ranking: recommendation.ranking,
               explanation: recommendation.explanation,
@@ -870,8 +920,7 @@ class AIRecommendationEngine {
               suitabilityScore: recommendation.suitability.score,
               warning: recommendation.warning
             },
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdAt: new Date()
           });
 
           const savedQuote = await newQuote.save();
@@ -881,6 +930,7 @@ class AIRecommendationEngine {
           
         } catch (quoteError) {
           logger.error('Error creating quote:', quoteError);
+          continue; // Continue with other quotes even if one fails
         }
       }
 
