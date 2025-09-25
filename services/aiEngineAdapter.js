@@ -1,4 +1,3 @@
-```javascript
 import AIRecommendationEngine from './aiRecommendationEngine.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
@@ -52,7 +51,7 @@ class AIEngineAdapter {
       };
     } catch (error) {
       logger.error('Error converting quote request format:', error);
-      throw new Error(`Failed to convert quote request: ${error.message}`);
+      throw new Error('Failed to convert quote request: ' + error.message);
     }
   }
 
@@ -83,27 +82,27 @@ class AIEngineAdapter {
   static validateRecommendation(recommendation, index) {
     const errors = [];
     if (!recommendation) {
-      errors.push(`Recommendation ${index} is null or undefined`);
+      errors.push('Recommendation ' + index + ' is null or undefined');
       return { isValid: false, errors };
     }
     if (!recommendation.product) {
-      errors.push(`Recommendation ${index} missing product`);
+      errors.push('Recommendation ' + index + ' missing product');
     } else {
       if (!recommendation.product._id) {
-        errors.push(`Recommendation ${index} product missing _id`);
+        errors.push('Recommendation ' + index + ' product missing _id');
       }
       if (!recommendation.product.manufacturer) {
-        errors.push(`Recommendation ${index} product missing manufacturer`);
+        errors.push('Recommendation ' + index + ' product missing manufacturer');
       }
       if (!recommendation.product.model) {
-        errors.push(`Recommendation ${index} product missing model`);
+        errors.push('Recommendation ' + index + ' product missing model');
       }
     }
     if (!recommendation.suitability) {
-      errors.push(`Recommendation ${index} missing suitability data`);
+      errors.push('Recommendation ' + index + ' missing suitability data');
     }
     if (!recommendation.costInfo) {
-      errors.push(`Recommendation ${index} missing cost information`);
+      errors.push('Recommendation ' + index + ' missing cost information');
     }
     return {
       isValid: errors.length === 0,
@@ -116,7 +115,7 @@ class AIEngineAdapter {
    */
   static deduplicateByVendor(recommendations) {
     try {
-      logger.info(`Deduplicating ${recommendations.length} recommendations by vendor`);
+      logger.info('Deduplicating ' + recommendations.length + ' recommendations by vendor');
       const vendorMap = new Map();
       for (const rec of recommendations) {
         const product = rec.product;
@@ -124,7 +123,7 @@ class AIEngineAdapter {
           logger.warn('Skipping recommendation with missing manufacturer/model/vendorId');
           continue;
         }
-        const vendorKey = `${product.vendorId}-${product.manufacturer.trim()}-${product.model.trim()}`;
+        const vendorKey = product.vendorId + '-' + product.manufacturer.trim() + '-' + product.model.trim();
         const currentScore = rec.overallScore || rec.suitability?.score || 0;
         if (!vendorMap.has(vendorKey)) {
           vendorMap.set(vendorKey, {
@@ -133,7 +132,7 @@ class AIEngineAdapter {
             vendorKey,
             vendorId: product.vendorId
           });
-          logger.info(`Added new vendor product: ${vendorKey} (score: ${currentScore})`);
+          logger.info('Added new vendor product: ' + vendorKey + ' (score: ' + currentScore + ')');
         } else {
           const existing = vendorMap.get(vendorKey);
           if (currentScore > existing.score) {
@@ -143,17 +142,17 @@ class AIEngineAdapter {
               vendorKey,
               vendorId: product.vendorId
             });
-            logger.info(`Updated vendor ${vendorKey} with better score: ${currentScore} > ${existing.score}`);
+            logger.info('Updated vendor ' + vendorKey + ' with better score: ' + currentScore + ' > ' + existing.score);
           } else {
-            logger.info(`Skipping duplicate vendor product ${vendorKey} (score: ${currentScore} <= ${existing.score})`);
+            logger.info('Skipping duplicate vendor product ' + vendorKey + ' (score: ' + currentScore + ' <= ' + existing.score + ')');
           }
         }
       }
       const uniqueRecommendations = Array.from(vendorMap.values())
         .sort((a, b) => b.score - a.score)
         .map(item => item.recommendation);
-      logger.info(`Deduplication complete: ${recommendations.length} -> ${uniqueRecommendations.length} unique vendor products`);
-      logger.info(`Unique vendors represented: ${Array.from(new Set(Array.from(vendorMap.values()).map(v => v.vendorId))).length}`);
+      logger.info('Deduplication complete: ' + recommendations.length + ' -> ' + uniqueRecommendations.length + ' unique vendor products');
+      logger.info('Unique vendors represented: ' + Array.from(new Set(Array.from(vendorMap.values()).map(v => v.vendorId))).length);
       return uniqueRecommendations;
     } catch (error) {
       logger.error('Error during vendor deduplication:', error);
@@ -169,7 +168,7 @@ class AIEngineAdapter {
       const validation = this.validateRecommendation(recommendation, ranking);
       if (!validation.isValid) {
         logger.error('Invalid recommendation data:', validation.errors);
-        throw new Error(`Invalid recommendation: ${validation.errors.join(', ')}`);
+        throw new Error('Invalid recommendation: ' + validation.errors.join(', '));
       }
       if (!quoteRequest || !quoteRequest._id) {
         throw new Error('Valid quote request with _id is required');
@@ -210,8 +209,8 @@ class AIEngineAdapter {
           },
           reasoning: [
             recommendation.explanation || suitability.reason || 'AI-generated recommendation',
-            `Monthly cost: £${costInfo.newTotalMonthlyCost || 0}`,
-            `Potential savings: £${costInfo.monthlySavings || 0}/month`
+            'Monthly cost: £' + (costInfo.newTotalMonthlyCost || 0),
+            'Potential savings: £' + (costInfo.monthlySavings || 0) + '/month'
           ].filter(r => r)
         },
         costs: {
@@ -239,8 +238,8 @@ class AIEngineAdapter {
             annualAmount: costInfo.annualSavings || 0,
             percentageSaved: costInfo.savingsPercentage || 0,
             description: (costInfo.monthlySavings || 0) > 0 ?
-              `Save £${costInfo.monthlySavings}/month` :
-              `£${Math.abs(costInfo.monthlySavings || 0)}/month more than current`
+              'Save £' + costInfo.monthlySavings + '/month' :
+              '£' + Math.abs(costInfo.monthlySavings || 0) + '/month more than current'
           }
         },
         userRequirements: {
@@ -274,8 +273,8 @@ class AIEngineAdapter {
         },
         terms: {
           validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          deliveryTime: `${product.availability?.leadTime || 14} days`,
-          installationTime: `${product.availability?.installationWindow || 7} days`,
+          deliveryTime: (product.availability?.leadTime || 14) + ' days',
+          installationTime: (product.availability?.installationWindow || 7) + ' days',
           paymentTerms: 'Quarterly in advance',
           cancellationPolicy: '30 days notice required',
           upgradeOptions: 'Available at any time'
@@ -291,14 +290,14 @@ class AIEngineAdapter {
           scoringAlgorithm: 'AIRecommendationEngine',
           quoteRequestId: quoteRequest._id,
           originalRanking: ranking,
-          vendorKey: `${product.vendorId}-${product.manufacturer}-${product.model}`,
+          vendorKey: product.vendorId + '-' + product.manufacturer + '-' + product.model,
           rawCostEfficiency: rawCostEfficiency,
           boundedCostEfficiency: boundedCostEfficiency
         }
       };
     } catch (error) {
       logger.error('Error converting recommendation to quote format:', error);
-      throw new Error(`Failed to convert recommendation to quote: ${error.message}`);
+      throw new Error('Failed to convert recommendation to quote: ' + error.message);
     }
   }
 
@@ -357,46 +356,46 @@ class AIEngineAdapter {
     try {
       console.log('\n=== DATABASE DEBUG ANALYSIS ===');
       const totalProducts = await VendorProduct.countDocuments({});
-      console.log(`📊 Total products in database: ${totalProducts}`);
+      console.log('Total products in database: ' + totalProducts);
       if (totalProducts === 0) {
-        console.log('❌ NO PRODUCTS FOUND - Database is empty!');
+        console.log('NO PRODUCTS FOUND - Database is empty!');
         return false;
       }
       const availableProducts = await VendorProduct.countDocuments({ 'availability.inStock': true });
-      console.log(`✅ Available products (inStock=true): ${availableProducts}`);
+      console.log('Available products (inStock=true): ' + availableProducts);
       const sampleProduct = await VendorProduct.findOne({}).lean();
       if (sampleProduct) {
-        console.log('\n📋 Sample product structure:');
-        console.log(`- _id: ${sampleProduct._id}`);
-        console.log(`- manufacturer: ${sampleProduct.manufacturer}`);
-        console.log(`- model: ${sampleProduct.model}`);
-        console.log(`- volumeRange: ${sampleProduct.volumeRange}`);
-        console.log(`- minVolume: ${sampleProduct.minVolume}`);
-        console.log(`- maxVolume: ${sampleProduct.maxVolume}`);
-        console.log(`- paperSizes:`, sampleProduct.paperSizes);
-        console.log(`- availability:`, sampleProduct.availability);
-        console.log(`- vendorId: ${sampleProduct.vendorId}`);
+        console.log('\nSample product structure:');
+        console.log('- _id: ' + sampleProduct._id);
+        console.log('- manufacturer: ' + sampleProduct.manufacturer);
+        console.log('- model: ' + sampleProduct.model);
+        console.log('- volumeRange: ' + sampleProduct.volumeRange);
+        console.log('- minVolume: ' + sampleProduct.minVolume);
+        console.log('- maxVolume: ' + sampleProduct.maxVolume);
+        console.log('- paperSizes:', sampleProduct.paperSizes);
+        console.log('- availability:', sampleProduct.availability);
+        console.log('- vendorId: ' + sampleProduct.vendorId);
       }
       const volumeRanges = await VendorProduct.aggregate([
         { $group: { _id: '$volumeRange', count: { $sum: 1 } } },
         { $sort: { _id: 1 } }
       ]);
-      console.log('\n📈 Volume range distribution:');
+      console.log('\nVolume range distribution:');
       volumeRanges.forEach(range => {
-        console.log(`- ${range._id}: ${range.count} products`);
+        console.log('- ' + range._id + ': ' + range.count + ' products');
       });
       const paperSizes = await VendorProduct.aggregate([
         { $group: { _id: '$paperSizes.primary', count: { $sum: 1 } } },
         { $sort: { count: -1 } }
       ]);
-      console.log('\n📄 Paper sizes distribution:');
+      console.log('\nPaper sizes distribution:');
       paperSizes.forEach(size => {
-        console.log(`- ${size._id || 'undefined'}: ${size.count} products`);
+        console.log('- ' + (size._id || 'undefined') + ': ' + size.count + ' products');
       });
       console.log('=== END DATABASE DEBUG ===\n');
       return true;
     } catch (error) {
-      console.error('❌ Database debug failed:', error);
+      console.error('Database debug failed:', error);
       return false;
     }
   }
@@ -407,10 +406,10 @@ class AIEngineAdapter {
   static async debugVendorProductQuery(userVolume, requiredPaperSize, volumeRange) {
     try {
       console.log('\n=== QUERY DEBUG ANALYSIS ===');
-      console.log(`🎯 User requirements:`);
-      console.log(`- userVolume: ${userVolume}`);
-      console.log(`- requiredPaperSize: ${requiredPaperSize}`);
-      console.log(`- volumeRange: ${volumeRange}`);
+      console.log('User requirements:');
+      console.log('- userVolume: ' + userVolume);
+      console.log('- requiredPaperSize: ' + requiredPaperSize);
+      console.log('- volumeRange: ' + volumeRange);
       const originalQuery = {
         'availability.inStock': true,
         $or: [
@@ -421,52 +420,52 @@ class AIEngineAdapter {
           }
         ]
       };
-      console.log(`\n🔍 Testing original query:`, JSON.stringify(originalQuery, null, 2));
+      console.log('\nTesting original query:', JSON.stringify(originalQuery, null, 2));
       const originalResults = await VendorProduct.find(originalQuery).lean();
-      console.log(`📊 Original query results: ${originalResults.length} products`);
-      console.log(`\n🧪 Step-by-step query testing:`);
+      console.log('Original query results: ' + originalResults.length + ' products');
+      console.log('\nStep-by-step query testing:');
       const step1 = await VendorProduct.find({ 'availability.inStock': true }).lean();
-      console.log(`Step 1 - Just availability: ${step1.length} products`);
+      console.log('Step 1 - Just availability: ' + step1.length + ' products');
       const step2 = await VendorProduct.find({
         'availability.inStock': true,
         volumeRange
       }).lean();
-      console.log(`Step 2 - + volume range (${volumeRange}): ${step2.length} products`);
+      console.log('Step 2 - + volume range (' + volumeRange + '): ' + step2.length + ' products');
       const step3 = await VendorProduct.find({
         'availability.inStock': true,
         maxVolume: { $gte: userVolume * 0.6 },
         minVolume: { $lte: userVolume * 2.5 }
       }).lean();
-      console.log(`Step 3 - + volume bounds (${userVolume * 0.6} - ${userVolume * 2.5}): ${step3.length} products`);
+      console.log('Step 3 - + volume bounds (' + (userVolume * 0.6) + ' - ' + (userVolume * 2.5) + '): ' + step3.length + ' products');
       if (requiredPaperSize) {
         const step4a = await VendorProduct.find({
           'availability.inStock': true,
           'paperSizes.supported': requiredPaperSize
         }).lean();
-        console.log(`Step 4a - + paperSizes.supported (${requiredPaperSize}): ${step4a.length} products`);
+        console.log('Step 4a - + paperSizes.supported (' + requiredPaperSize + '): ' + step4a.length + ' products');
         const step4b = await VendorProduct.find({
           'availability.inStock': true,
           'paperSizes.primary': requiredPaperSize
         }).lean();
-        console.log(`Step 4b - + paperSizes.primary (${requiredPaperSize}): ${step4b.length} products`);
+        console.log('Step 4b - + paperSizes.primary (' + requiredPaperSize + '): ' + step4b.length + ' products');
         const step4c = await VendorProduct.find({
           'availability.inStock': true,
           paperSizes: { $exists: false }
         }).lean();
-        console.log(`Step 4c - + paperSizes not defined: ${step4c.length} products`);
+        console.log('Step 4c - + paperSizes not defined: ' + step4c.length + ' products');
       }
       if (originalResults.length > 0) {
-        console.log(`\n📋 First result example:`);
+        console.log('\nFirst result example:');
         const first = originalResults[0];
-        console.log(`- ${first.manufacturer} ${first.model}`);
-        console.log(`- Volume: ${first.minVolume}-${first.maxVolume} (range: ${first.volumeRange})`);
-        console.log(`- Paper: primary=${first.paperSizes?.primary}, supported=${first.paperSizes?.supported}`);
-        console.log(`- Vendor: ${first.vendorId}`);
+        console.log('- ' + first.manufacturer + ' ' + first.model);
+        console.log('- Volume: ' + first.minVolume + '-' + first.maxVolume + ' (range: ' + first.volumeRange + ')');
+        console.log('- Paper: primary=' + first.paperSizes?.primary + ', supported=' + first.paperSizes?.supported);
+        console.log('- Vendor: ' + first.vendorId);
       }
       console.log('=== END QUERY DEBUG ===\n');
       return originalResults;
     } catch (error) {
-      console.error('❌ Query debug failed:', error);
+      console.error('Query debug failed:', error);
       return [];
     }
   }
@@ -482,14 +481,14 @@ class AIEngineAdapter {
       if (!quoteRequest._id) {
         throw new Error('QuoteRequest must have an _id');
       }
-      console.log(`\n🚀 AI Engine processing request for ${quoteRequest.companyName}`);
+      console.log('\nAI Engine processing request for ' + quoteRequest.companyName);
       const hasData = await this.debugDatabaseContents();
       if (!hasData) {
-        console.log('❌ Stopping - no products in database to match against');
+        console.log('Stopping - no products in database to match against');
         return [];
       }
       const convertedRequest = this.convertQuoteRequestFormat(quoteRequest);
-      console.log(`📋 Request converted:`, {
+      console.log('Request converted:', {
         description: convertedRequest.description,
         monthlyVolume: convertedRequest.monthlyVolume,
         type: convertedRequest.type,
@@ -508,14 +507,14 @@ class AIEngineAdapter {
       else if (userVolume <= 40000) volumeRange = '30k-40k';
       else if (userVolume <= 50000) volumeRange = '40k-50k';
       else volumeRange = '50k+';
-      console.log(`\n🎯 Query parameters:`);
-      console.log(`- User volume: ${userVolume} pages/month`);
-      console.log(`- Volume range: ${volumeRange}`);
-      console.log(`- Required paper size: ${requiredPaperSize}`);
+      console.log('\nQuery parameters:');
+      console.log('- User volume: ' + userVolume + ' pages/month');
+      console.log('- Volume range: ' + volumeRange);
+      console.log('- Required paper size: ' + requiredPaperSize);
       const queryResults = await this.debugVendorProductQuery(userVolume, requiredPaperSize, volumeRange);
       if (queryResults.length === 0) {
-        console.log('❌ Database query returned no results - this is the root cause!');
-        console.log('💡 Try these fixes:');
+        console.log('Database query returned no results - this is the root cause!');
+        console.log('Try these fixes:');
         console.log('1. Check if volumeRange field is populated in your products');
         console.log('2. Check if paperSizes field structure matches the query');
         console.log('3. Verify availability.inStock is set to true');
@@ -531,26 +530,26 @@ class AIEngineAdapter {
         );
       } catch (aiError) {
         logger.error('AI Engine error:', aiError);
-        throw new Error(`AI recommendation engine failed: ${aiError.message}`);
+        throw new Error('AI recommendation engine failed: ' + aiError.message);
       }
       const recommendations = Array.isArray(result.recommendations) ? result.recommendations : [];
-      console.log(`🤖 AI Engine returned ${recommendations.length} recommendations`);
+      console.log('AI Engine returned ' + recommendations.length + ' recommendations');
       if (recommendations.length === 0) {
-        console.log('❌ AI Engine returned no recommendations');
+        console.log('AI Engine returned no recommendations');
         return [];
       }
       const validRecommendations = recommendations.filter(rec => !rec.error);
       if (validRecommendations.length === 0) {
-        console.log('❌ All recommendations contained errors');
+        console.log('All recommendations contained errors');
         return [];
       }
-      console.log(`✅ Valid recommendations: ${validRecommendations.length}`);
+      console.log('Valid recommendations: ' + validRecommendations.length);
       const uniqueRecommendations = this.deduplicateByVendor(validRecommendations);
       if (uniqueRecommendations.length === 0) {
-        console.log('❌ No unique vendor recommendations after deduplication');
+        console.log('No unique vendor recommendations after deduplication');
         return [];
       }
-      console.log(`🎯 Creating quotes for ${uniqueRecommendations.length} unique recommendations`);
+      console.log('Creating quotes for ' + uniqueRecommendations.length + ' unique recommendations');
       const quotes = [];
       const maxQuotes = Math.min(uniqueRecommendations.length, 3);
       for (let i = 0; i < maxQuotes; i++) {
@@ -558,16 +557,16 @@ class AIEngineAdapter {
         try {
           const validation = this.validateRecommendation(recommendation, i + 1);
           if (!validation.isValid) {
-            console.log(`⚠️ Skipping invalid recommendation ${i + 1}:`, validation.errors);
+            console.log('Skipping invalid recommendation ' + (i + 1) + ':', validation.errors);
             continue;
           }
           const quoteData = this.convertToQuoteFormat(recommendation, quoteRequest, i + 1);
           const quote = new Quote(quoteData);
           const savedQuote = await quote.save();
           quotes.push(savedQuote._id);
-          console.log(`✅ Created quote ${i + 1}: ${recommendation.product?.manufacturer || 'Unknown'} ${recommendation.product?.model || 'Unknown'} from vendor ${recommendation.product?.vendorId}`);
+          console.log('Created quote ' + (i + 1) + ': ' + (recommendation.product?.manufacturer || 'Unknown') + ' ' + (recommendation.product?.model || 'Unknown') + ' from vendor ' + recommendation.product?.vendorId);
         } catch (saveError) {
-          console.log(`❌ Error saving quote ${i + 1}:`, {
+          console.log('Error saving quote ' + (i + 1) + ':', {
             error: saveError.message,
             recommendation: {
               manufacturer: recommendation.product?.manufacturer,
@@ -578,7 +577,7 @@ class AIEngineAdapter {
           });
         }
       }
-      console.log(`🎉 Successfully created ${quotes.length} unique vendor quotes from ${validRecommendations.length} total recommendations`);
+      console.log('Successfully created ' + quotes.length + ' unique vendor quotes from ' + validRecommendations.length + ' total recommendations');
       if (quotes.length > 0) {
         await QuoteRequest.findByIdAndUpdate(
           quoteRequest._id,
@@ -595,7 +594,7 @@ class AIEngineAdapter {
             }))
           }
         );
-        logger.info(`Updated quote request ${quoteRequest._id} with ${quotes.length} quotes`);
+        logger.info('Updated quote request ' + quoteRequest._id + ' with ' + quotes.length + ' quotes');
       }
       return quotes;
     } catch (error) {
@@ -817,4 +816,3 @@ class AIEngineAdapter {
 }
 
 export default AIEngineAdapter;
-```
