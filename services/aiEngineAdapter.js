@@ -7,7 +7,7 @@ import logger from './logger.js';
 /**
  * Production-ready adapter to use AIRecommendationEngine with QuoteRequest/Quote models
  * Includes comprehensive error handling, validation, and vendor deduplication
- * FIXED VERSION with proper costEfficiency bounds checking and recommendations filter
+ * FIXED VERSION with proper schema validation for matchScore.total, userRequirements.priority, and status
  */
 class AIEngineAdapter {
  
@@ -162,6 +162,7 @@ class AIEngineAdapter {
 
   /**
    * Convert AIRecommendationEngine results to Quote format with ALL required fields
+   * CRITICAL FIXES: Proper score normalization, required priority field, correct status enum
    */
   static convertToQuoteFormat(recommendation, quoteRequest, ranking) {
     try {
@@ -182,6 +183,8 @@ class AIEngineAdapter {
         savingsPercentage: 0,
         breakdown: {}
       };
+      
+      // Calculate CPC rates
       const monoRate = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
       const colourRate = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
       const monthlyMono = quoteRequest.monthlyVolume?.mono || 0;
@@ -192,19 +195,26 @@ class AIEngineAdapter {
       const totalCpcCost = monoCpcCost + colourCpcCost;
       const rawCostEfficiency = (costInfo.savingsPercentage || 0) / 100;
       const boundedCostEfficiency = Math.max(-1, Math.min(1, rawCostEfficiency));
+      
+      // FIX 1: CRITICAL - Convert score from 0-100 to 0-1 scale for schema validation
+      const rawScore = recommendation.overallScore || suitability.score || 0.5;
+      const normalizedScore = rawScore > 1 ? rawScore / 100 : rawScore;
+      const boundedScore = Math.max(0, Math.min(1, normalizedScore));
+      
       return {
         quoteRequest: quoteRequest._id,
         product: product._id,
         vendor: product.vendorId || null,
         ranking: ranking || 1,
         matchScore: {
-          total: Math.round((recommendation.overallScore || suitability.score || 0.5) * 100),
+          // FIX 1: Use normalized score (0-1) instead of percentage (0-100)
+          total: boundedScore,
           confidence: recommendation.confidence || (suitability.suitable ? 'High' : 'Medium'),
           breakdown: {
-            volumeMatch: suitability.volumeScore || 0,
+            volumeMatch: Math.max(0, Math.min(1, suitability.volumeScore || 0)),
             costEfficiency: boundedCostEfficiency,
-            speedMatch: suitability.speedScore || 0,
-            featureMatch: suitability.featureScore || 0.8,
+            speedMatch: Math.max(0, Math.min(1, suitability.speedScore || 0)),
+            featureMatch: Math.max(0, Math.min(1, suitability.featureScore || 0.8)),
             reliabilityMatch: 0.7
           },
           reasoning: [
@@ -250,7 +260,9 @@ class AIEngineAdapter {
           },
           paperSize: quoteRequest.paperRequirements?.primarySize || quoteRequest.type || 'A4',
           features: quoteRequest.requirements?.essentialFeatures || quoteRequest.requiredFunctions || [],
-          maxBudget: quoteRequest.budget?.maxLeasePrice || 300
+          maxBudget: quoteRequest.budget?.maxLeasePrice || 300,
+          // FIX 2: Add required priority field from schema
+          priority: quoteRequest.requirements?.priority || 'cost'
         },
         leaseOptions: this.createLeaseOptions(product, recommendation.quarterlyLease, recommendation.termMonths),
         productSummary: {
@@ -281,18 +293,23 @@ class AIEngineAdapter {
         },
         accessories: product.auxiliaries || [],
         warning: recommendation.warning || null,
-        status: 'pending',
+        // FIX 3: Use correct status from Quote schema enum
+        status: 'generated',
         aiGenerated: true,
         createdAt: new Date(),
         metadata: {
-          aiEngineVersion: '2.1-FIXED',
+          aiEngineVersion: '2.1-SCHEMA-FIXED',
           generatedAt: new Date(),
           scoringAlgorithm: 'AIRecommendationEngine',
           quoteRequestId: quoteRequest._id,
           originalRanking: ranking,
           vendorKey: product.vendorId + '-' + product.manufacturer + '-' + product.model,
           rawCostEfficiency: rawCostEfficiency,
-          boundedCostEfficiency: boundedCostEfficiency
+          boundedCostEfficiency: boundedCostEfficiency,
+          // Debug info for score normalization
+          originalScore: rawScore,
+          normalizedScore: normalizedScore,
+          finalBoundedScore: boundedScore
         }
       };
     } catch (error) {
@@ -564,9 +581,9 @@ class AIEngineAdapter {
           const quote = new Quote(quoteData);
           const savedQuote = await quote.save();
           quotes.push(savedQuote._id);
-          console.log('Created quote ' + (i + 1) + ': ' + (recommendation.product?.manufacturer || 'Unknown') + ' ' + (recommendation.product?.model || 'Unknown') + ' from vendor ' + recommendation.product?.vendorId);
+          console.log('✅ Created quote ' + (i + 1) + ': ' + (recommendation.product?.manufacturer || 'Unknown') + ' ' + (recommendation.product?.model || 'Unknown') + ' from vendor ' + recommendation.product?.vendorId);
         } catch (saveError) {
-          console.log('Error saving quote ' + (i + 1) + ':', {
+          console.log('❌ Error saving quote ' + (i + 1) + ':', {
             error: saveError.message,
             recommendation: {
               manufacturer: recommendation.product?.manufacturer,
@@ -577,13 +594,13 @@ class AIEngineAdapter {
           });
         }
       }
-      console.log('Successfully created ' + quotes.length + ' unique vendor quotes from ' + validRecommendations.length + ' total recommendations');
+      console.log('🎉 Successfully created ' + quotes.length + ' unique vendor quotes from ' + validRecommendations.length + ' total recommendations');
       if (quotes.length > 0) {
         await QuoteRequest.findByIdAndUpdate(
           quoteRequest._id,
           {
             $push: { quotes: { $each: quotes } },
-            status: 'completed',
+            status: 'matched',
             'aiAnalysis.processed': true,
             'aiAnalysis.processedAt': new Date(),
             'aiAnalysis.suggestedCategories': [volumeRange],
@@ -709,11 +726,11 @@ class AIEngineAdapter {
               isRecommended: true
             }
           ],
-          status: 'pending',
+          status: 'generated',
           aiGenerated: true,
           createdAt: new Date(),
           metadata: {
-            aiEngineVersion: 'TEST-FIXED',
+            aiEngineVersion: 'TEST-SCHEMA-FIXED',
             generatedAt: new Date(),
             scoringAlgorithm: 'Sample',
             quoteRequestId: quoteRequest._id
@@ -762,7 +779,8 @@ class AIEngineAdapter {
         convertedFields: Object.keys(converted).length,
         deduplicationEnabled: true,
         deduplicationMethod: 'vendorId + manufacturer + model',
-        costEfficiencyFixed: true
+        costEfficiencyFixed: true,
+        schemaValidationFixed: true
       };
     } catch (error) {
       logger.error('AI Engine Adapter health check failed:', error);
@@ -780,7 +798,7 @@ class AIEngineAdapter {
    */
   static getStatistics() {
     return {
-      version: '2.1.3-FIXED',
+      version: '2.2.0-SCHEMA-FIXED',
       status: 'production',
       features: [
         'AI Recommendation Engine Integration',
@@ -791,7 +809,7 @@ class AIEngineAdapter {
         'Health Monitoring',
         'Database Debug Tools',
         'Fixed CostEfficiency Bounds Checking',
-        'Fixed Recommendations Filter'
+        'Fixed Schema Validation Issues'
       ],
       supportedModels: [
         'QuoteRequest',
@@ -805,11 +823,12 @@ class AIEngineAdapter {
         'Volume Range Debug',
         'Paper Size Structure Debug'
       ],
-      fixes: [
-        'CostEfficiency now properly bounded between -1 and 1',
-        'Negative cost efficiency values supported for expensive products',
-        'Raw values logged in metadata for debugging',
-        'Fixed recommendations.filter is not a function error'
+      schemaFixes: [
+        'matchScore.total now properly normalized to 0-1 scale',
+        'userRequirements.priority field added as required',
+        'status uses correct enum value (generated)',
+        'All breakdown scores bounded to valid ranges',
+        'Score normalization with debug metadata'
       ]
     };
   }
