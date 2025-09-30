@@ -1,6 +1,5 @@
 // Load environment variables early
 import 'dotenv/config';
-
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -8,10 +7,8 @@ import morgan from 'morgan';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
 // Services
 import AIRecommendationEngine from './services/aiRecommendationEngine.js';
-
 // Routes
 import authRoutes from './routes/authRoutes.js';
 // REMOVED: import vendorRoutes from './routes/vendorRoutes.js';
@@ -25,35 +22,28 @@ import vendorUploadRoutes from './routes/vendorUploadRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
-
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 // Check environment variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
 if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
     console.error('❌ Missing required environment variables');
     process.exit(1);
 }
-
 // Express app
 const app = express();
-
 // ✅ CRITICAL FIX: Trust proxy for rate limiting and IP detection
 app.set('trust proxy', 1);
-
 // ✅ IMPROVED CORS CONFIG — Handles all deployment URLs with better logging
 app.use(cors({
     origin: function (origin, callback) {
         console.log(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
-
         // Allow requests with no origin (like mobile apps, Postman, or curl requests)
         if (!origin) {
             console.log('✅ CORS: Allowing request with no origin');
             return callback(null, true);
         }
-
         const staticOrigins = [
             'https://www.tendorai.com',
             'https://tendorai.com',
@@ -62,13 +52,10 @@ app.use(cors({
             'http://localhost:3001', // Additional local port
             'https://localhost:3000', // HTTPS local (sometimes needed)
         ];
-
         // Allow any Vercel deployment URL for your project
         const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
-
         // Check static origins
         const isStaticOrigin = staticOrigins.includes(origin);
-
         if (isStaticOrigin) {
             console.log(`✅ CORS: Allowing static origin - ${origin}`);
             callback(null, true);
@@ -96,14 +83,11 @@ app.use(cors({
     exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
     maxAge: 86400 // 24 hours
 }));
-
 // Handle preflight requests explicitly
 app.options('*', cors({
     origin: function (origin, callback) {
         console.log(`🔍 PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
-
         if (!origin) return callback(null, true);
-
         const staticOrigins = [
             'https://www.tendorai.com',
             'https://tendorai.com',
@@ -112,9 +96,7 @@ app.options('*', cors({
             'http://localhost:3001',
             'https://localhost:3000',
         ];
-
         const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
-
         if (staticOrigins.includes(origin) || isVercelPreview) {
             console.log(`✅ PREFLIGHT: Allowing ${origin}`);
             callback(null, true);
@@ -135,18 +117,16 @@ app.options('*', cors({
         'X-File-Name'
     ]
 }));
-
 // Enhanced global error handler for CORS errors
 app.use((error, req, res, next) => {
     if (error.message === 'Not allowed by CORS') {
         const origin = req.headers.origin || 'unknown';
         console.log(`❌ CORS Error Details:`);
-        console.log(`    - Origin: ${origin}`);
-        console.log(`    - Method: ${req.method}`);
-        console.log(`    - Path: ${req.path}`);
-        console.log(`    - User-Agent: ${req.headers['user-agent']}`);
-        console.log(`    - Headers:`, JSON.stringify(req.headers, null, 2));
-
+        console.log(` - Origin: ${origin}`);
+        console.log(` - Method: ${req.method}`);
+        console.log(` - Path: ${req.path}`);
+        console.log(` - User-Agent: ${req.headers['user-agent']}`);
+        console.log(` - Headers:`, JSON.stringify(req.headers, null, 2));
         return res.status(403).json({
             error: 'CORS Error',
             message: 'This origin is not allowed to access this resource',
@@ -171,25 +151,21 @@ app.use((error, req, res, next) => {
     }
     next(error);
 });
-
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
-
 // Request logger
 app.use((req, res, next) => {
     console.log(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
     next();
 });
-
 // Ensure /uploads folder exists
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 app.use('/uploads', express.static(uploadsDir));
-
 // ROUTES - UPDATED: Only use vendorUploadRoutes for all vendor functionality
 app.use('/api/auth', authRoutes);
 // REMOVED: app.use('/api/vendors', vendorRoutes);
@@ -203,61 +179,48 @@ app.use('/api/submit-request', submitRequestRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
-
 // NEW: AI Copier Suggestions Route
 app.post('/api/suggest-copiers', async (req, res) => {
     try {
         console.log('🤖 AI Copier suggestion request:', req.body);
-
         // Basic suggestions based on the request data
         const suggestions = [];
         const { monthlyVolume, industryType, colour, min_speed, serviceType } = req.body;
-
         // Simple logic to provide basic suggestions
         if (monthlyVolume?.total > 5000) {
             suggestions.push("High-volume multifunction device recommended for your print requirements");
         }
-
         if (monthlyVolume?.total < 1000) {
             suggestions.push("Compact desktop printer suitable for low-volume needs");
         }
-
         if (industryType === 'Legal' || industryType === 'Healthcare') {
             suggestions.push("Security-focused models with encryption and audit trails recommended");
         }
-
         if (industryType === 'Manufacturing' || industryType === 'Government') {
             suggestions.push("Industrial-grade devices with enhanced durability features");
         }
-
         if (colour === 'Color') {
             suggestions.push("Color multifunction printer with professional-grade output quality");
         }
-
         if (colour === 'Black & White') {
             suggestions.push("High-efficiency monochrome printer optimized for text documents");
         }
-
         if (min_speed && min_speed > 30) {
             suggestions.push("High-speed printing capability (30+ PPM) recommended for productivity");
         }
-
         if (serviceType === 'Production') {
             suggestions.push("Production-level equipment with finishing capabilities recommended");
         }
-
         // Add some generic helpful suggestions if we have basic info
         if (suggestions.length === 0 && (monthlyVolume?.total || industryType)) {
             suggestions.push("Multifunction device with print, scan, and copy capabilities");
             suggestions.push("Energy-efficient model to reduce operational costs");
         }
-
         res.json({
             suggestions,
             message: suggestions.length > 0 ? "AI suggestions generated based on your requirements" : "Please provide more details for personalized recommendations",
             timestamp: new Date().toISOString()
         });
-
     } catch (error) {
         console.error('Error in suggest-copiers:', error);
         res.status(500).json({
@@ -267,12 +230,10 @@ app.post('/api/suggest-copiers', async (req, res) => {
         });
     }
 });
-
 // ✅ NEW: Test endpoint to verify all routes are working
 app.get('/api/test-dashboard', async (req, res) => {
     try {
         console.log('🔍 Testing dashboard endpoints...');
-
         const testResults = {
             timestamp: new Date().toISOString(),
             server: 'TendorAI Backend',
@@ -330,7 +291,6 @@ app.get('/api/test-dashboard', async (req, res) => {
                 '✅ AI-powered copier suggestions'
             ]
         };
-
         res.json(testResults);
     } catch (error) {
         console.error('❌ Test endpoint error:', error);
@@ -341,7 +301,6 @@ app.get('/api/test-dashboard', async (req, res) => {
         });
     }
 });
-
 // Health check
 app.get('/', (req, res) => {
     res.json({
@@ -373,7 +332,6 @@ app.get('/', (req, res) => {
         ]
     });
 });
-
 // 404 fallback
 app.use((req, res) => {
     console.log(`❌ Route not found: ${req.method} ${req.url}`);
@@ -393,16 +351,13 @@ app.use((req, res) => {
         ]
     });
 });
-
 // Error handler
 app.use((err, req, res, next) => {
     console.error('❌ Global Error:', err.message);
     console.error('❌ Stack trace:', err.stack);
-
     const safeMessage = process.env.NODE_ENV === 'production'
         ? 'Internal Server Error'
         : err.message;
-
     res.status(500).json({
         message: '❌ Internal Server Error',
         error: safeMessage,
@@ -411,31 +366,24 @@ app.use((err, req, res, next) => {
         method: req.method
     });
 });
-
 // Start server
 async function startServer() {
     try {
         mongoose.set('strictQuery', false);
-        await mongoose.connect(MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000,
-        });
-
+        await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
         console.log(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
         console.log('ℹ️ AIRecommendationEngine ready');
-
         // 👇 ADD THE MIGRATION LOGIC HERE 👇
         // -----------------------------------------------------------------
         console.log('🔗 Starting one-time vendor migration...');
         try {
             // Import the Vendor model here
             const { default: Vendor } = await import('./models/Vendor.js');
-            
+           
             const vendorsToMigrate = await Vendor.find({
                 status: { $exists: true, $ne: null }
             });
-            
+           
             if (vendorsToMigrate.length > 0) {
                 console.log(`🔍 Found ${vendorsToMigrate.length} vendors to migrate. Updating...`);
                 for (const vendor of vendorsToMigrate) {
@@ -456,24 +404,22 @@ async function startServer() {
         }
         // -----------------------------------------------------------------
         // 👆 END OF MIGRATION LOGIC 👆
-
         const server = app.listen(PORT, () => {
             console.log(`🚀 Server running at http://localhost:${PORT}`);
             console.log(`🔧 Raw process.env.PORT: ${process.env.PORT || 'Not set'}`);
             console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`🌐 CORS enabled for:`);
-            console.log(`   - https://www.tendorai.com`);
-            console.log(`   - https://tendorai.com`);
-            console.log(`   - http://localhost:3000`);
-            console.log(`   - http://127.0.0.1:3000`);
-            console.log(`   - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
+            console.log(` - https://www.tendorai.com`);
+            console.log(` - https://tendorai.com`);
+            console.log(` - http://localhost:3000`);
+            console.log(` - http://127.0.0.1:3000`);
+            console.log(` - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
             console.log(`📊 Test endpoint available at: http://localhost:${PORT}/api/test-dashboard`);
             console.log(`🏥 Health check available at: http://localhost:${PORT}/`);
             console.log(`📤 Vendor upload now available at: http://localhost:${PORT}/api/vendors/upload`);
             console.log(`🤖 AI suggestions available at: http://localhost:${PORT}/api/suggest-copiers`);
             console.log(`\n🎉 TendorAI Backend is ready for connections!`);
         });
-
         const shutdown = () => {
             console.log('\n🛑 Shutting down gracefully...');
             server.close(() => {
@@ -484,7 +430,6 @@ async function startServer() {
                 });
             });
         };
-
         process.on('SIGINT', shutdown);
         process.on('SIGTERM', shutdown);
         process.on('uncaughtException', (err) => {
@@ -501,5 +446,4 @@ async function startServer() {
         process.exit(1);
     }
 }
-
 startServer();
