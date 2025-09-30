@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -101,13 +100,11 @@ const userSchema = new mongoose.Schema({
   timestamps: true,
   collection: 'users'
 });
-
 // Indexes for performance
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ createdAt: -1 });
-
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
   if (this.firstName && this.lastName) {
@@ -115,7 +112,6 @@ userSchema.virtual('fullName').get(function() {
   }
   return this.name || 'User';
 });
-
 // Method to get safe user data (without password)
 userSchema.methods.toSafeObject = function() {
   const user = this.toObject();
@@ -125,17 +121,14 @@ userSchema.methods.toSafeObject = function() {
   delete user.resetPasswordExpires;
   return user;
 };
-
 // Method to check if user can access admin features
 userSchema.methods.isAdmin = function() {
   return this.role === 'admin';
 };
-
 // Method to check if user is a vendor
 userSchema.methods.isVendor = function() {
   return this.role === 'vendor';
 };
-
 // Pre-save middleware to update login count
 userSchema.pre('save', function(next) {
   if (this.isModified('lastLogin')) {
@@ -143,7 +136,5 @@ userSchema.pre('save', function(next) {
   }
   next();
 });
-
 const User = mongoose.model('User', userSchema);
-
 export default User;
