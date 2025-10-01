@@ -5,7 +5,6 @@ const router = express.Router();
 router.get("/sitemap.xml", async (req, res) => {
   const baseUrl = "https://www.tendorai.com";
 
-  // Static pages
   const pages = [
     "/",
     "/login",
@@ -13,10 +12,6 @@ router.get("/sitemap.xml", async (req, res) => {
     "/contact",
     "/request-quote",
   ];
-
-  // Example: dynamically include vendor pages from DB if you have a Vendor model
-  // const vendorPages = await Vendor.find().map(v => `/vendor/${v.slug}`);
-  // pages.push(...vendorPages);
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
   <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
