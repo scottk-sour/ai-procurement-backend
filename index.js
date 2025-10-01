@@ -156,7 +156,7 @@ const uploadsDir = path.join(__dirname, 'Uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(UploadsDir));
+app.use('/uploads', express.static(uploadsDir));  // FIXED: Changed from UploadsDir to uploadsDir
 
 // Routes
 app.use('/api/auth', authRoutes);
