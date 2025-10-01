@@ -1,187 +1,104 @@
-// models/QuoteRequest.js
 import mongoose from 'mongoose';
 
-const quoteRequestSchema = new mongoose.Schema({
-  // Customer Details
+const QuoteRequestSchema = new mongoose.Schema({
   companyName: { type: String, required: true },
-  contactName: { type: String, required: true },
+  contactName: { type: String }, // Kept from your version
   email: { type: String, required: true },
-  phone: { type: String },
-  industryType: { 
-    type: String, 
-    enum: ['Healthcare', 'Legal', 'Education', 'Finance', 'Government', 'Manufacturing', 'Retail', 'Other'],
-    required: true 
+  phone: { type: String }, // Kept from your version
+  industryType: {
+    type: String,
+    enum: ['Healthcare', 'Legal', 'Education', 'Finance', 'Government', 'Manufacturing', 'Retail', 'Technology', 'Construction', 'Other'],
+    required: true,
   },
-  numEmployees: { type: Number, required: true },
+  numEmployees: {
+    type: String,
+    enum: ['1-10', '11-25', '26-50', '51-100', '101-250', '251-500', '500+'],
+    required: true,
+  },
   numLocations: { type: Number, required: true },
-
-  // Volume Analysis (Critical for matching)
+  serviceType: { type: String, default: 'Photocopiers' },
   monthlyVolume: {
-    mono: { type: Number, required: true },
-    colour: { type: Number, required: true },
-    total: { type: Number, required: true },
-    volumeRange: { 
-      type: String, 
-      enum: ['0-6k', '6k-13k', '13k-20k', '20k-30k', '30k-40k', '40k-50k', '50k+']
-    }
+    mono: { type: Number, default: 0 },
+    colour: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+    volumeRange: {
+      type: String,
+      enum: ['0-6k', '6k-13k', '13k-20k', '20k-30k', '30k-40k', '40k-50k', '50k+'],
+    },
   },
-
-  // Paper Requirements (Critical for matching)
   paperRequirements: {
-    primarySize: { 
-      type: String, 
-      enum: ['A4', 'A3', 'SRA3'],
-      required: true 
-    },
-    additionalSizes: [{ 
-      type: String, 
-      enum: ['A4', 'A3', 'SRA3', 'A5'] 
-    }],
+    primarySize: { type: String, enum: ['A4', 'A3', 'SRA3'], required: true },
+    additionalSizes: [{ type: String, enum: ['A4', 'A3', 'SRA3', 'A5', 'Letter', 'Legal'] }],
     specialPaper: { type: Boolean, default: false },
-    specialPaperTypes: [{ type: String }]
+    specialPaperTypes: [{ type: String }],
   },
-
-  // Current Setup
   currentSetup: {
-    machineAge: { 
-      type: String, 
-      enum: ['Under 2 years', '2-5 years', '5+ years', 'No current machine'],
-      required: true 
-    },
+    machineAge: { type: String, enum: ['0-2 years', '2-5 years', '5+ years', 'No current machine'] },
     currentSupplier: { type: String },
     contractEndDate: { type: Date },
-    currentCosts: {
-      monoRate: { type: Number }, // pence per page
-      colourRate: { type: Number }, // pence per page
-      quarterlyLeaseCost: { type: Number },
-      quarterlyService: { type: Number }
-    },
-    painPoints: [{ type: String }],
-    satisfactionLevel: { 
-      type: String, 
-      enum: ['Very Dissatisfied', 'Dissatisfied', 'Neutral', 'Satisfied', 'Very Satisfied']
-    }
+    currentMonoCPC: { type: Number, default: 0 },
+    currentColorCPC: { type: Number, default: 0 },
+    quarterlyLeaseCost: { type: Number, default: 0 },
+    quarterlyService: { type: Number, default: 0 },
+    monthlySpend: { type: Number, default: 0 },
+    annualSpend: { type: Number, default: 0 },
   },
-
-  // Requirements (for AI matching)
   requirements: {
-    priority: { 
-      type: String, 
-      enum: ['speed', 'quality', 'reliability', 'cost', 'balanced'],
-      required: true 
-    },
-    essentialFeatures: [{ 
-      type: String,
-      enum: [
-        'Duplex Printing', 'Wireless Printing', 'Mobile Printing', 'Cloud Integration',
-        'Advanced Security', 'Large Paper Trays', 'High Capacity Toner',
-        'Color Printing', 'Scanning', 'Fax', 'Copying', 'Email Integration',
-        'Stapling', 'Hole Punch', 'Booklet Making', 'Large Capacity Trays',
-        'Touch Screen', 'Auto Document Feeder', 'ID Card Copying'
-      ]
-    }],
+    minSpeed: { type: Number, default: 0 },
+    priority: { type: String, enum: ['cost', 'speed', 'quality', 'reliability', 'balanced'] },
+    essentialFeatures: [{ type: String }],
     niceToHaveFeatures: [{ type: String }],
-    minSpeed: { type: Number }, // pages per minute
-    maxNoisLevel: { type: Number },
-    environmentalConcerns: { type: Boolean, default: false }
+    serviceLevel: { type: String, enum: ['Basic', 'Standard', 'Premium'] },
+    responseTime: { type: String, enum: ['4hr', '8hr', 'Next day', '48hr'] },
   },
-
-  // Budget
   budget: {
-    maxLeasePrice: { type: Number, required: true }, // quarterly
-    preferredTerm: { 
-      type: String, 
-      enum: ['12 months', '24 months', '36 months', '48 months', '60 months'],
-      default: '36 months'
-    },
-    includeService: { type: Boolean, default: true },
-    includeConsumables: { type: Boolean, default: true }
+    maxLeasePrice: { type: Number, required: true },
+    preferredTerm: { type: String, enum: ['12 months', '24 months', '36 months', '48 months', '60 months'] },
   },
-
-  // Urgency & Location
   urgency: {
-    timeframe: { 
-      type: String, 
-      enum: ['Immediately', 'Within 1 month', '1-3 months', '3+ months'],
-      required: true 
-    },
-    reason: { type: String }
+    timeframe: { type: String, enum: ['Immediately', '1-3 months', '3-6 months', '6+ months'] },
   },
-
   location: {
-    postcode: { type: String, required: true },
-    city: { type: String },
-    region: { type: String },
-    installationRequirements: { type: String }
+    postcode: { type: String },
   },
-
-  // AI Processing Results
   aiAnalysis: {
     processed: { type: Boolean, default: false },
+    processedAt: { type: Date },
     suggestedCategories: [{ type: String }],
-    volumeCategory: { type: String },
     riskFactors: [{ type: String }],
-    recommendations: [{ type: String }],
-    processedAt: { type: Date }
   },
-
-  // Generated Quotes
-  quotes: [{ 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Quote' 
-  }],
-
-  // FIXED: Updated status field to include 'matched' for AI processing
-  status: { 
-    type: String, 
-    enum: ['pending', 'processing', 'matched', 'quotes_generated', 'quotes_sent', 'completed', 'cancelled'],
-    default: 'pending'
+  submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  status: {
+    type: String,
+    enum: ['pending', 'processing', 'matched', 'completed', 'accepted', 'declined'],
+    default: 'pending',
   },
-
-  // System Fields
-  submittedBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User',
-    required: true 
-  },
-  submissionSource: { 
-    type: String, 
-    enum: ['web_form', 'phone', 'email', 'admin'],
-    default: 'web_form'
-  },
-  internalNotes: [{ 
-    note: { type: String },
-    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    addedAt: { type: Date, default: Date.now }
-  }],
-
-}, { 
+  submissionSource: { type: String, enum: ['web_form', 'phone', 'email', 'admin'], default: 'web_form' },
+  quotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Quote' }],
+  acceptedQuote: { type: mongoose.Schema.Types.ObjectId, ref: 'Quote' },
+  internalNotes: [{ type: String }],
+}, {
   timestamps: true,
   toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toObject: { virtuals: true },
 });
 
-// Virtual for total current monthly cost
-quoteRequestSchema.virtual('currentMonthlyCost').get(function() {
-  if (!this.currentSetup?.currentCosts) return 0;
-  
-  const { mono, colour } = this.monthlyVolume;
-  const { monoRate, colourRate, quarterlyLeaseCost, quarterlyService } = this.currentSetup.currentCosts;
-  
-  const cpcCost = ((mono * monoRate) + (colour * colourRate)) / 100;
+// Virtual for current monthly cost
+QuoteRequestSchema.virtual('currentMonthlyCost').get(function () {
+  if (!this.currentSetup) return 0;
+  const { mono, colour } = this.monthlyVolume || { mono: 0, colour: 0 };
+  const { currentMonoCPC, currentColorCPC, quarterlyLeaseCost, quarterlyService } = this.currentSetup;
+  const cpcCost = ((mono * (currentMonoCPC || 0)) + (colour * (currentColorCPC || 0))) / 100;
   const leaseCost = (quarterlyLeaseCost || 0) / 3;
   const serviceCost = (quarterlyService || 0) / 3;
-  
   return cpcCost + leaseCost + serviceCost;
 });
 
-// Pre-save middleware to calculate derived fields
-quoteRequestSchema.pre('save', function(next) {
-  // Calculate total volume
+// Pre-save middleware
+QuoteRequestSchema.pre('save', function (next) {
   if (this.monthlyVolume.mono && this.monthlyVolume.colour) {
     this.monthlyVolume.total = this.monthlyVolume.mono + this.monthlyVolume.colour;
-    
-    // Set volume range
     const total = this.monthlyVolume.total;
     if (total <= 6000) this.monthlyVolume.volumeRange = '0-6k';
     else if (total <= 13000) this.monthlyVolume.volumeRange = '6k-13k';
@@ -191,8 +108,6 @@ quoteRequestSchema.pre('save', function(next) {
     else if (total <= 50000) this.monthlyVolume.volumeRange = '40k-50k';
     else this.monthlyVolume.volumeRange = '50k+';
   }
-  
-  // Set default min speed based on volume
   if (!this.requirements.minSpeed && this.monthlyVolume.total) {
     const total = this.monthlyVolume.total;
     if (total <= 6000) this.requirements.minSpeed = 20;
@@ -203,17 +118,15 @@ quoteRequestSchema.pre('save', function(next) {
     else if (total <= 50000) this.requirements.minSpeed = 55;
     else this.requirements.minSpeed = 65;
   }
-  
   next();
 });
 
-// Indexes for efficient querying
-quoteRequestSchema.index({ 'monthlyVolume.volumeRange': 1 });
-quoteRequestSchema.index({ 'paperRequirements.primarySize': 1 });
-quoteRequestSchema.index({ submittedBy: 1 });
-quoteRequestSchema.index({ status: 1 });
-quoteRequestSchema.index({ createdAt: -1 });
-quoteRequestSchema.index({ 'budget.maxLeasePrice': 1 });
+// Indexes
+QuoteRequestSchema.index({ 'monthlyVolume.volumeRange': 1 });
+QuoteRequestSchema.index({ 'paperRequirements.primarySize': 1 });
+QuoteRequestSchema.index({ submittedBy: 1 });
+QuoteRequestSchema.index({ status: 1 });
+QuoteRequestSchema.index({ createdAt: -1 });
+QuoteRequestSchema.index({ 'budget.maxLeasePrice': 1 });
 
-const QuoteRequest = mongoose.model('QuoteRequest', quoteRequestSchema);
-export default QuoteRequest;
+export default mongoose.model('QuoteRequest', QuoteRequestSchema);
