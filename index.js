@@ -25,7 +25,7 @@ const __dirname = path.dirname(__filename);
 
 // Check environment variables
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
-if (!MONGODB_URI || !JWT_SECRET || !OPENAI_API_KEY) {
+if (!MONGODB_URI || !JWT_SECRET) {
   logger.error('❌ Missing required environment variables');
   process.exit(1);
 }
@@ -152,11 +152,11 @@ app.use((req, res, next) => {
 });
 
 // Ensure /uploads folder
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = path.join(__dirname, 'Uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use('/uploads', express.static(UploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
