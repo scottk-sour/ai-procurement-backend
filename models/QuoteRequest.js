@@ -2,9 +2,9 @@ import mongoose from 'mongoose';
 
 const QuoteRequestSchema = new mongoose.Schema({
   companyName: { type: String, required: true },
-  contactName: { type: String }, // Kept from your version
+  contactName: { type: String },
   email: { type: String, required: true },
-  phone: { type: String }, // Kept from your version
+  phone: { type: String },
   industryType: {
     type: String,
     enum: ['Healthcare', 'Legal', 'Education', 'Finance', 'Government', 'Manufacturing', 'Retail', 'Technology', 'Construction', 'Other'],
