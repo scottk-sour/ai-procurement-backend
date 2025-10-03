@@ -151,12 +151,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Ensure /uploads folder
+// Ensure /uploads folder exists
 const uploadsDir = path.join(__dirname, 'Uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+  logger.info(`✅ Created uploads directory: ${uploadsDir}`);
 }
-app.use('/uploads', express.static(uploadsDir));  // FIXED: Changed from UploadsDir to uploadsDir
+app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -366,6 +367,7 @@ async function startServer() {
     mongoose.set('strictQuery', false);
     await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
     logger.info(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
+    
     // Vendor migration script
     logger.info('🔗 Starting one-time vendor migration...');
     try {
@@ -391,8 +393,9 @@ async function startServer() {
     } catch (migrationError) {
       logger.error('❌ Migration script failed:', migrationError);
     }
+    
     const server = app.listen(PORT, () => {
-      logger.info(`🚀 Server running at https://ai-procurement-backend-q35u.onrender.com:${PORT}`);
+      logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🌐 CORS enabled for:`);
       logger.info(` - https://www.tendorai.com`);
@@ -407,6 +410,7 @@ async function startServer() {
       logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
       logger.info(`🎉 TendorAI Backend is ready!`);
     });
+    
     const shutdown = () => {
       logger.info('\n🛑 Shutting down gracefully...');
       server.close(() => {
@@ -417,6 +421,7 @@ async function startServer() {
         });
       });
     };
+    
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     process.on('uncaughtException', (err) => {
