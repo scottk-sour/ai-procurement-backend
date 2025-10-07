@@ -899,7 +899,7 @@ class AIRecommendationEngine {
             
             // REQUIRED: matchScore
             matchScore: {
-              total: Math.round(recommendation.overallScore * 100),
+              total: Math.max(0, Math.min(1, recommendation.overallScore)),
               confidence: recommendation.confidence
             },
             
