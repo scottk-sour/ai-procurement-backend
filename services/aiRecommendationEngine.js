@@ -255,7 +255,6 @@ class AIRecommendationEngine {
       return 0.5; // Default score on error
     }
   }
-
   /**
    * Calculate comprehensive machine suitability score
    */
@@ -470,7 +469,6 @@ class AIRecommendationEngine {
       return 0.55;
     }
   }
-
   /**
    * Enhanced user preference learning with LLM analysis and error handling
    */
@@ -583,7 +581,6 @@ class AIRecommendationEngine {
       avgRating: 0
     };
   }
-
   /**
    * Main recommendation generation with enhanced filtering and scoring - PRODUCTION READY
    */
@@ -827,7 +824,6 @@ class AIRecommendationEngine {
           scoringWeights: { ...this.scoringWeights }
         }
       }));
-
       // **FIXED: CREATE ACTUAL QUOTE DOCUMENTS WITH COMPLETE SCHEMA**
       const createdQuotes = [];
       
@@ -897,10 +893,18 @@ class AIRecommendationEngine {
               }
             },
             
-            // REQUIRED: matchScore
+            // REQUIRED: matchScore - **FIXED WITH BREAKDOWN**
             matchScore: {
               total: Math.max(0, Math.min(1, recommendation.overallScore)),
-              confidence: recommendation.confidence
+              confidence: recommendation.confidence,
+              breakdown: {
+                volumeMatch: recommendation.suitability?.volumeScore || 0,
+                costEfficiency: recommendation.costInfo?.efficiencyScore || 0.5,
+                speedMatch: recommendation.suitability?.speedScore || 0,
+                featureMatch: recommendation.suitability?.featureScore || 0,
+                reliabilityMatch: 0.7
+              },
+              reasoning: [recommendation.explanation || 'AI-generated recommendation']
             },
             
             // REQUIRED: terms
@@ -908,8 +912,8 @@ class AIRecommendationEngine {
               validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
             },
             
-            // Use valid enum status
-            status: 'pending',
+            // **FIXED: Use valid enum status**
+            status: 'generated',
             
             // Optional fields
             aiGenerated: true,
@@ -982,7 +986,6 @@ class AIRecommendationEngine {
       return this.generateErrorFallback(error);
     }
   }
-
   /**
    * Generate fallback recommendations when no products match basic criteria
    */
