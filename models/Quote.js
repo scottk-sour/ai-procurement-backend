@@ -123,10 +123,11 @@ const quoteSchema = new mongoose.Schema({
     autoRenewal: { type: Boolean, default: false },
   },
   status: {
-    type: String,
-    enum: ['pending', 'contacted', 'accepted', 'rejected', 'expired'],
-    default: 'pending',
-  },
+  type: String,
+  enum: ['pending', 'contacted', 'accepted', 'rejected', 'expired', 'generated'],
+  default: 'pending',
+},
+
   customerActions: [{
     action: { type: String, enum: ['viewed', 'contacted', 'accepted', 'rejected'] },
     timestamp: { type: Date, default: Date.now },
