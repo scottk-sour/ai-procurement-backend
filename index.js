@@ -36,6 +36,29 @@ const app = express();
 // Trust proxy for Render
 app.set('trust proxy', 1);
 
+// ========================================
+// 🔒 SECURITY HEADERS - ADD THIS SECTION
+// ========================================
+app.use((req, res, next) => {
+  // Prevent clickjacking
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  
+  // Enforce HTTPS
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // XSS Protection (for older browsers)
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer Policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  next();
+});
+// ========================================
+
 // CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
@@ -397,6 +420,7 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`🔒 Security headers enabled`);
       logger.info(`🌐 CORS enabled for:`);
       logger.info(` - https://www.tendorai.com`);
       logger.info(` - https://tendorai.com`);
