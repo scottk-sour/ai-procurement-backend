@@ -81,7 +81,7 @@ router.post('/request', userAuth, async (req, res) => {
       contactName: contactName || 'Not provided',
       email,
       industryType: industryType || 'Other',
-      numEmployees: parseInt(numEmployees) || 1,
+      numEmployees: numEmployees || '1-10',
       numLocations: parseInt(numLocations) || 1,
       serviceType,
       monthlyVolume: {
