@@ -75,13 +75,13 @@ router.post('/request', userAuth, async (req, res) => {
     // Basic validation
     validateRequiredFields(['companyName', 'email'], req.body);
 
-    // Build quoteRequestData (defensive parsing)
+    // ✅ FIXED: Build quoteRequestData with proper numEmployees handling
     const quoteRequestData = {
       companyName,
       contactName: contactName || 'Not provided',
       email,
       industryType: industryType || 'Other',
-      numEmployees: numEmployees || '1-10',
+      numEmployees: numEmployees || '1-10',  // ✅ FIXED: Keep as string, don't parse!
       numLocations: parseInt(numLocations) || 1,
       serviceType,
       monthlyVolume: {
@@ -224,6 +224,7 @@ router.post('/request', userAuth, async (req, res) => {
       aiMatching: aiMatchingResult
     };
 
+    // ✅ FIXED: Redirect to comparison page instead of quote details
     if (aiMatchingResult.success && (quoteRequest.quotes?.length || 0) > 0) {
       responseData.quotes = {
         count: quoteRequest.quotes.length,
@@ -232,8 +233,14 @@ router.post('/request', userAuth, async (req, res) => {
       };
       responseData.nextSteps = {
         message: 'Your quote request has been matched with vendors',
-        action: 'Review the generated quotes in your dashboard',
-        url: '/quote-details?status=matched'
+        action: 'Compare your AI-generated quotes',
+        url: `/quote-comparison/${quoteRequest._id}`  // ✅ Goes to comparison page
+      };
+      // Add navigation data for the comparison page
+      responseData.navigationData = {
+        quoteRequestId: quoteRequest._id,
+        companyName: quoteRequest.companyName,
+        quotesCount: quoteRequest.quotes.length
       };
     } else {
       responseData.nextSteps = {
@@ -432,7 +439,6 @@ router.get('/', userAuth, async (req, res) => {
     });
   }
 });
-
 /**
  * POST /api/quotes/contact
  * Contact vendor about a quote (creates contactAttempt & notify vendor)
