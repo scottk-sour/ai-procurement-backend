@@ -1,220 +1,196 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import config from '../config/env.js';
 import User from '../models/User.js';
 import UserDocument from '../models/UserDocument.js';
-
-dotenv.config();
-
-const { JWT_SECRET } = process.env;
-const BCRYPT_SALT_ROUNDS = 10;
-
-if (!JWT_SECRET) {
-  console.error('❌ Missing JWT_SECRET in environment variables.');
-  process.exit(1);
-}
+import AppError from '../utils/AppError.js';
+import catchAsync from '../utils/catchAsync.js';
 
 // ----- User Signup -----
-export const signup = async (req, res) => {
+export const signup = catchAsync(async (req, res, next) => {
   const { name, email, password, company } = req.body;
 
+  // Validation
   if (!name || !email || !password) {
-    return res.status(400).json({ message: 'Name, email, and password are required.' });
+    return next(new AppError('Name, email, and password are required.', 400));
   }
 
   if (password.length < 8) {
-    return res.status(400).json({ message: 'Password must be at least 8 characters long.' });
+    return next(new AppError('Password must be at least 8 characters long.', 400));
   }
 
-  try {
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) return res.status(400).json({ message: 'User already exists.' });
-
-    console.log('🧪 Plain password before hashing:', password);
-    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-    console.log('🔐 Hashed password to save:', hashedPassword);
-
-    const newUser = new User({
-      name,
-      email: email.toLowerCase(),
-      password: hashedPassword,
-      company,
-      role: 'user',
-    });
-
-    await newUser.save();
-    console.log('✅ User saved:', newUser.email);
-    console.log('📦 Full user object after save:', newUser); // ✅ This helps us debug
-
-    res.status(201).json({ message: 'User registered successfully.' });
-  } catch (error) {
-    console.error('❌ Error registering user:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
+  // Check for existing user
+  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  if (existingUser) {
+    return next(new AppError('User already exists.', 400));
   }
-};
+
+  // Hash password
+  console.log('🧪 Plain password before hashing:', password);
+  const hashedPassword = await bcrypt.hash(password, config.security.bcryptRounds);
+  console.log('🔐 Hashed password to save:', hashedPassword);
+
+  // Create new user
+  const newUser = new User({
+    name,
+    email: email.toLowerCase(),
+    password: hashedPassword,
+    company,
+    role: 'user',
+  });
+
+  await newUser.save();
+  console.log('✅ User saved:', newUser.email);
+  console.log('📦 Full user object after save:', newUser);
+
+  res.status(201).json({ message: 'User registered successfully.' });
+});
 
 // ----- User Login -----
-export const login = async (req, res) => {
+export const login = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
+  // Validation
   if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required.' });
+    return next(new AppError('Email and password are required.', 400));
   }
 
-  try {
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      console.log(`❌ No user found for email: ${email.toLowerCase()}`);
-      return res.status(401).json({ message: 'Invalid email or password.' });
-    }
+  // Find user
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    console.log(`❌ No user found for email: ${email.toLowerCase()}`);
+    return next(new AppError('Invalid email or password.', 401));
+  }
 
-    console.log('🔍 Found user:', user.email);
-    console.log('🔐 Hashed in DB:', user.password);
-    console.log('🔑 Plain password entered:', password);
+  console.log('🔍 Found user:', user.email);
+  console.log('🔐 Hashed in DB:', user.password);
+  console.log('🔑 Plain password entered:', password);
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    console.log('✅ Password match:', isMatch);
+  // Verify password
+  const isMatch = await bcrypt.compare(password, user.password);
+  console.log('✅ Password match:', isMatch);
 
-    if (!isMatch) {
-      console.log('❌ Password does not match');
-      return res.status(401).json({ message: 'Invalid email or password.' });
-    }
+  if (!isMatch) {
+    console.log('❌ Password does not match');
+    return next(new AppError('Invalid email or password.', 401));
+  }
 
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role || 'user' },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
+  // Generate JWT
+  const token = jwt.sign(
+    { userId: user._id, email: user.email, role: user.role || 'user' },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn }
+  );
 
-    res.status(200).json({
-      message: 'Login successful',
-      token,
+  res.status(200).json({
+    message: 'Login successful',
+    token,
+    userId: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role || 'user'
+  });
+});
+
+// ----- Verify Token -----
+export const verifyToken = catchAsync(async (req, res, next) => {
+  const { user, decodedToken } = req;
+
+  res.status(200).json({
+    message: 'Token is valid',
+    user: {
       userId: user._id,
-      name: user.name,
       email: user.email,
-      role: user.role || 'user'
-    });
-  } catch (error) {
-    console.error('❌ Error during user login:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
+      role: user.role || 'user',
+      iat: decodedToken.iat,
+      exp: decodedToken.exp,
+    },
+  });
+});
+
+// ----- Get User Profile -----
+export const getUserProfile = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.userId).select('-password');
+
+  if (!user) {
+    return next(new AppError('User not found.', 404));
   }
-};
 
-// --- Remaining controllers unchanged ---
-export const verifyToken = async (req, res) => {
-  try {
-    const { user, decodedToken } = req;
-    res.status(200).json({
-      message: 'Token is valid',
-      user: {
-        userId: user._id,
-        email: user.email,
-        role: user.role || 'user',
-        iat: decodedToken.iat,
-        exp: decodedToken.exp,
-      },
-    });
-  } catch (error) {
-    console.error('❌ Error verifying token:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
+  res.status(200).json({
+    user: {
+      userId: user._id,
+      email: user.email,
+      role: user.role || 'user',
+      name: user.name,
+      company: user.company
+    }
+  });
+});
 
-export const getUserProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.userId).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found.' });
-
-    res.status(200).json({
-      user: {
-        userId: user._id,
-        email: user.email,
-        role: user.role || 'user',
-        name: user.name,
-        company: user.company
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error fetching user profile:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
-
-export const uploadFile = async (req, res) => {
+// ----- Upload File -----
+export const uploadFile = catchAsync(async (req, res, next) => {
   if (!req.file) {
-    return res.status(400).json({ message: 'No file uploaded or invalid file type.' });
+    return next(new AppError('No file uploaded or invalid file type.', 400));
   }
 
   const documentType = req.body.documentType || 'others';
   if (!['contract', 'invoice', 'others'].includes(documentType)) {
-    return res.status(400).json({ message: 'Invalid document type.' });
+    return next(new AppError('Invalid document type.', 400));
   }
 
-  try {
-    const user = await User.findById(req.userId);
-    if (!user) return res.status(404).json({ message: 'User not found.' });
-
-    const newDocument = new UserDocument({
-      userId: req.userId,
-      fileName: req.file.filename,
-      filePath: req.file.path,
-      uploadDate: new Date(),
-      documentType,
-    });
-
-    await newDocument.save();
-
-    res.status(200).json({
-      message: 'File uploaded successfully.',
-      filePath: req.file.path,
-      documentType,
-    });
-  } catch (error) {
-    console.error('❌ Error during file upload:', error.message);
-    res.status(500).json({ message: 'Internal server error during file upload.' });
+  const user = await User.findById(req.userId);
+  if (!user) {
+    return next(new AppError('User not found.', 404));
   }
-};
 
-export const getUploadedFiles = async (req, res) => {
-  try {
-    const files = await UserDocument.find({ userId: req.userId });
-    res.status(200).json({ files });
-  } catch (error) {
-    console.error('❌ Error fetching uploaded files:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
+  const newDocument = new UserDocument({
+    userId: req.userId,
+    fileName: req.file.filename,
+    filePath: req.file.path,
+    uploadDate: new Date(),
+    documentType,
+  });
+
+  await newDocument.save();
+
+  res.status(200).json({
+    message: 'File uploaded successfully.',
+    filePath: req.file.path,
+    documentType,
+  });
+});
+
+// ----- Get Uploaded Files -----
+export const getUploadedFiles = catchAsync(async (req, res, next) => {
+  const files = await UserDocument.find({ userId: req.userId });
+  res.status(200).json({ files });
+});
+
+// ----- Get Recent Activity -----
+export const getRecentActivity = catchAsync(async (req, res, next) => {
+  const recentActivity = [
+    { description: 'Uploaded a document', date: new Date().toISOString() },
+    { description: 'Requested a quote', date: new Date().toISOString() },
+  ];
+  res.status(200).json({ activities: recentActivity });
+});
+
+// ----- Get User Savings -----
+export const getUserSavings = catchAsync(async (req, res, next) => {
+  const { userId } = req.query;
+
+  if (!userId) {
+    return next(new AppError('User ID is required.', 400));
   }
-};
 
-export const getRecentActivity = async (req, res) => {
-  try {
-    const recentActivity = [
-      { description: 'Uploaded a document', date: new Date().toISOString() },
-      { description: 'Requested a quote', date: new Date().toISOString() },
-    ];
-    res.status(200).json({ activities: recentActivity });
-  } catch (error) {
-    console.error('❌ Error fetching recent activity:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
+  if (userId !== req.userId.toString()) {
+    return next(new AppError('Unauthorized access to savings data.', 403));
   }
-};
 
-export const getUserSavings = async (req, res) => {
-  try {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ message: 'User ID is required.' });
+  const savings = {
+    estimatedMonthlySavings: 42.5,
+    estimatedAnnualSavings: 510.0,
+  };
 
-    if (userId !== req.userId.toString()) {
-      return res.status(403).json({ message: 'Unauthorized access to savings data.' });
-    }
-
-    const savings = {
-      estimatedMonthlySavings: 42.5,
-      estimatedAnnualSavings: 510.0,
-    };
-
-    res.status(200).json(savings);
-  } catch (error) {
-    console.error('❌ Error fetching user savings:', error.message);
-    res.status(500).json({ message: 'Internal server error.' });
-  }
-};
+  res.status(200).json(savings);
+});
