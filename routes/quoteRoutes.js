@@ -7,6 +7,13 @@ import AIEngineAdapter from '../services/aiEngineAdapter.js';
 import notificationService from '../services/notificationService.js';
 import userAuth from '../middleware/userAuth.js';
 import logger from '../services/logger.js';
+import { validate } from '../middleware/validate.js';
+import {
+  createQuoteValidation,
+  contactVendorValidation,
+  acceptQuoteValidation,
+  quoteIdValidation
+} from '../validators/quoteValidator.js';
 
 const router = express.Router();
 

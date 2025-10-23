@@ -3,30 +3,32 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import QuoteRequest from '../models/QuoteRequest.js';
-import 'dotenv/config';
+import config from '../config/env.js';
+import { validate } from '../middleware/validate.js';
+import {
+  signupValidation,
+  loginValidation,
+  paginationValidation,
+  fileUploadValidation
+} from '../validators/userValidator.js';
 
 const router = express.Router();
-const { JWT_SECRET } = process.env;
-
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in environment variables!');
-}
 
 // Middleware to verify JWT token
 const verifyToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ message: 'No token provided' });
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, config.jwt.secret);
     req.userId = decoded.userId || decoded.id;
     req.userRole = decoded.role;
     req.userName = decoded.name;
-    
+
     next();
   } catch (error) {
     console.error('❌ Token verification failed:', error.message);
@@ -34,25 +36,8 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Validation middleware
-const validateRequestBody = (fields) => {
-  return (req, res, next) => {
-    const missingFields = fields.filter((field) => !req.body[field]);
-    if (missingFields.length) {
-      return res.status(400).json({ message: `Missing required fields: ${missingFields.join(', ')}` });
-    }
-    if (fields.includes('email') && !/\S+@\S+\.\S+/.test(req.body.email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
-    }
-    if (fields.includes('password') && req.body.password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
-    next();
-  };
-};
-
 // ✅ User Signup - /api/users/signup
-router.post('/signup', validateRequestBody(['name', 'email', 'password']), async (req, res) => {
+router.post('/signup', signupValidation, validate, async (req, res) => {
   try {
     const { name, email, password, company } = req.body;
     
@@ -97,7 +82,7 @@ router.post('/signup', validateRequestBody(['name', 'email', 'password']), async
 });
 
 // ✅ User Login - /api/users/login
-router.post('/login', validateRequestBody(['email', 'password']), async (req, res) => {
+router.post('/login', loginValidation, validate, async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -124,14 +109,14 @@ router.post('/login', validateRequestBody(['email', 'password']), async (req, re
 
     // Create token
     const token = jwt.sign(
-      { 
-        userId: user._id, 
+      {
+        userId: user._id,
         email: user.email,
         role: user.role || 'user',
-        name: user.name 
+        name: user.name
       },
-      JWT_SECRET,
-      { expiresIn: '30d' }
+      config.jwt.secret,
+      { expiresIn: config.jwt.expiresIn }
     );
 
     console.log('✅ User login successful:', email);
