@@ -58,7 +58,7 @@ const vendorSchema = new mongoose.Schema({
 const Vendor = mongoose.model("Vendor", vendorSchema);
 
 // ✅ CSV File Path
-const csvFilePath = "./new4_vendor_ricoh_machines.csv";
+const csvFilePath = "../../data/pricing-tables/new4_vendor_ricoh_machines.csv";
 
 // ✅ Import CSV Data Function
 const importCSV = async () => {

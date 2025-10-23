@@ -26,3 +26,35 @@ out/
 .idea/
 *.swp
 uploads/
+
+# Uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+temp/*
+
+# CSV data files (use samples only in repo)
+*.csv
+!data/samples/*.csv
+
+# IDE and editor files
+.vs/
+*.swo
+*~
+
+# OS files
+Thumbs.db
+
+# Test data
+test/data/*
+!test/data/.gitkeep
+
+# Logs (additional)
+logs/
+
+# Environment backups
+.env.backup
+.env.old
+.env.local
+.env.*.local
+!.env.example
+!.env.*.example
