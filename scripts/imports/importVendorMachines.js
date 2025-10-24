@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import csvParser from 'csv-parser';
 import dotenv from 'dotenv';
-import Vendor from './models/Vendor.js'; // Ensure correct path
+import Vendor from '../../models/Vendor.js'; // Corrected path from scripts/imports/
 
 dotenv.config();
 

@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -6,6 +5,7 @@ import morgan from 'morgan';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import config from './config/env.js';
 import logger from './services/logger.js';
 import authRoutes from './routes/authRoutes.js';
 import vendorListingsRoutes from './routes/vendorListings.js';
@@ -18,17 +18,13 @@ import vendorUploadRoutes from './routes/vendorUploadRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
+import notFoundHandler from './middleware/notFoundHandler.js';
+import errorHandler from './middleware/errorHandler.js';
+import requestId from './middleware/requestId.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Check environment variables
-const { PORT = 5000, MONGODB_URI, JWT_SECRET, OPENAI_API_KEY } = process.env;
-if (!MONGODB_URI || !JWT_SECRET) {
-  logger.error('❌ Missing required environment variables');
-  process.exit(1);
-}
 
 // Express app
 const app = express();
@@ -37,27 +33,30 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ========================================
-// 🔒 SECURITY HEADERS - ADD THIS SECTION
+// 🔒 SECURITY HEADERS
 // ========================================
 app.use((req, res, next) => {
   // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  
+
   // Enforce HTTPS
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  
+
   // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  
+
   // XSS Protection (for older browsers)
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  
+
   // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
+
   next();
 });
 // ========================================
+
+// Request ID middleware (for tracing)
+app.use(requestId);
 
 // CORS configuration
 app.use(cors({
@@ -166,11 +165,24 @@ app.use((error, req, res, next) => {
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
 
-// Request logger
+// HTTP request logging with Morgan + Winston
+if (config.isDevelopment()) {
+  app.use(morgan('dev'));
+} else {
+  // Production: use combined format and stream to Winston
+  app.use(morgan('combined', { stream: logger.stream }));
+}
+
+// Request/Response logging
 app.use((req, res, next) => {
-  logger.info(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
+  logger.logRequest(req);
+
+  // Log response on finish
+  res.on('finish', () => {
+    logger.logResponse(req, res);
+  });
+
   next();
 });
 
@@ -252,7 +264,7 @@ app.get('/api/test-dashboard', async (req, res) => {
       timestamp: new Date().toISOString(),
       server: 'TendorAI Backend',
       status: 'All systems operational',
-      environment: process.env.NODE_ENV || 'development',
+      environment: config.app.env,
       mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
       corsConfig: {
         staticOrigins: [
@@ -323,7 +335,7 @@ app.get('/', (req, res) => {
     message: '🚀 TendorAI Backend is Running!',
     timestamp: new Date().toISOString(),
     status: 'healthy',
-    environment: process.env.NODE_ENV || 'development',
+    environment: config.app.env,
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     corsConfig: {
       staticOrigins: [
@@ -350,45 +362,17 @@ app.get('/', (req, res) => {
   });
 });
 
-// 404 fallback
-app.use((req, res) => {
-  logger.warn(`❌ Route not found: ${req.method} ${req.url}`);
-  res.status(404).json({
-    message: '❌ Route Not Found',
-    requestedPath: req.url,
-    method: req.method,
-    timestamp: new Date().toISOString(),
-    availableRoutes: [
-      '/api/test-dashboard - Test all endpoints',
-      '/api/auth/* - Authentication routes',
-      '/api/users/* - User management routes',
-      '/api/quotes/* - Quote management routes',
-      '/api/vendors/* - Vendor routes (including upload)',
-      '/api/suggest-copiers - AI copier suggestions',
-      '/ - Health check',
-    ],
-  });
-});
+// 404 Not Found handler - must be placed after all routes
+app.use(notFoundHandler);
 
-// Error handler
-app.use((err, req, res, next) => {
-  logger.error('❌ Global Error:', err.message);
-  logger.error('❌ Stack trace:', err.stack);
-  const safeMessage = process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message;
-  res.status(500).json({
-    message: '❌ Internal Server Error',
-    error: safeMessage,
-    timestamp: new Date().toISOString(),
-    requestPath: req.url,
-    method: req.method,
-  });
-});
+// Centralized error handler - must be placed after notFoundHandler
+app.use(errorHandler);
 
 // Start server
 async function startServer() {
   try {
     mongoose.set('strictQuery', false);
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(config.database.uri, config.database.options);
     logger.info(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
     
     // Vendor migration script
@@ -417,9 +401,9 @@ async function startServer() {
       logger.error('❌ Migration script failed:', migrationError);
     }
     
-    const server = app.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
-      logger.info(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    const server = app.listen(config.app.port, () => {
+      logger.info(`🚀 Server running on port ${config.app.port}`);
+      logger.info(`🔧 Environment: ${config.app.env}`);
       logger.info(`🔒 Security headers enabled`);
       logger.info(`🌐 CORS enabled for:`);
       logger.info(` - https://www.tendorai.com`);
