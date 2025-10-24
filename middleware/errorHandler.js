@@ -9,9 +9,11 @@
  * - Handles programming errors (unexpected errors)
  * - Special handling for common errors (MongoDB, JWT, Validation)
  * - Prevents leaking sensitive error details in production
+ * - Structured logging with Winston
  */
 import config from '../config/env.js';
 import AppError from '../utils/AppError.js';
+import logger from '../services/logger.js';
 
 /**
  * Handle MongoDB CastError (invalid ObjectId)
@@ -57,7 +59,15 @@ const handleJWTExpiredError = () => {
 /**
  * Send error response in development
  */
-const sendErrorDev = (err, res) => {
+const sendErrorDev = (err, req, res) => {
+  // Log error with full details in development
+  logger.logError(err, {
+    requestId: req.id,
+    url: req.originalUrl,
+    method: req.method,
+    userId: req.userId,
+  });
+
   res.status(err.statusCode).json({
     status: err.status,
     error: err,
@@ -69,9 +79,19 @@ const sendErrorDev = (err, res) => {
 /**
  * Send error response in production
  */
-const sendErrorProd = (err, res) => {
+const sendErrorProd = (err, req, res) => {
   // Operational, trusted error: send message to client
   if (err.isOperational) {
+    // Log operational error
+    logger.warn('Operational error', {
+      requestId: req.id,
+      url: req.originalUrl,
+      method: req.method,
+      statusCode: err.statusCode,
+      message: err.message,
+      userId: req.userId,
+    });
+
     res.status(err.statusCode).json({
       status: err.status,
       message: err.message,
@@ -79,8 +99,14 @@ const sendErrorProd = (err, res) => {
   }
   // Programming or unknown error: don't leak error details
   else {
-    // Log error for debugging
-    console.error('ERROR 💥:', err);
+    // Log programming error with full details
+    logger.logError(err, {
+      requestId: req.id,
+      url: req.originalUrl,
+      method: req.method,
+      userId: req.userId,
+      type: 'Programming Error',
+    });
 
     // Send generic message
     res.status(500).json({
@@ -98,7 +124,7 @@ const errorHandler = (err, req, res, next) => {
   err.status = err.status || 'error';
 
   if (config.isDevelopment()) {
-    sendErrorDev(err, res);
+    sendErrorDev(err, req, res);
   } else {
     let error = { ...err };
     error.message = err.message;
@@ -111,7 +137,7 @@ const errorHandler = (err, req, res, next) => {
     if (error.name === 'JsonWebTokenError') error = handleJWTError();
     if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
-    sendErrorProd(error, res);
+    sendErrorProd(error, req, res);
   }
 };
 

@@ -20,6 +20,7 @@ import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
+import requestId from './middleware/requestId.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -32,27 +33,30 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ========================================
-// 🔒 SECURITY HEADERS - ADD THIS SECTION
+// 🔒 SECURITY HEADERS
 // ========================================
 app.use((req, res, next) => {
   // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  
+
   // Enforce HTTPS
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  
+
   // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  
+
   // XSS Protection (for older browsers)
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  
+
   // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
+
   next();
 });
 // ========================================
+
+// Request ID middleware (for tracing)
+app.use(requestId);
 
 // CORS configuration
 app.use(cors({
@@ -161,11 +165,24 @@ app.use((error, req, res, next) => {
 // Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
 
-// Request logger
+// HTTP request logging with Morgan + Winston
+if (config.isDevelopment()) {
+  app.use(morgan('dev'));
+} else {
+  // Production: use combined format and stream to Winston
+  app.use(morgan('combined', { stream: logger.stream }));
+}
+
+// Request/Response logging
 app.use((req, res, next) => {
-  logger.info(`🔍 ${req.method} ${req.url} – Origin: ${req.headers.origin || 'none'}`);
+  logger.logRequest(req);
+
+  // Log response on finish
+  res.on('finish', () => {
+    logger.logResponse(req, res);
+  });
+
   next();
 });
 
