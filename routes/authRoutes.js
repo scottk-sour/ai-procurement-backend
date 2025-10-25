@@ -35,6 +35,54 @@ router.get('/', (req, res) => {
   res.send('Auth route is working!');
 });
 
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john.doe@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 6
+ *                 example: SecurePass123
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: User registered successfully
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+
 // ======= User Registration =======
 router.post(
   '/register',
@@ -57,6 +105,54 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/auth/vendor-register:
+ *   post:
+ *     summary: Register a new vendor
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: Acme Corp
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: contact@acmecorp.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 6
+ *                 example: SecurePass123
+ *     responses:
+ *       201:
+ *         description: Vendor registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Vendor registered successfully
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+
 // ======= Vendor Registration =======
 router.post(
   '/vendor-register',
@@ -78,6 +174,66 @@ router.post(
     }
   }
 );
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login as a user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john.doe@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: SecurePass123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
+ *                 token:
+ *                   type: string
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 userId:
+ *                   type: string
+ *                   example: 507f1f77bcf86cd799439011
+ *                 role:
+ *                   type: string
+ *                   example: user
+ *                 name:
+ *                   type: string
+ *                   example: John Doe
+ *                 email:
+ *                   type: string
+ *                   example: john.doe@example.com
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
 
 // ======= User Login =======
 router.post(
@@ -111,6 +267,66 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /api/auth/vendor-login:
+ *   post:
+ *     summary: Login as a vendor
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: contact@acmecorp.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: SecurePass123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
+ *                 token:
+ *                   type: string
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 vendorId:
+ *                   type: string
+ *                   example: 507f1f77bcf86cd799439012
+ *                 role:
+ *                   type: string
+ *                   example: vendor
+ *                 name:
+ *                   type: string
+ *                   example: Acme Corp
+ *                 email:
+ *                   type: string
+ *                   example: contact@acmecorp.com
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+
 // ======= Vendor Login =======
 router.post(
   '/vendor-login',
@@ -142,6 +358,44 @@ router.post(
     }
   }
 );
+
+/**
+ * @swagger
+ * /api/auth/verify:
+ *   get:
+ *     summary: Verify JWT token
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Token is valid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Token is valid
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     userId:
+ *                       type: string
+ *                       example: 507f1f77bcf86cd799439011
+ *                     role:
+ *                       type: string
+ *                       example: user
+ *                     name:
+ *                       type: string
+ *                       example: John Doe
+ *                     email:
+ *                       type: string
+ *                       example: john.doe@example.com
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ */
 
 // ======= Verify Token (Fixed to avoid 304 caching) =======
 router.get('/verify', async (req, res) => {

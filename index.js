@@ -22,6 +22,8 @@ import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
 import { generalLimiter } from './middleware/rateLimiter.js';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './config/swagger.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -203,6 +205,56 @@ app.use('/api/', generalLimiter);
 logger.info('✅ Rate limiting enabled: 100 requests per 15 minutes per IP');
 // ========================================
 
+// ========================================
+// 📚 API DOCUMENTATION
+// ========================================
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'AI Procurement API Documentation',
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
+logger.info('✅ API Documentation available at /api-docs');
+// ========================================
+
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: API health check
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: API is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: healthy
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ *                   example: 12345.67
+ */
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorUploadRoutes);
@@ -337,6 +389,37 @@ app.get('/api/test-dashboard', async (req, res) => {
     });
   }
 });
+
+/**
+ * @swagger
+ * /:
+ *   get:
+ *     summary: Health check endpoint
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: 🚀 TendorAI Backend is Running!
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 status:
+ *                   type: string
+ *                   example: healthy
+ *                 environment:
+ *                   type: string
+ *                   example: development
+ *                 mongodb:
+ *                   type: string
+ *                   example: Connected
+ */
 
 // Health check
 app.get('/', (req, res) => {
