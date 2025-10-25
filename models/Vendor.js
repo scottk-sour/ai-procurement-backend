@@ -12,11 +12,10 @@ const vendorSchema = new mongoose.Schema({
     required: true, 
     trim: true 
   },
-  company: { 
-    type: String, 
-    required: true, 
-    trim: true,
-    index: true
+  company: {
+    type: String,
+    required: true,
+    trim: true
   },
   email: {
     type: String,
@@ -24,8 +23,7 @@ const vendorSchema = new mongoose.Schema({
     unique: true,
     trim: true,
     lowercase: true,
-    match: [/.+@.+\..+/, 'Please provide a valid email address'],
-    index: true,
+    match: [/.+@.+\..+/, 'Please provide a valid email address']
   },
   password: { 
     type: String, 
@@ -269,13 +267,15 @@ vendorSchema.statics.findByRegion = function(region) {
 };
 
 // Indexes
-vendorSchema.index({ email: 1 }, { unique: true });
-vendorSchema.index({ company: 1 });
-vendorSchema.index({ services: 1 });
-vendorSchema.index({ 'location.coverage': 1 });
-vendorSchema.index({ 'account.status': 1, 'account.verificationStatus': 1 });
-vendorSchema.index({ 'performance.rating': -1 });
-vendorSchema.index({ 'integration.apiKey': 1 }, { sparse: true });
+// Note: email already has unique index from schema definition (line 23)
+// Note: integration.apiKey already has unique+sparse index from schema definition (line 177)
+vendorSchema.index({ company: 1 }); // For searching by company name
+vendorSchema.index({ services: 1 }); // For filtering by service type
+vendorSchema.index({ 'location.coverage': 1 }); // For regional searches
+vendorSchema.index({ 'account.status': 1, 'account.verificationStatus': 1 }); // Compound index for active vendors
+vendorSchema.index({ 'performance.rating': -1 }); // For sorting by rating (descending)
+vendorSchema.index({ createdAt: -1 }); // For sorting by newest
+vendorSchema.index({ 'account.lastLogin': -1 }); // For finding inactive vendors
 
 const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;

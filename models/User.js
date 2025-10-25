@@ -100,11 +100,14 @@ const userSchema = new mongoose.Schema({
   timestamps: true,
   collection: 'users'
 });
+
 // Indexes for performance
-userSchema.index({ email: 1 });
+// Note: email already has unique index from schema definition (line 6)
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 userSchema.index({ createdAt: -1 });
+userSchema.index({ 'businessInfo.industry': 1 }); // For filtering by industry
+userSchema.index({ lastLogin: -1 }); // For sorting by recent activity
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
   if (this.firstName && this.lastName) {

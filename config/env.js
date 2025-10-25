@@ -36,9 +36,13 @@ const config = {
   database: {
     uri: process.env.MONGODB_URI,
     options: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+      maxIdleTimeMS: 10000,
+      retryWrites: true,
+      retryReads: true,
     }
   },
 
@@ -112,5 +116,8 @@ const config = {
   isDevelopment: () => process.env.NODE_ENV === 'development',
   isTest: () => process.env.NODE_ENV === 'test'
 };
+
+// Export PORT separately for convenience
+export const PORT = config.app.port;
 
 export default config;
