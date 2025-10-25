@@ -12,11 +12,11 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "prod": "NODE_ENV=production node index.js",
-    "test": "echo \"Tests will be configured in Week 3\"",
-    "test:watch": "echo \"Test watch mode will be configured in Week 3\"",
-    "test:coverage": "echo \"Test coverage will be configured in Week 3\"",
-    "test:unit": "echo \"Unit tests will be configured in Week 3\"",
-    "test:integration": "echo \"Integration tests will be configured in Week 3\"",
+    "test": "NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:unit": "NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
+    "test:integration": "NODE_ENV=test node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration",
     "lint": "echo \"Linting will be configured in Week 3\"",
     "lint:fix": "echo \"Lint fix will be configured in Week 3\"",
     "format": "echo \"Formatting will be configured in Week 3\"",
@@ -65,7 +65,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7"
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "mongodb-memory-server": "^10.2.3",
+    "nodemon": "^3.1.7",
+    "supertest": "^7.1.4"
   },
   "overrides": {
     "rimraf": "^5.0.0",
