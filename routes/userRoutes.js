@@ -11,6 +11,7 @@ import {
   paginationValidation,
   fileUploadValidation
 } from '../validators/userValidator.js';
+import { authLimiter, createAccountLimiter, uploadLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -37,7 +38,7 @@ const verifyToken = async (req, res, next) => {
 };
 
 // ✅ User Signup - /api/users/signup
-router.post('/signup', signupValidation, validate, async (req, res) => {
+router.post('/signup', createAccountLimiter, signupValidation, validate, async (req, res) => {
   try {
     const { name, email, password, company } = req.body;
     
@@ -82,7 +83,7 @@ router.post('/signup', signupValidation, validate, async (req, res) => {
 });
 
 // ✅ User Login - /api/users/login
-router.post('/login', loginValidation, validate, async (req, res) => {
+router.post('/login', authLimiter, loginValidation, validate, async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -429,7 +430,7 @@ router.patch('/notifications/:id/read', verifyToken, async (req, res) => {
 });
 
 // ✅ POST /api/users/upload (file upload endpoint)
-router.post('/upload', verifyToken, async (req, res) => {
+router.post('/upload', uploadLimiter, verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
     

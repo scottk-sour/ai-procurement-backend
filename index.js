@@ -21,6 +21,7 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
+import { generalLimiter } from './middleware/rateLimiter.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -193,6 +194,14 @@ if (!fs.existsSync(uploadsDir)) {
   logger.info(`✅ Created uploads directory: ${uploadsDir}`);
 }
 app.use('/uploads', express.static(uploadsDir));
+
+// ========================================
+// 🛡️ RATE LIMITING
+// ========================================
+// Apply general rate limiting to all API routes
+app.use('/api/', generalLimiter);
+logger.info('✅ Rate limiting enabled: 100 requests per 15 minutes per IP');
+// ========================================
 
 // Routes
 app.use('/api/auth', authRoutes);

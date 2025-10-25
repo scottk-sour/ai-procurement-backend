@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
+import { authLimiter, createAccountLimiter } from '../middleware/rateLimiter.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -37,6 +38,7 @@ router.get('/', (req, res) => {
 // ======= User Registration =======
 router.post(
   '/register',
+  createAccountLimiter, // Rate limit: 3 registrations per hour per IP
   validateRequestBody(['name', 'email', 'password']),
   async (req, res) => {
     const { name, email, password } = req.body;
@@ -58,6 +60,7 @@ router.post(
 // ======= Vendor Registration =======
 router.post(
   '/vendor-register',
+  createAccountLimiter, // Rate limit: 3 registrations per hour per IP
   validateRequestBody(['name', 'email', 'password']),
   async (req, res) => {
     const { name, email, password } = req.body;
@@ -79,6 +82,7 @@ router.post(
 // ======= User Login =======
 router.post(
   '/login',
+  authLimiter, // Rate limit: 5 login attempts per hour per IP
   validateRequestBody(['email', 'password']),
   async (req, res) => {
     const { email, password } = req.body;
@@ -110,6 +114,7 @@ router.post(
 // ======= Vendor Login =======
 router.post(
   '/vendor-login',
+  authLimiter, // Rate limit: 5 login attempts per hour per IP
   validateRequestBody(['email', 'password']),
   async (req, res) => {
     const { email, password } = req.body;
