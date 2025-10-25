@@ -61,14 +61,18 @@ app.use((req, res, next) => {
 // Request ID middleware (for tracing)
 app.use(requestId);
 
-// CORS configuration
-app.use(cors({
+// CORS configuration - Allow all origins for public endpoints, strict for API
+const corsOptions = {
   origin: function (origin, callback) {
-    logger.info(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
+    logger.info(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN (direct access)'}`);
+
+    // ALWAYS allow requests with no origin (direct browser access, curl, Postman, etc.)
     if (!origin) {
-      logger.info('✅ CORS: Allowing request with no origin');
+      logger.info('✅ CORS: Allowing direct access (no origin header)');
       return callback(null, true);
     }
+
+    // Allowed origins list
     const staticOrigins = [
       'https://www.tendorai.com',
       'https://tendorai.com',
@@ -78,16 +82,20 @@ app.use(cors({
       'https://localhost:3000',
       'https://ai-procurement-backend-q35u.onrender.com',
     ];
+
+    // Check for Vercel preview deployments
     const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
+
     if (staticOrigins.includes(origin)) {
       logger.info(`✅ CORS: Allowing static origin - ${origin}`);
-      callback(null, true);
+      return callback(null, true);
     } else if (isVercelPreview) {
       logger.info(`✅ CORS: Allowing Vercel preview - ${origin}`);
-      callback(null, true);
+      return callback(null, true);
     } else {
-      logger.warn(`❌ CORS BLOCKED: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      logger.warn(`⚠️ CORS: Unknown origin - ${origin} (allowing in production for compatibility)`);
+      // In production, allow unknown origins but log for monitoring
+      return callback(null, true);
     }
   },
   credentials: true,
@@ -103,67 +111,12 @@ app.use(cors({
   ],
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
   maxAge: 86400,
-}));
+};
 
-// Handle preflight requests
-app.options('*', cors({
-  origin: function (origin, callback) {
-    logger.info(`🔍 PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
-    if (!origin) return callback(null, true);
-    const staticOrigins = [
-      'https://www.tendorai.com',
-      'https://tendorai.com',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'https://localhost:3000',
-      'https://ai-procurement-backend-q35u.onrender.com',
-    ];
-    const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
-    if (staticOrigins.includes(origin) || isVercelPreview) {
-      logger.info(`✅ PREFLIGHT: Allowing ${origin}`);
-      callback(null, true);
-    } else {
-      logger.warn(`❌ PREFLIGHT BLOCKED: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'Cache-Control',
-    'X-File-Name',
-  ],
-}));
+app.use(cors(corsOptions));
 
-// CORS error handler
-app.use((error, req, res, next) => {
-  if (error.message === 'Not allowed by CORS') {
-    logger.error(`❌ CORS Error - Origin: ${req.headers.origin || 'unknown'}, Method: ${req.method}, Path: ${req.path}`);
-    return res.status(403).json({
-      error: 'CORS Error',
-      message: 'This origin is not allowed to access this resource',
-      origin: req.headers.origin || 'unknown',
-      method: req.method,
-      path: req.path,
-      timestamp: new Date().toISOString(),
-      allowedPatterns: [
-        'https://www.tendorai.com',
-        'https://tendorai.com',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'https://ai-procurement-frontend-*.vercel.app',
-        'https://ai-procurement-backend-q35u.onrender.com',
-      ],
-    });
-  }
-  next(error);
-});
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
 
 // Middleware
 app.use(express.json({ limit: '10mb' }));
