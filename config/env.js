@@ -22,27 +22,27 @@ const requiredEnvVars = [
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingVars.length > 0) {
-  console.error('âŒ Missing required environment variables:');
+  console.error('❌ Missing required environment variables:');
   missingVars.forEach(varName => {
     console.error(`   - ${varName}`);
   });
-  console.error('\nðŸ’¡ Copy .env.example to .env and fill in the values\n');
+  console.error('\n💡 Copy .env.example to .env and fill in the values\n');
   process.exit(1);
 }
 
 // Export clean configuration object
 const config = {
   // Database
-    database: {
+  database: {
     uri: process.env.MONGODB_URI,
-    options: {      serverSelectionTimeoutMS: 5000,
-      // Connection pooling
-      maxPoolSize: 50, // Maximum 50 connections in pool
-      minPoolSize: 10, // Minimum 10 connections
-      maxIdleTimeMS: 300000, // Close idle connections after 5 minutes
-      // Performance optimizations
-      socketTimeoutMS: 45000, // Socket timeout 45s
-      family: 4, // Use IPv4, skip trying IPv6    }
+    options: {
+      serverSelectionTimeoutMS: 5000,
+      maxPoolSize: 50,
+      minPoolSize: 10,
+      maxIdleTimeMS: 300000,
+      socketTimeoutMS: 45000,
+      family: 4
+    }
   },
 
   // JWT
@@ -79,14 +79,14 @@ const config = {
 
   // File Upload
   upload: {
-    maxSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760, // 10MB
+    maxSize: parseInt(process.env.MAX_FILE_SIZE) || 10485760,
     uploadDir: process.env.UPLOAD_DIR || './uploads',
     allowedTypes: (process.env.ALLOWED_FILE_TYPES || 'pdf,csv,xlsx').split(',')
   },
 
   // Rate Limiting
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000, // 15 min
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
   },
 
@@ -117,11 +117,3 @@ const config = {
 };
 
 export default config;
-
-
-
-
-
-
-
-
