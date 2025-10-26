@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -22,25 +22,34 @@ const requiredEnvVars = [
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingVars.length > 0) {
-  console.error('❌ Missing required environment variables:');
+  console.error('âŒ Missing required environment variables:');
   missingVars.forEach(varName => {
     console.error(`   - ${varName}`);
   });
-  console.error('\n💡 Copy .env.example to .env and fill in the values\n');
+  console.error('\nðŸ’¡ Copy .env.example to .env and fill in the values\n');
   process.exit(1);
 }
 
 // Export clean configuration object
 const config = {
   // Database
-  database: {
+    database: {
     uri: process.env.MONGODB_URI,
     options: {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
+      // Connection pooling
+      maxPoolSize: 50, // Maximum 50 connections in pool
+      minPoolSize: 10, // Minimum 10 connections
+      maxIdleTimeMS: 300000, // Close idle connections after 5 minutes
+      // Performance optimizations
+      socketTimeoutMS: 45000, // Socket timeout 45s
+      family: 4, // Use IPv4, skip trying IPv6
+      // Logging
+      loggerLevel: process.env.NODE_ENV === 'production' ? 'error' : 'info'
     }
-  },
+  },,
 
   // JWT
   jwt: {
@@ -114,3 +123,4 @@ const config = {
 };
 
 export default config;
+
