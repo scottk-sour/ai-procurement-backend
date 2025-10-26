@@ -49,7 +49,7 @@ const config = {
       // Logging
       loggerLevel: process.env.NODE_ENV === 'production' ? 'error' : 'info'
     }
-  },,
+  },
 
   // JWT
   jwt: {
@@ -123,4 +123,5 @@ const config = {
 };
 
 export default config;
+
 
