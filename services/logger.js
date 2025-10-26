@@ -1,3 +1,6 @@
+﻿import { EventEmitter } from 'events';
+EventEmitter.defaultMaxListeners = 15;
+
 /**
  * Winston Logger Configuration
  *
@@ -217,3 +220,4 @@ logger.logAPI = (service, endpoint, details = {}) => {
 };
 
 export default logger;
+
