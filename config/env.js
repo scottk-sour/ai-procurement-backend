@@ -35,10 +35,7 @@ const config = {
   // Database
     database: {
     uri: process.env.MONGODB_URI,
-    options: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
+    options: {      serverSelectionTimeoutMS: 5000,
       // Connection pooling
       maxPoolSize: 50, // Maximum 50 connections in pool
       minPoolSize: 10, // Minimum 10 connections
@@ -123,6 +120,7 @@ const config = {
 };
 
 export default config;
+
 
 
 
