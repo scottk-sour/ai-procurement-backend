@@ -1,29 +1,14 @@
-import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+﻿import express from 'express';
 import { uploadMatrix, getMatrix } from '../controllers/matrixController.js';
 import vendorAuth from '../middleware/vendorAuth.js';
+import { matrixUpload } from '../middleware/secureUpload.js';
+import { uploadRateLimiter } from '../middleware/uploadRateLimiter.js';
 
 const router = express.Router();
 
-// Configure multer for file uploads (for XLSX/CSV files)
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = 'uploads/matrix/';
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  },
-});
-const upload = multer({ storage });
-
 // Protected route: Vendor must be authenticated
-router.post('/upload', vendorAuth, upload.single('file'), uploadMatrix);
+// Now uses secure upload middleware with magic number validation and rate limiting
+router.post('/upload', vendorAuth, uploadRateLimiter, matrixUpload.single, uploadMatrix);
 router.get('/', getMatrix);
 
 export default router;

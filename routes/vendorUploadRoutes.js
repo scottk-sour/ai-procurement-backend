@@ -1,4 +1,4 @@
-// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS FIELD SELECTION)
+﻿// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS FIELD SELECTION)
 import express from "express";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -8,7 +8,8 @@ import rateLimit from 'express-rate-limit';
 import { isValidObjectId } from 'mongoose';
 import vendorAuth from "../middleware/vendorAuth.js";
 import userAuth from '../middleware/userAuth.js';
-import upload from "../middleware/csvUpload.js";
+import { csvUpload } from "../middleware/secureUpload.js";
+import { vendorUploadRateLimiter } from "../middleware/uploadRateLimiter.js";
 import Vendor from "../models/Vendor.js";
 import VendorProduct from "../models/VendorProduct.js";
 import VendorActivity from "../models/VendorActivity.js";
@@ -21,7 +22,7 @@ const router = express.Router();
 const { JWT_SECRET } = process.env;
 
 if (!JWT_SECRET) {
-    console.error('❌ ERROR: Missing JWT_SECRET in environment variables.');
+    console.error('âŒ ERROR: Missing JWT_SECRET in environment variables.');
     process.exit(1);
 }
 
@@ -127,12 +128,12 @@ router.post('/signup', signupLimiter, async (req, res) => {
                 }
             });
         } catch (activityError) {
-            console.error('❌ Failed to create signup activity:', activityError.message);
+            console.error('âŒ Failed to create signup activity:', activityError.message);
         }
 
         res.status(201).json({ message: 'Vendor registered successfully.' });
     } catch (error) {
-        console.error('❌ Error registering vendor:', error.message);
+        console.error('âŒ Error registering vendor:', error.message);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
@@ -141,45 +142,45 @@ router.post('/signup', signupLimiter, async (req, res) => {
 router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
-        console.log('🔍 Login attempt for:', email);
+        console.log('ðŸ” Login attempt for:', email);
 
         if (!email || !password) {
-            console.log('❌ Missing email or password');
+            console.log('âŒ Missing email or password');
             return res.status(400).json({ message: 'Email and password are required.' });
         }
 
         // FIXED: Select both old (status) and new (account.status) field formats
         const vendor = await Vendor.findOne({ email }).select('password name email company services status account');
-        console.log('🔍 Vendor found:', vendor ? 'YES' : 'NO');
-        console.log('🔍 Vendor ID:', vendor?._id);
+        console.log('ðŸ” Vendor found:', vendor ? 'YES' : 'NO');
+        console.log('ðŸ” Vendor ID:', vendor?._id);
 
         // FIXED: Check both possible status locations - PRIORITIZE OLD STATUS FIELD
         const vendorStatus = (vendor?.status || vendor?.account?.status || '').toLowerCase();
-        console.log('🔍 Vendor status structure:', {
+        console.log('ðŸ” Vendor status structure:', {
             directStatus: vendor?.status,
             accountStatus: vendor?.account?.status,
             hasAccount: !!vendor?.account
         });
-        console.log('🔍 Effective status:', vendorStatus);
+        console.log('ðŸ” Effective status:', vendorStatus);
 
         if (!vendor) {
-            console.log('❌ No vendor found with email:', email);
+            console.log('âŒ No vendor found with email:', email);
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
 
-        console.log('🔍 Comparing passwords...');
-        console.log('🔍 Stored password hash length:', vendor.password?.length);
+        console.log('ðŸ” Comparing passwords...');
+        console.log('ðŸ” Stored password hash length:', vendor.password?.length);
         const isMatch = await bcrypt.compare(password, vendor.password);
-        console.log('🔍 Password match:', isMatch);
+        console.log('ðŸ” Password match:', isMatch);
 
         if (!isMatch) {
-            console.log('❌ Password comparison failed');
+            console.log('âŒ Password comparison failed');
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
         
         // FIXED: Check status from the resolved location
         if (vendorStatus !== 'active') {
-            console.log('❌ Vendor account not active:', vendorStatus);
+            console.log('âŒ Vendor account not active:', vendorStatus);
             return res.status(403).json({
                 message: 'Account is not active. Contact support.',
                 status: vendorStatus
@@ -192,7 +193,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             { expiresIn: '4h' }
         );
 
-        console.log('✅ Login successful for:', email);
+        console.log('âœ… Login successful for:', email);
 
         try {
             await VendorActivity.createActivity({
@@ -213,7 +214,7 @@ router.post('/login', loginLimiter, async (req, res) => {
                 }
             });
         } catch (activityError) {
-            console.error('❌ Failed to create login activity:', activityError.message);
+            console.error('âŒ Failed to create login activity:', activityError.message);
         }
 
         res.json({
@@ -223,8 +224,8 @@ router.post('/login', loginLimiter, async (req, res) => {
             message: 'Vendor login successful.',
         });
     } catch (error) {
-        console.error('❌ Error during vendor login:', error.message);
-        console.error('❌ Login error stack:', error.stack);
+        console.error('âŒ Error during vendor login:', error.message);
+        console.error('âŒ Login error stack:', error.stack);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
@@ -250,7 +251,7 @@ router.get('/verify', async (req, res) => {
             },
         });
     } catch (error) {
-        console.error('❌ Vendor token verification error:', error.message);
+        console.error('âŒ Vendor token verification error:', error.message);
         res.status(401).json({ message: 'Invalid or expired token.' });
     }
 });
@@ -272,7 +273,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
             },
         });
     } catch (error) {
-        console.error('❌ Error fetching vendor profile:', error.message);
+        console.error('âŒ Error fetching vendor profile:', error.message);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
@@ -298,7 +299,7 @@ router.get('/uploaded-files', vendorAuth, async (req, res) => {
 
         res.status(200).json({ files });
     } catch (error) {
-        console.error('❌ Error fetching vendor files:', error.message);
+        console.error('âŒ Error fetching vendor files:', error.message);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
@@ -313,7 +314,7 @@ router.get('/recent-activity', vendorAuth, async (req, res) => {
             .limit(parseInt(limit));
         res.status(200).json({ activities });
     } catch (error) {
-        console.error('❌ Error fetching vendor activity:', error.message);
+        console.error('âŒ Error fetching vendor activity:', error.message);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
@@ -393,7 +394,7 @@ router.get('/notifications', vendorAuth, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error fetching vendor notifications:', error.message);
+        console.error('âŒ Error fetching vendor notifications:', error.message);
         res.status(500).json({
             success: false,
             message: 'Internal server error.',
@@ -413,7 +414,7 @@ router.patch('/notifications/:notificationId/read', vendorAuth, async (req, res)
             notificationId
         });
     } catch (error) {
-        console.error('❌ Error marking notification as read:', error.message);
+        console.error('âŒ Error marking notification as read:', error.message);
         res.status(500).json({
             success: false,
             message: 'Internal server error.',
@@ -427,7 +428,7 @@ router.get('/recommend', userAuth, async (req, res) => {
     try {
         const { userId, t } = req.query;
 
-        console.log('🔍 Fetching vendor recommendations for user:', userId);
+        console.log('ðŸ” Fetching vendor recommendations for user:', userId);
 
         // Validate user access
         if (userId !== req.user.userId) {
@@ -508,7 +509,7 @@ router.get('/recommend', userAuth, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error fetching vendor recommendations:', error);
+        console.error('âŒ Error fetching vendor recommendations:', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error',
@@ -528,7 +529,7 @@ router.get('/all', async (req, res) => {
             limit = 20
         } = req.query;
 
-        console.log('🔍 Fetching all vendors with filters:', { serviceType, company, status });
+        console.log('ðŸ” Fetching all vendors with filters:', { serviceType, company, status });
 
         // FIXED: Use both status field locations
         let filter = {
@@ -598,7 +599,7 @@ router.get('/all', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error fetching all vendors:', error);
+        console.error('âŒ Error fetching all vendors:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch vendors',
@@ -613,7 +614,7 @@ router.get('/all', async (req, res) => {
 router.use(vendorAuth);
 
 // POST /api/vendors/upload
-router.post("/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", vendorUploadRateLimiter, csvUpload.single, async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({
@@ -682,7 +683,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
                     }
                 });
             } catch (activityError) {
-                console.error('❌ Failed to create upload activity:', activityError.message);
+                console.error('âŒ Failed to create upload activity:', activityError.message);
             }
 
             if (result.success) {
@@ -792,7 +793,7 @@ router.delete("/products/:productId", async (req, res) => {
                 }
             });
         } catch (activityError) {
-            console.error('❌ Failed to create deletion activity:', activityError.message);
+            console.error('âŒ Failed to create deletion activity:', activityError.message);
         }
 
         res.status(200).json({
@@ -861,7 +862,7 @@ router.put("/products/:productId", async (req, res) => {
                 }
             });
         } catch (activityError) {
-            console.error('❌ Failed to create update activity:', activityError.message);
+            console.error('âŒ Failed to create update activity:', activityError.message);
         }
 
         res.status(200).json({
@@ -1010,3 +1011,4 @@ router.get("/listings", async (req, res) => {
 });
 
 export default router;
+
