@@ -42,10 +42,7 @@ const config = {
       maxIdleTimeMS: 300000, // Close idle connections after 5 minutes
       // Performance optimizations
       socketTimeoutMS: 45000, // Socket timeout 45s
-      family: 4, // Use IPv4, skip trying IPv6
-      // Logging
-      loggerLevel: process.env.NODE_ENV === 'production' ? 'error' : 'info'
-    }
+      family: 4, // Use IPv4, skip trying IPv6    }
   },
 
   // JWT
@@ -120,6 +117,8 @@ const config = {
 };
 
 export default config;
+
+
 
 
 
