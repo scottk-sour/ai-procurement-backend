@@ -1,7 +1,4 @@
-﻿import { EventEmitter } from 'events';
-EventEmitter.defaultMaxListeners = 15;
-
-/**
+﻿/**
  * Winston Logger Configuration
  *
  * Production-ready logging with:
@@ -84,64 +81,82 @@ const fileFormat = winston.format.combine(
   winston.format.json()
 );
 
-// Console transport for development
+// Console transport
 const consoleTransport = new winston.transports.Console({
   format: consoleFormat,
 });
 
-// Daily rotate file transport for all logs
-const fileTransport = new DailyRotateFile({
-  filename: path.join(__dirname, '../logs/app-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  maxSize: '20m',
-  maxFiles: '14d',
+// Production console transport (JSON format for log aggregation)
+const productionConsoleTransport = new winston.transports.Console({
   format: fileFormat,
 });
 
-// Daily rotate file transport for error logs only
-const errorFileTransport = new DailyRotateFile({
-  level: 'error',
-  filename: path.join(__dirname, '../logs/error-%DATE%.log'),
-  datePattern: 'YYYY-MM-DD',
-  maxSize: '20m',
-  maxFiles: '30d',
-  format: fileFormat,
-});
+// Determine if we should use file logging (only in development with writable filesystem)
+const useFileLogging = config.isDevelopment();
 
-// Create the logger
-const logger = winston.createLogger({
-  level: level(),
-  levels,
-  format: fileFormat,
-  transports: [
-    fileTransport,
-    errorFileTransport,
-  ],
-  // Handle exceptions and rejections
-  exceptionHandlers: [
+// Build transports array based on environment
+const transports = [];
+const exceptionHandlers = [];
+const rejectionHandlers = [];
+
+if (useFileLogging) {
+  // Development: Use file rotation for logs
+  transports.push(
+    new DailyRotateFile({
+      filename: path.join(__dirname, '../logs/app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '20m',
+      maxFiles: '14d',
+      format: fileFormat,
+    }),
+    new DailyRotateFile({
+      level: 'error',
+      filename: path.join(__dirname, '../logs/error-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '20m',
+      maxFiles: '30d',
+      format: fileFormat,
+    })
+  );
+
+  exceptionHandlers.push(
     new DailyRotateFile({
       filename: path.join(__dirname, '../logs/exceptions-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
       maxSize: '20m',
       maxFiles: '30d',
       format: fileFormat,
-    }),
-  ],
-  rejectionHandlers: [
+    })
+  );
+
+  rejectionHandlers.push(
     new DailyRotateFile({
       filename: path.join(__dirname, '../logs/rejections-%DATE%.log'),
       datePattern: 'YYYY-MM-DD',
       maxSize: '20m',
       maxFiles: '30d',
       format: fileFormat,
-    }),
-  ],
-});
+    })
+  );
 
-// Add console transport in development
-if (config.isDevelopment()) {
-  logger.add(consoleTransport);
+  // Add console transport for development
+  transports.push(consoleTransport);
+} else {
+  // Production: Console only (captured by platform like Render/Heroku)
+  transports.push(productionConsoleTransport);
+  exceptionHandlers.push(productionConsoleTransport);
+  rejectionHandlers.push(productionConsoleTransport);
 }
+
+// Create the logger
+const logger = winston.createLogger({
+  level: level(),
+  levels,
+  format: fileFormat,
+  transports,
+  exceptionHandlers,
+  rejectionHandlers,
+});
 
 // Create a stream object for Morgan HTTP logging
 logger.stream = {
@@ -220,4 +235,3 @@ logger.logAPI = (service, endpoint, details = {}) => {
 };
 
 export default logger;
-
