@@ -34,7 +34,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ========================================
-// ðŸ”’ SECURITY HEADERS
+// 🔒 SECURITY HEADERS
 // ========================================
 app.use((req, res, next) => {
   // Prevent clickjacking
@@ -62,9 +62,9 @@ app.use(requestId);
 // CORS configuration
 app.use(cors({
   origin: function (origin, callback) {
-    logger.info(`ðŸ” CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
+    logger.info(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
     if (!origin) {
-      logger.info('âœ… CORS: Allowing request with no origin');
+      logger.info('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
     const staticOrigins = [
@@ -78,13 +78,13 @@ app.use(cors({
     ];
     const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
     if (staticOrigins.includes(origin)) {
-      logger.info(`âœ… CORS: Allowing static origin - ${origin}`);
+      logger.info(`✅ CORS: Allowing static origin - ${origin}`);
       callback(null, true);
     } else if (isVercelPreview) {
-      logger.info(`âœ… CORS: Allowing Vercel preview - ${origin}`);
+      logger.info(`✅ CORS: Allowing Vercel preview - ${origin}`);
       callback(null, true);
     } else {
-      logger.warn(`âŒ CORS BLOCKED: ${origin}`);
+      logger.warn(`❌ CORS BLOCKED: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -97,6 +97,8 @@ app.use(cors({
     'Accept',
     'Origin',
     'Cache-Control',
+    'Pragma',        // ⭐ ADDED FOR CORS FIX
+    'Expires',       // ⭐ ADDED FOR CORS FIX
     'X-File-Name',
   ],
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
@@ -106,7 +108,7 @@ app.use(cors({
 // Handle preflight requests
 app.options('*', cors({
   origin: function (origin, callback) {
-    logger.info(`ðŸ” PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
+    logger.info(`🔍 PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
     if (!origin) return callback(null, true);
     const staticOrigins = [
       'https://www.tendorai.com',
@@ -119,10 +121,10 @@ app.options('*', cors({
     ];
     const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
     if (staticOrigins.includes(origin) || isVercelPreview) {
-      logger.info(`âœ… PREFLIGHT: Allowing ${origin}`);
+      logger.info(`✅ PREFLIGHT: Allowing ${origin}`);
       callback(null, true);
     } else {
-      logger.warn(`âŒ PREFLIGHT BLOCKED: ${origin}`);
+      logger.warn(`❌ PREFLIGHT BLOCKED: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -135,6 +137,8 @@ app.options('*', cors({
     'Accept',
     'Origin',
     'Cache-Control',
+    'Pragma',        // ⭐ ADDED FOR CORS FIX
+    'Expires',       // ⭐ ADDED FOR CORS FIX
     'X-File-Name',
   ],
 }));
@@ -142,7 +146,7 @@ app.options('*', cors({
 // CORS error handler
 app.use((error, req, res, next) => {
   if (error.message === 'Not allowed by CORS') {
-    logger.error(`âŒ CORS Error - Origin: ${req.headers.origin || 'unknown'}, Method: ${req.method}, Path: ${req.path}`);
+    logger.error(`❌ CORS Error - Origin: ${req.headers.origin || 'unknown'}, Method: ${req.method}, Path: ${req.path}`);
     return res.status(403).json({
       error: 'CORS Error',
       message: 'This origin is not allowed to access this resource',
@@ -191,7 +195,7 @@ app.use((req, res, next) => {
 const uploadsDir = path.join(__dirname, 'Uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
-  logger.info(`âœ… Created uploads directory: ${uploadsDir}`);
+  logger.info(`✅ Created uploads directory: ${uploadsDir}`);
 }
 app.use('/uploads', express.static(uploadsDir));
 
@@ -211,7 +215,7 @@ app.use('/api/copier-quotes', copierQuoteRoutes);
 // AI Copier Suggestions Route
 app.post('/api/suggest-copiers', async (req, res) => {
   try {
-    logger.info('ðŸ¤– AI Copier suggestion request:', req.body);
+    logger.info('🤖 AI Copier suggestion request:', req.body);
     const suggestions = [];
     const { monthlyVolume, industryType, colour, min_speed, serviceType } = req.body;
     if (monthlyVolume?.total > 5000) {
@@ -248,7 +252,7 @@ app.post('/api/suggest-copiers', async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error('âŒ Error in suggest-copiers:', error);
+    logger.error('❌ Error in suggest-copiers:', error);
     res.status(500).json({
       error: 'Failed to generate suggestions',
       suggestions: [],
@@ -260,7 +264,7 @@ app.post('/api/suggest-copiers', async (req, res) => {
 // Test endpoint
 app.get('/api/test-dashboard', async (req, res) => {
   try {
-    logger.info('ðŸ” Testing dashboard endpoints...');
+    logger.info('🔍 Testing dashboard endpoints...');
     const testResults = {
       timestamp: new Date().toISOString(),
       server: 'TendorAI Backend',
@@ -303,25 +307,25 @@ app.get('/api/test-dashboard', async (req, res) => {
         { category: 'AI Features', path: '/api/suggest-copiers', method: 'POST', status: 'Available', description: 'Get AI-powered copier suggestions' },
       ],
       totalEndpoints: 21,
-      message: 'âœ… All dashboard endpoints are now available including AI suggestions!',
+      message: '✅ All dashboard endpoints are now available including AI suggestions!',
       note: 'Your TendorAI platform is ready for production use with AI-powered recommendations.',
       dashboardFeatures: [
-        'âœ… User authentication and authorization',
-        'âœ… Quote request submission and management',
-        'âœ… Real-time dashboard with KPIs',
-        'âœ… Vendor matching and recommendations',
-        'âœ… File upload and document management',
-        'âœ… Notification system',
-        'âœ… Activity tracking',
-        'âœ… Multi-role support (Users, Vendors, Admins)',
-        'âœ… Dynamic CORS for Vercel deployments',
-        'âœ… Vendor product upload system',
-        'âœ… AI-powered copier suggestions',
+        '✅ User authentication and authorization',
+        '✅ Quote request submission and management',
+        '✅ Real-time dashboard with KPIs',
+        '✅ Vendor matching and recommendations',
+        '✅ File upload and document management',
+        '✅ Notification system',
+        '✅ Activity tracking',
+        '✅ Multi-role support (Users, Vendors, Admins)',
+        '✅ Dynamic CORS for Vercel deployments',
+        '✅ Vendor product upload system',
+        '✅ AI-powered copier suggestions',
       ],
     };
     res.json(testResults);
   } catch (error) {
-    logger.error('âŒ Test endpoint error:', error);
+    logger.error('❌ Test endpoint error:', error);
     res.status(500).json({
       error: error.message,
       message: 'Test endpoint encountered an error',
@@ -333,7 +337,7 @@ app.get('/api/test-dashboard', async (req, res) => {
 // Health check
 app.get('/', (req, res) => {
   res.json({
-    message: 'ðŸš€ TendorAI Backend is Running!',
+    message: '🚀 TendorAI Backend is Running!',
     timestamp: new Date().toISOString(),
     status: 'healthy',
     environment: config.app.env,
@@ -374,17 +378,17 @@ async function startServer() {
   try {
     mongoose.set('strictQuery', false);
     await mongoose.connect(config.database.uri, config.database.options);
-    logger.info(`âœ… Connected to MongoDB: ${mongoose.connection.name}`);
+    logger.info(`✅ Connected to MongoDB: ${mongoose.connection.name}`);
     
     // Vendor migration script
-    logger.info('ðŸ”— Starting one-time vendor migration...');
+    logger.info('🔗 Starting one-time vendor migration...');
     try {
       const { default: Vendor } = await import('./models/Vendor.js');
       const vendorsToMigrate = await Vendor.find({
         status: { $exists: true, $ne: null },
       });
       if (vendorsToMigrate.length > 0) {
-        logger.info(`ðŸ” Found ${vendorsToMigrate.length} vendors to migrate. Updating...`);
+        logger.info(`🔍 Found ${vendorsToMigrate.length} vendors to migrate. Updating...`);
         for (const vendor of vendorsToMigrate) {
           await Vendor.updateOne(
             { _id: vendor._id },
@@ -394,38 +398,38 @@ async function startServer() {
             }
           );
         }
-        logger.info('ðŸŽ‰ Migration complete!');
+        logger.info('🎉 Migration complete!');
       } else {
-        logger.info('â­ï¸ No vendors found with the old status field. Migration not needed.');
+        logger.info('⭐️ No vendors found with the old status field. Migration not needed.');
       }
     } catch (migrationError) {
-      logger.error('âŒ Migration script failed:', migrationError);
+      logger.error('❌ Migration script failed:', migrationError);
     }
     
     const server = app.listen(config.app.port, () => {
-      logger.info(`ðŸš€ Server running on port ${config.app.port}`);
-      logger.info(`ðŸ”§ Environment: ${config.app.env}`);
-      logger.info(`ðŸ”’ Security headers enabled`);
-      logger.info(`ðŸŒ CORS enabled for:`);
+      logger.info(`🚀 Server running on port ${config.app.port}`);
+      logger.info(`🔧 Environment: ${config.app.env}`);
+      logger.info(`🔒 Security headers enabled`);
+      logger.info(`🌍 CORS enabled for:`);
       logger.info(` - https://www.tendorai.com`);
       logger.info(` - https://tendorai.com`);
       logger.info(` - http://localhost:3000`);
       logger.info(` - http://127.0.0.1:3000`);
       logger.info(` - https://ai-procurement-backend-q35u.onrender.com`);
       logger.info(` - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
-      logger.info(`ðŸ“Š Test endpoint: /api/test-dashboard`);
-      logger.info(`ðŸ¥ Health check: /`);
-      logger.info(`ðŸ“¤ Vendor upload: /api/vendors/upload`);
-      logger.info(`ðŸ¤– AI suggestions: /api/suggest-copiers`);
-      logger.info(`ðŸŽ‰ TendorAI Backend is ready!`);
+      logger.info(`📊 Test endpoint: /api/test-dashboard`);
+      logger.info(`🏥 Health check: /`);
+      logger.info(`📤 Vendor upload: /api/vendors/upload`);
+      logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
+      logger.info(`🎉 TendorAI Backend is ready!`);
     });
     
     const shutdown = () => {
-      logger.info('\nðŸ›‘ Shutting down gracefully...');
+      logger.info('\n🛑 Shutting down gracefully...');
       server.close(() => {
         mongoose.connection.close(false, () => {
-          logger.info('âœ… MongoDB connection closed');
-          logger.info('âœ… Server shutdown complete');
+          logger.info('✅ MongoDB connection closed');
+          logger.info('✅ Server shutdown complete');
           process.exit(0);
         });
       });
@@ -434,18 +438,17 @@ async function startServer() {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     process.on('uncaughtException', (err) => {
-      logger.error('âŒ Uncaught Exception:', err);
+      logger.error('❌ Uncaught Exception:', err);
       shutdown();
     });
     process.on('unhandledRejection', (reason) => {
-      logger.error('âŒ Unhandled Rejection:', reason);
+      logger.error('❌ Unhandled Rejection:', reason);
       shutdown();
     });
   } catch (err) {
-    logger.error('âŒ Failed to connect to MongoDB:', err);
+    logger.error('❌ Failed to connect to MongoDB:', err);
     process.exit(1);
   }
 }
 
 startServer();
-
