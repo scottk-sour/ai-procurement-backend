@@ -96,9 +96,9 @@ app.use(cors({
     'X-Requested-With',
     'Accept',
     'Origin',
-    'Cache-Control',
-    'Pragma',        // ⭐ ADDED FOR CORS FIX
-    'Expires',       // ⭐ ADDED FOR CORS FIX
+    'cache-control',
+    'pragma',
+    'Expires',
     'X-File-Name',
   ],
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
@@ -136,9 +136,9 @@ app.options('*', cors({
     'X-Requested-With',
     'Accept',
     'Origin',
-    'Cache-Control',
-    'Pragma',        // ⭐ ADDED FOR CORS FIX
-    'Expires',       // ⭐ ADDED FOR CORS FIX
+    'cache-control',
+    'pragma',
+    'Expires',
     'X-File-Name',
   ],
 }));
