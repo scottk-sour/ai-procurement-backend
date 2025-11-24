@@ -336,6 +336,67 @@ router.get('/requests', userAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/quotes/requests/:id
+ * Get a single quote request by ID with populated quotes
+ */
+router.get('/requests/:id', userAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requestingUserId = req.user.userId;
+    log.info('🔍 Fetch quote request by ID:', id, 'for user', requestingUserId);
+
+    // Find the quote request and populate quotes with vendor and product details
+    const quoteRequest = await QuoteRequest.findById(id)
+      .populate({
+        path: 'quotes',
+        populate: [
+          { path: 'vendor', select: 'name email contactInfo' },
+          { path: 'product', select: 'manufacturer model features' }
+        ]
+      })
+      .lean();
+
+    if (!quoteRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Quote request not found',
+        code: 'QUOTE_040'
+      });
+    }
+
+    // Check if user has access to this quote request
+    const hasAccess = quoteRequest.userId?.toString() === requestingUserId.toString() ||
+                     quoteRequest.submittedBy?.toString() === requestingUserId.toString();
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'ACCESS_DENIED',
+        message: 'Access denied - you do not have permission to view this quote request',
+        code: 'QUOTE_041'
+      });
+    }
+
+    log.info(`✅ Found quote request ${id} with ${quoteRequest.quotes?.length || 0} quotes`);
+
+    return res.json({
+      success: true,
+      quoteRequest
+    });
+  } catch (error) {
+    log.error('❌ Error fetching quote request by ID:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'FETCH_ERROR',
+      message: 'Failed to fetch quote request',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      code: 'QUOTE_042'
+    });
+  }
+});
+
+/**
  * GET /api/quotes/:id
  * Get specific quote details
  */
