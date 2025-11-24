@@ -750,6 +750,23 @@ class AIRecommendationEngine {
       // Sort suitable products by overall score
       suitableProducts.sort((a, b) => b.overallScore - a.overallScore);
 
+      // Helper function: Extract vendor ID as string
+      const getVendorId = (product) => {
+        if (!product || !product.vendor) return 'unknown';
+
+        // If vendor has an _id field (populated vendor object)
+        if (product.vendor._id) {
+          return typeof product.vendor._id === 'string'
+            ? product.vendor._id
+            : String(product.vendor._id);
+        }
+
+        // If vendor is directly the ID (ObjectId or string)
+        return typeof product.vendor === 'string'
+          ? product.vendor
+          : String(product.vendor);
+      };
+
       // Helper function: Select products with vendor diversity
       const selectDiverseProducts = (products, maxCount = 3) => {
         if (products.length === 0) return [];
@@ -760,7 +777,7 @@ class AIRecommendationEngine {
 
         // First pass: Take top product from each unique vendor
         for (const product of products) {
-          const vendorId = product.vendor?._id?.toString() || product.vendor?.toString();
+          const vendorId = getVendorId(product);
 
           if (!usedVendors.has(vendorId) && selected.length < maxCount) {
             selected.push(product);
@@ -798,7 +815,7 @@ class AIRecommendationEngine {
 
         // Track vendors already used by suitable products
         const usedVendors = new Set(
-          suitableProducts.map(p => p.vendor?._id?.toString() || p.vendor?.toString())
+          suitableProducts.map(p => getVendorId(p))
         );
 
         // Sort unsuitable products and apply vendor diversity
@@ -810,7 +827,7 @@ class AIRecommendationEngine {
         const remainingUnsuitable = [];
 
         for (const product of sortedUnsuitable) {
-          const vendorId = product.vendor?._id?.toString() || product.vendor?.toString();
+          const vendorId = getVendorId(product);
           if (!usedVendors.has(vendorId) && diverseUnsuitable.length < additionalNeeded) {
             diverseUnsuitable.push(product);
             usedVendors.add(vendorId);
