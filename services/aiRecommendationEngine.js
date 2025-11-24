@@ -641,7 +641,7 @@ class AIRecommendationEngine {
         ]
       };
 
-      // Paper size support - make this more flexible
+      // Paper size support - filter for primary and additional sizes
       if (requiredPaperSize) {
         queryFilter.$and = [
           {
@@ -652,6 +652,28 @@ class AIRecommendationEngine {
             ]
           }
         ];
+      }
+
+      // Check for additional paper sizes (e.g., A3 when primary is A4)
+      const additionalSizes = quoteRequest.paperRequirements?.additionalSizes || [];
+      if (additionalSizes && additionalSizes.length > 0) {
+        logger.info(`Additional paper sizes required: ${additionalSizes.join(', ')}`);
+
+        // Initialize $and if not already set
+        if (!queryFilter.$and) {
+          queryFilter.$and = [];
+        }
+
+        // For each additional size, ensure the product supports it
+        additionalSizes.forEach(size => {
+          queryFilter.$and.push({
+            $or: [
+              { 'paperSizes.supported': size },
+              { 'paperSizes.primary': size }
+            ]
+          });
+          logger.info(`Added filter: Product must support ${size}`);
+        });
       }
 
       // Add feature requirements if specified
