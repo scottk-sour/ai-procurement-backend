@@ -1024,28 +1024,156 @@ class AIRecommendationEngine {
           }));
       }
 
-      // Add AI insights and metadata
-      const finalRecommendations = topRecommendations.map(rec => ({
-        ...rec,
-        aiInsights: {
-          volumeMatch: `${Math.round((rec.suitability.volumeScore || 0) * 100)}%`,
-          speedSuitability: `${Math.round((rec.suitability.speedScore || 0) * 100)}%`,
-          featureMatch: `${Math.round((rec.suitability.featureScore || 0) * 100)}%`,
-          overallCompatibility: `${Math.round(rec.overallScore * 100)}%`,
-          estimatedROI: (rec.costInfo.annualSavings || 0) > 0 ? 
-            `£${rec.costInfo.annualSavings} annual savings` : 
-            `£${Math.abs(rec.costInfo.annualSavings || 0)} annual increase`,
-          recommendation: rec.ranking === 1 ? 'Recommended' : 
-                         rec.ranking === 2 ? 'Good Alternative' : 
-                         'Consideration Option'
-        },
-        metadata: {
-          generatedAt: new Date(),
-          userId,
-          preferenceProfile: preferenceProfile.summary,
-          scoringWeights: { ...this.scoringWeights }
+      // Helper function: Generate "Why Recommended" explanations
+      const generateWhyRecommended = (rec, requirements) => {
+        const reasons = [];
+        const speed = rec.product.speed || 0;
+        const minSpeed = requirements.minSpeed || 0;
+        const userVol = requirements.monthlyVolume?.total || 0;
+        const productVol = rec.product.recommendedMonthlyVolume || rec.product.maxVolume || 0;
+        const budget = requirements.maxBudget || 0;
+        const monthlyCost = rec.costInfo?.effectiveMonthlyCost || rec.costInfo?.newTotalMonthlyCost || 0;
+
+        // Speed match
+        if (minSpeed > 0 && speed >= minSpeed) {
+          reasons.push(`✓ Speed: ${speed} ppm ${speed > minSpeed ? 'exceeds' : 'meets'} your ${minSpeed} ppm minimum`);
         }
-      }));
+
+        // Features match
+        const essentialFeatures = requirements.essentialFeatures || [];
+        if (essentialFeatures.length > 0) {
+          reasons.push(`✓ Features: Has all required features (${essentialFeatures.join(', ')})`);
+        }
+
+        // Volume match
+        if (productVol > 0 && userVol > 0) {
+          const utilizationPct = Math.round((userVol / productVol) * 100);
+          reasons.push(`✓ Volume: Rated for ${productVol.toLocaleString()}/month, you need ${userVol.toLocaleString()}/month (${utilizationPct}% utilization)`);
+        }
+
+        // Budget match
+        if (budget > 0) {
+          const quarterlyBudget = budget;
+          const quarterlyCost = monthlyCost * 3;
+          if (quarterlyCost <= quarterlyBudget) {
+            reasons.push(`✓ Budget: £${Math.round(monthlyCost)}/month within your £${Math.round(quarterlyBudget)} quarterly budget`);
+          }
+        }
+
+        // Cost savings
+        if (rec.costInfo?.monthlySavings > 0) {
+          reasons.push(`✓ Savings: £${Math.round(rec.costInfo.monthlySavings)}/month compared to current setup`);
+        }
+
+        return reasons;
+      };
+
+      // Helper function: Generate tradeoffs for non-rank-1 products
+      const generateTradeoffs = (rec, rank1) => {
+        if (rec.ranking === 1 || !rank1) return [];
+
+        const tradeoffs = [];
+        const speed1 = rank1.product.speed || 0;
+        const speedThis = rec.product.speed || 0;
+        const cost1 = rank1.costInfo?.effectiveMonthlyCost || rank1.costInfo?.newTotalMonthlyCost || 0;
+        const costThis = rec.costInfo?.effectiveMonthlyCost || rec.costInfo?.newTotalMonthlyCost || 0;
+        const features1 = (rank1.product.features || []).length;
+        const featuresThis = (rec.product.features || []).length;
+
+        // Compare speed
+        if (speedThis < speed1) {
+          tradeoffs.push(`Slower than #1 (${speedThis} vs ${speed1} ppm)`);
+        } else if (speedThis > speed1) {
+          tradeoffs.push(`Faster than #1 (${speedThis} vs ${speed1} ppm)`);
+        }
+
+        // Compare cost
+        if (costThis < cost1) {
+          const savings = Math.round(cost1 - costThis);
+          tradeoffs.push(`Cheaper than #1 (saves £${savings}/month)`);
+        } else if (costThis > cost1) {
+          const extra = Math.round(costThis - cost1);
+          tradeoffs.push(`Higher monthly cost than #1 (+£${extra}/month)`);
+        }
+
+        // Compare features
+        if (featuresThis > features1) {
+          tradeoffs.push(`More features than #1 (${featuresThis} vs ${features1})`);
+        } else if (featuresThis < features1) {
+          tradeoffs.push(`Fewer features than #1 (${featuresThis} vs ${features1})`);
+        }
+
+        return tradeoffs;
+      };
+
+      // Helper function: Generate alternatives suggestion
+      const generateAlternatives = (recommendations, requirements) => {
+        if (!recommendations || recommendations.length === 0) return null;
+
+        const budget = requirements.maxBudget || 0;
+        if (budget === 0) return null;
+
+        // Check if there's a better option just outside budget
+        const rank1Cost = recommendations[0]?.costInfo?.effectiveMonthlyCost ||
+                         recommendations[0]?.costInfo?.newTotalMonthlyCost || 0;
+        const rank1Speed = recommendations[0]?.product.speed || 0;
+
+        // Look for faster/better options in remaining recommendations
+        for (const rec of recommendations.slice(1, 5)) {
+          const recCost = rec.costInfo?.effectiveMonthlyCost || rec.costInfo?.newTotalMonthlyCost || 0;
+          const recSpeed = rec.product.speed || 0;
+          const extraCost = Math.round(recCost - rank1Cost);
+
+          if (extraCost > 0 && extraCost <= 50 && recSpeed > rank1Speed) {
+            return `Consider increasing budget by £${extraCost}/month to get ${rec.product.manufacturer} ${rec.product.model} with ${recSpeed} ppm (vs ${rank1Speed} ppm)`;
+          }
+        }
+
+        return null;
+      };
+
+      // Add AI insights and metadata
+      const rank1 = topRecommendations[0];
+      const alternatives = generateAlternatives(topRecommendations, {
+        maxBudget: quoteRequest.budget?.maxLeasePrice || 0,
+        monthlyVolume: quoteRequest.monthlyVolume,
+        minSpeed: minSpeed,
+        essentialFeatures: essentialFeatures
+      });
+
+      const finalRecommendations = topRecommendations.map(rec => {
+        const requirementsForHelper = {
+          minSpeed: minSpeed,
+          essentialFeatures: essentialFeatures,
+          monthlyVolume: quoteRequest.monthlyVolume,
+          maxBudget: quoteRequest.budget?.maxLeasePrice || 0
+        };
+
+        return {
+          ...rec,
+          whyRecommended: generateWhyRecommended(rec, requirementsForHelper),
+          tradeoffs: rec.ranking > 1 ? generateTradeoffs(rec, rank1) : [],
+          aiInsights: {
+            volumeMatch: `${Math.round((rec.suitability.volumeScore || 0) * 100)}%`,
+            speedSuitability: `${Math.round((rec.suitability.speedScore || 0) * 100)}%`,
+            featureMatch: `${Math.round((rec.suitability.featureScore || 0) * 100)}%`,
+            overallCompatibility: `${Math.round(rec.overallScore * 100)}%`,
+            estimatedROI: (rec.costInfo.annualSavings || 0) > 0 ?
+              `£${rec.costInfo.annualSavings} annual savings` :
+              `£${Math.abs(rec.costInfo.annualSavings || 0)} annual increase`,
+            recommendation: rec.ranking === 1 ? 'Recommended' :
+                           rec.ranking === 2 ? 'Good Alternative' :
+                           'Consideration Option'
+          },
+          metadata: {
+            generatedAt: new Date(),
+            userId,
+            preferenceProfile: preferenceProfile.summary,
+            scoringWeights: { ...this.scoringWeights },
+            alternatives: alternatives // Add alternatives at top level
+          }
+        };
+      });
       // **FIXED: CREATE ACTUAL QUOTE DOCUMENTS WITH COMPLETE SCHEMA**
       const createdQuotes = [];
       
