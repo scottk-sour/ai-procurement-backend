@@ -1237,7 +1237,10 @@ class AIRecommendationEngine {
                 leaseCost: Math.round(leaseCost * 100) / 100,
                 serviceCost: Math.round(serviceCost * 100) / 100,
                 totalMonthlyCost: Math.round(totalMonthlyCost * 100) / 100
-              }
+              },
+              // Add TCO fields
+              tco3Year: recommendation.costInfo?.tco3Year || 0,
+              tco5Year: recommendation.costInfo?.tco5Year || 0
             },
             
             // REQUIRED: matchScore - **FIXED WITH BREAKDOWN**
@@ -1269,7 +1272,12 @@ class AIRecommendationEngine {
               explanation: recommendation.explanation,
               aiInsights: recommendation.aiInsights,
               suitabilityScore: recommendation.suitability.score,
-              warning: recommendation.warning
+              warning: recommendation.warning,
+              whyRecommended: recommendation.whyRecommended || [],
+              tradeoffs: recommendation.tradeoffs || []
+            },
+            metadata: {
+              alternatives: alternatives
             },
             createdAt: new Date()
           });
