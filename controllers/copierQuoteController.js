@@ -21,32 +21,46 @@ export const submitCopierQuoteRequest = async (req, res) => {
       ...data,
       invoices: invoicePaths,
       userId: data.userId,
-      status: 'Pending'
+      status: 'pending'
     });
 
     await copierRequest.save();
 
     // Generate vendor recommendations using the AI engine
-    const matchedVendors = await AIRecommendationEngine.generateRecommendations(
+    const result = await AIRecommendationEngine.generateRecommendations(
       copierRequest,
       data.userId,
       invoicePaths
     );
 
-    copierRequest.matchedVendors = (matchedVendors || []).map(vendor => ({
-      vendorId: vendor.vendorId || vendor._id,
-      score: vendor.score
+    // Extract recommendations and quotes from the result object
+    const recommendations = result.recommendations || [];
+    const quotes = result.quotes || [];
+
+    copierRequest.matchedVendors = recommendations.map(rec => ({
+      vendorId: rec.product?.vendorId?._id || rec.product?.vendorId,
+      score: rec.overallScore
     }));
 
-    copierRequest.status = 'Matched';
+    copierRequest.status = 'matched';
     await copierRequest.save();
 
-    await notifyMatchedVendors(matchedVendors, copierRequest);
+    await notifyMatchedVendors(recommendations, copierRequest);
 
     return res.status(201).json({
       message: '✅ Copier quotation request submitted successfully.',
       requestId: copierRequest._id,
-      matchedVendors
+      matchedVendors: recommendations,
+      quotes: quotes.map(q => ({
+        id: q._id,
+        ranking: q.ranking,
+        manufacturer: q.productSummary?.manufacturer,
+        model: q.productSummary?.model,
+        matchScore: q.matchScore?.total,
+        confidence: q.matchScore?.confidence,
+        costs: q.costs?.monthlyCosts
+      })),
+      summary: result.summary
     });
   } catch (error) {
     console.error('❌ Failed to submit copier quotation request:', error);
@@ -72,23 +86,38 @@ export const getMatchedVendors = async (req, res) => {
     }
 
     if (!quoteRequest.matchedVendors || quoteRequest.matchedVendors.length === 0) {
-      const matchedVendors = await AIRecommendationEngine.generateRecommendations(
+      const result = await AIRecommendationEngine.generateRecommendations(
         quoteRequest,
         quoteRequest.userId,
         quoteRequest.invoices || []
       );
 
-      quoteRequest.matchedVendors = (matchedVendors || []).map(vendor => ({
-        vendorId: vendor.vendorId || vendor._id,
-        score: vendor.score
+      const recommendations = result.recommendations || [];
+      const quotes = result.quotes || [];
+
+      quoteRequest.matchedVendors = recommendations.map(rec => ({
+        vendorId: rec.product?.vendorId?._id || rec.product?.vendorId,
+        score: rec.overallScore
       }));
 
-      quoteRequest.status = 'Matched';
+      quoteRequest.status = 'matched';
       await quoteRequest.save();
 
-      await notifyMatchedVendors(matchedVendors, quoteRequest);
+      await notifyMatchedVendors(recommendations, quoteRequest);
 
-      return res.status(200).json({ matchedVendors });
+      return res.status(200).json({
+        matchedVendors: recommendations,
+        quotes: quotes.map(q => ({
+          id: q._id,
+          ranking: q.ranking,
+          manufacturer: q.productSummary?.manufacturer,
+          model: q.productSummary?.model,
+          matchScore: q.matchScore?.total,
+          confidence: q.matchScore?.confidence,
+          costs: q.costs?.monthlyCosts
+        })),
+        summary: result.summary
+      });
     }
 
     const vendorIds = quoteRequest.matchedVendors.map(s => s.vendorId);
