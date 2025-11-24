@@ -750,12 +750,42 @@ class AIRecommendationEngine {
       // Sort suitable products by overall score
       suitableProducts.sort((a, b) => b.overallScore - a.overallScore);
 
+      // Helper function: Select products with vendor diversity
+      const selectDiverseProducts = (products, maxCount = 3) => {
+        if (products.length === 0) return [];
+
+        const selected = [];
+        const usedVendors = new Set();
+        const remaining = [];
+
+        // First pass: Take top product from each unique vendor
+        for (const product of products) {
+          const vendorId = product.vendor?._id?.toString() || product.vendor?.toString();
+
+          if (!usedVendors.has(vendorId) && selected.length < maxCount) {
+            selected.push(product);
+            usedVendors.add(vendorId);
+          } else {
+            remaining.push(product);
+          }
+        }
+
+        // Second pass: Fill remaining slots if we have fewer than maxCount
+        if (selected.length < maxCount) {
+          const spotsLeft = maxCount - selected.length;
+          selected.push(...remaining.slice(0, spotsLeft));
+        }
+
+        return selected;
+      };
+
       // Generate final recommendations
       let topRecommendations = [];
-      
+
       if (suitableProducts.length >= 3) {
-        // We have enough suitable products
-        topRecommendations = suitableProducts.slice(0, 3).map((product, index) => ({
+        // We have enough suitable products - apply vendor diversity
+        const diverseProducts = selectDiverseProducts(suitableProducts, 3);
+        topRecommendations = diverseProducts.map((product, index) => ({
           ...product,
           ranking: index + 1,
           confidence: this.getConfidenceLevel(product.overallScore),
@@ -765,9 +795,35 @@ class AIRecommendationEngine {
       } else if (suitableProducts.length > 0) {
         // Some suitable products, fill with best unsuitable ones
         const additionalNeeded = 3 - suitableProducts.length;
-        const bestUnsuitable = unsuitableProducts
-          .sort((a, b) => b.suitability.score - a.suitability.score)
-          .slice(0, additionalNeeded);
+
+        // Track vendors already used by suitable products
+        const usedVendors = new Set(
+          suitableProducts.map(p => p.vendor?._id?.toString() || p.vendor?.toString())
+        );
+
+        // Sort unsuitable products and apply vendor diversity
+        const sortedUnsuitable = unsuitableProducts
+          .sort((a, b) => b.suitability.score - a.suitability.score);
+
+        // Select diverse unsuitable products, avoiding already-used vendors
+        const diverseUnsuitable = [];
+        const remainingUnsuitable = [];
+
+        for (const product of sortedUnsuitable) {
+          const vendorId = product.vendor?._id?.toString() || product.vendor?.toString();
+          if (!usedVendors.has(vendorId) && diverseUnsuitable.length < additionalNeeded) {
+            diverseUnsuitable.push(product);
+            usedVendors.add(vendorId);
+          } else {
+            remainingUnsuitable.push(product);
+          }
+        }
+
+        // Fill remaining slots if needed
+        if (diverseUnsuitable.length < additionalNeeded) {
+          const spotsLeft = additionalNeeded - diverseUnsuitable.length;
+          diverseUnsuitable.push(...remainingUnsuitable.slice(0, spotsLeft));
+        }
 
         topRecommendations = [
           ...suitableProducts.map((product, index) => ({
@@ -777,7 +833,7 @@ class AIRecommendationEngine {
             explanation: this.generateExplanation(product, 'suitable', preferenceProfile),
             recommendation: this.generateRecommendationText(product, index + 1, userVolume)
           })),
-          ...bestUnsuitable.map((product, index) => ({
+          ...diverseUnsuitable.map((product, index) => ({
             ...product,
             ranking: suitableProducts.length + index + 1,
             confidence: 'Low',
@@ -789,10 +845,10 @@ class AIRecommendationEngine {
       } else {
         // No suitable products found
         logger.warn('No suitable products found, returning best available with warnings');
-        topRecommendations = unsuitableProducts
-          .sort((a, b) => b.suitability.score - a.suitability.score)
-          .slice(0, 3)
-          .map((product, index) => ({
+        const sortedUnsuitable = unsuitableProducts
+          .sort((a, b) => b.suitability.score - a.suitability.score);
+        const diverseUnsuitable = selectDiverseProducts(sortedUnsuitable, 3);
+        topRecommendations = diverseUnsuitable.map((product, index) => ({
             ...product,
             ranking: index + 1,
             confidence: 'Low',
