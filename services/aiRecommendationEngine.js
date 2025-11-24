@@ -715,18 +715,15 @@ class AIRecommendationEngine {
       // HARD FILTER 2: Duty cycle (80% threshold)
       const userMonthlyVolume = userVolume;
       if (userMonthlyVolume > 0) {
-        queryFilter.$or = queryFilter.$or || [];
-        // Include products where duty cycle is not set OR user volume < 80% of duty cycle
+        // User volume should be <= 80% of product's maxVolume to avoid over-utilization
         queryFilter.$and = queryFilter.$and || [];
         queryFilter.$and.push({
           $or: [
-            { recommendedMonthlyVolume: { $exists: false } },
-            { dutyVolume: { $exists: false } },
-            { recommendedMonthlyVolume: { $gte: userMonthlyVolume / 0.8 } },
-            { dutyVolume: { $gte: userMonthlyVolume / 0.8 } }
+            { maxVolume: { $exists: false } },
+            { maxVolume: { $gte: userMonthlyVolume / 0.8 } }
           ]
         });
-        logger.info(`Hard filter: User volume ${userMonthlyVolume}, requiring duty cycle >= ${Math.ceil(userMonthlyVolume / 0.8)}`);
+        logger.info(`Hard filter: User volume ${userMonthlyVolume}, requiring maxVolume >= ${Math.ceil(userMonthlyVolume / 0.8)}`);
       }
 
       // HARD FILTER 3: Paper size support - filter for primary and additional sizes
@@ -1030,7 +1027,7 @@ class AIRecommendationEngine {
         const speed = rec.product.speed || 0;
         const minSpeed = requirements.minSpeed || 0;
         const userVol = requirements.monthlyVolume?.total || 0;
-        const productVol = rec.product.recommendedMonthlyVolume || rec.product.maxVolume || 0;
+        const productVol = rec.product.maxVolume || 0;
         const budget = requirements.maxBudget || 0;
         const monthlyCost = rec.costInfo?.effectiveMonthlyCost || rec.costInfo?.newTotalMonthlyCost || 0;
 
