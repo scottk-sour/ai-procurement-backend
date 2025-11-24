@@ -368,10 +368,33 @@ class AIRecommendationEngine {
 
       // Calculate new costs (enhanced with proper CPC handling)
       const newMonthlyLease = (quarterlyLease || 300) / 3;
-      const newMonoCPC = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
-      const newColourCPC = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
+      let newMonoCPC = (product.costs?.cpcRates?.A4Mono || product.A4MonoCPC || 1.0) / 100;
+      let newColourCPC = (product.costs?.cpcRates?.A4Colour || product.A4ColourCPC || 4.0) / 100;
+
+      // VALIDATION: Check CPC rates for unusual values
+      if (newMonoCPC < 0.003 || newMonoCPC > 0.02) {
+        logger.warn(`⚠️ Unusual mono CPC rate for ${product.manufacturer} ${product.model}: ${newMonoCPC * 100}p`);
+      }
+      if (newColourCPC < 0.02 || newColourCPC > 0.15) {
+        logger.warn(`⚠️ Unusual colour CPC rate for ${product.manufacturer} ${product.model}: ${newColourCPC * 100}p`);
+      }
+
       const newMonthlyCPC = (monthlyMonoVolume * newMonoCPC) + (monthlyColourVolume * newColourCPC);
-      const newServiceCost = (product.service?.quarterlyService || 150) / 3;
+      let newServiceCost = (product.service?.quarterlyService || 150) / 3;
+
+      // SERVICE LEVEL PRICING: Apply uplifts based on requirements
+      const serviceLevel = quoteRequest.requirements?.serviceLevel;
+      const responseTime = quoteRequest.requirements?.responseTime;
+
+      if (serviceLevel === 'Premium') {
+        newServiceCost *= 1.15; // 15% uplift for Premium service
+        logger.info(`Applied Premium service level uplift: +15%`);
+      }
+      if (responseTime === '4hr') {
+        newServiceCost *= 1.10; // Additional 10% uplift for 4-hour response
+        logger.info(`Applied 4-hour response time uplift: +10%`);
+      }
+
       const newTotalMonthlyCost = newMonthlyLease + newMonthlyCPC + newServiceCost;
 
       // Calculate current costs (from quote request)
@@ -382,10 +405,24 @@ class AIRecommendationEngine {
       const currentServiceCost = 50; // Estimated
       const currentTotalMonthlyCost = currentMonthlyLease + currentMonthlyCPC + currentServiceCost;
 
+      // BUYOUT COST HANDLING: Factor in existing contract buyout
+      const buyoutRequired = quoteRequest.currentSetup?.buyoutRequired || false;
+      const buyoutCost = quoteRequest.currentSetup?.buyoutCost || 0;
+      let effectiveMonthlyCostWithBuyout = newTotalMonthlyCost;
+
+      if (buyoutRequired && buyoutCost > 0) {
+        // Spread buyout cost across the lease term (or first year)
+        const leaseTerm = quoteRequest.budget?.preferredTerm === '36 months' ? 36 :
+                         quoteRequest.budget?.preferredTerm === '48 months' ? 48 : 60;
+        const monthlyBuyoutCost = buyoutCost / Math.min(leaseTerm, 12); // Spread over first year max
+        effectiveMonthlyCostWithBuyout += monthlyBuyoutCost;
+        logger.info(`Added buyout cost: £${buyoutCost} spread over ${Math.min(leaseTerm, 12)} months = £${monthlyBuyoutCost.toFixed(2)}/month`);
+      }
+
       // Calculate savings
-      const monthlySavings = currentTotalMonthlyCost - newTotalMonthlyCost;
+      const monthlySavings = currentTotalMonthlyCost - effectiveMonthlyCostWithBuyout;
       const annualSavings = monthlySavings * 12;
-      const savingsPercentage = currentTotalMonthlyCost > 0 ? 
+      const savingsPercentage = currentTotalMonthlyCost > 0 ?
         (monthlySavings / currentTotalMonthlyCost) * 100 : 0;
 
       // Cost efficiency score (0-1)
@@ -396,20 +433,30 @@ class AIRecommendationEngine {
         efficiencyScore = Math.max(0.0, 0.5 - (Math.abs(savingsPercentage) / 100));
       }
 
+      // TCO CALCULATIONS: 3-year and 5-year total cost of ownership
+      const installationCost = product.costs?.installation || 0;
+      const tco3Year = (newTotalMonthlyCost * 36) + installationCost + (buyoutRequired ? buyoutCost : 0);
+      const tco5Year = (newTotalMonthlyCost * 60) + installationCost + (buyoutRequired ? buyoutCost : 0);
+
       return {
         currentTotalMonthlyCost: Math.round(currentTotalMonthlyCost * 100) / 100,
         newTotalMonthlyCost: Math.round(newTotalMonthlyCost * 100) / 100,
+        effectiveMonthlyCost: Math.round(effectiveMonthlyCostWithBuyout * 100) / 100,
         monthlySavings: Math.round(monthlySavings * 100) / 100,
         annualSavings: Math.round(annualSavings * 100) / 100,
         savingsPercentage: Math.round(savingsPercentage * 100) / 100,
         efficiencyScore,
+        tco3Year: Math.round(tco3Year * 100) / 100,
+        tco5Year: Math.round(tco5Year * 100) / 100,
+        buyoutCost: buyoutRequired ? buyoutCost : 0,
         breakdown: {
           currentLease: Math.round(currentMonthlyLease * 100) / 100,
           newLease: Math.round(newMonthlyLease * 100) / 100,
           currentCPC: Math.round(currentMonthlyCPC * 100) / 100,
           newCPC: Math.round(newMonthlyCPC * 100) / 100,
           currentService: Math.round(currentServiceCost * 100) / 100,
-          newService: Math.round(newServiceCost * 100) / 100
+          newService: Math.round(newServiceCost * 100) / 100,
+          installationCost: Math.round(installationCost * 100) / 100
         }
       };
     } catch (error) {
@@ -600,13 +647,30 @@ class AIRecommendationEngine {
       const requiredPaperSize = quoteRequest.paperRequirements?.primarySize || 
                               quoteRequest.type || 'A4';
       
-      logger.info('Generating recommendations', { 
-        userVolume, 
-        volumeRange, 
+      logger.info('Generating recommendations', {
+        userVolume,
+        volumeRange,
         requiredPaperSize,
         userId,
         quoteRequestId: quoteRequest._id
       });
+
+      // Helper function: Normalize feature names for matching
+      const normalizeFeature = (feature) => {
+        if (!feature || typeof feature !== 'string') return '';
+        let normalized = feature.toLowerCase().trim();
+        // Map common variants
+        const variants = {
+          'e-mail': 'email',
+          'wi-fi': 'wifi',
+          'duplex printing': 'duplex',
+          'double-sided': 'duplex',
+          'two-sided': 'duplex',
+          'scan to email': 'email',
+          'network': 'ethernet'
+        };
+        return variants[normalized] || normalized;
+      };
 
       // Get user preferences with dynamic scoring weights
       const preferenceProfile = await this.getUserPreferenceProfile(userId);
@@ -634,35 +698,56 @@ class AIRecommendationEngine {
         // Volume filtering with tolerance
         $or: [
           { volumeRange }, // Exact match preferred
-          { 
-            maxVolume: { $gte: userVolume * 0.6 }, 
-            minVolume: { $lte: userVolume * 2.5 } 
+          {
+            maxVolume: { $gte: userVolume * 0.6 },
+            minVolume: { $lte: userVolume * 2.5 }
           }
         ]
       };
 
-      // Paper size support - filter for primary and additional sizes
-      if (requiredPaperSize) {
-        queryFilter.$and = [
-          {
-            $or: [
-              { 'paperSizes.supported': requiredPaperSize },
-              { 'paperSizes.primary': requiredPaperSize },
-              { paperSizes: { $exists: false } } // Include products without explicit paper size data
-            ]
-          }
-        ];
+      // HARD FILTER 1: Minimum speed requirement
+      const minSpeed = quoteRequest.requirements?.minSpeed;
+      if (minSpeed && minSpeed > 0) {
+        queryFilter.speed = { $gte: minSpeed };
+        logger.info(`Hard filter: Minimum speed ${minSpeed} ppm`);
       }
 
-      // Check for additional paper sizes (e.g., A3 when primary is A4)
+      // HARD FILTER 2: Duty cycle (80% threshold)
+      const userMonthlyVolume = userVolume;
+      if (userMonthlyVolume > 0) {
+        queryFilter.$or = queryFilter.$or || [];
+        // Include products where duty cycle is not set OR user volume < 80% of duty cycle
+        queryFilter.$and = queryFilter.$and || [];
+        queryFilter.$and.push({
+          $or: [
+            { recommendedMonthlyVolume: { $exists: false } },
+            { dutyVolume: { $exists: false } },
+            { recommendedMonthlyVolume: { $gte: userMonthlyVolume / 0.8 } },
+            { dutyVolume: { $gte: userMonthlyVolume / 0.8 } }
+          ]
+        });
+        logger.info(`Hard filter: User volume ${userMonthlyVolume}, requiring duty cycle >= ${Math.ceil(userMonthlyVolume / 0.8)}`);
+      }
+
+      // HARD FILTER 3: Paper size support - filter for primary and additional sizes
+      if (requiredPaperSize) {
+        if (!queryFilter.$and) queryFilter.$and = [];
+        queryFilter.$and.push({
+          $or: [
+            { 'paperSizes.supported': requiredPaperSize },
+            { 'paperSizes.primary': requiredPaperSize },
+            { paperSizes: { $exists: false } } // Include products without explicit paper size data
+          ]
+        });
+        logger.info(`Hard filter: Primary paper size ${requiredPaperSize}`);
+      }
+
+      // HARD FILTER 4: Additional paper sizes (e.g., A3 when primary is A4)
       const additionalSizes = quoteRequest.paperRequirements?.additionalSizes || [];
       if (additionalSizes && additionalSizes.length > 0) {
-        logger.info(`Additional paper sizes required: ${additionalSizes.join(', ')}`);
+        logger.info(`Hard filter: Additional paper sizes required: ${additionalSizes.join(', ')}`);
 
-        // Initialize $and if not already set
-        if (!queryFilter.$and) {
-          queryFilter.$and = [];
-        }
+        if (!queryFilter.$and) queryFilter.$and = [];
 
         // For each additional size, ensure the product supports it
         additionalSizes.forEach(size => {
@@ -672,26 +757,59 @@ class AIRecommendationEngine {
               { 'paperSizes.primary': size }
             ]
           });
-          logger.info(`Added filter: Product must support ${size}`);
         });
       }
 
-      // Add feature requirements if specified
-      const requiredFeatures = quoteRequest.requiredFunctions || quoteRequest.required_functions;
-      if (requiredFeatures && requiredFeatures.length > 0) {
-        if (!queryFilter.$and) queryFilter.$and = [];
-        queryFilter.$and.push({ features: { $in: requiredFeatures } });
+      // HARD FILTER 5: Essential features (with normalization)
+      const essentialFeatures = quoteRequest.requirements?.essentialFeatures || [];
+      if (essentialFeatures && essentialFeatures.length > 0) {
+        logger.info(`Hard filter: Essential features required: ${essentialFeatures.join(', ')}`);
+
+        // Normalize the essential features
+        const normalizedEssential = essentialFeatures.map(f => normalizeFeature(f)).filter(f => f);
+
+        if (normalizedEssential.length > 0) {
+          // Note: We'll do post-query filtering for features since MongoDB can't normalize on the fly
+          // Store for later use
+          queryFilter._essentialFeatures = normalizedEssential;
+          logger.info(`Normalized essential features: ${normalizedEssential.join(', ')}`);
+        }
       }
 
-      const vendorProducts = await VendorProduct.find(queryFilter)
+      // Store essential features for post-query filtering
+      const normalizedEssential = queryFilter._essentialFeatures;
+      delete queryFilter._essentialFeatures; // Remove from query filter
+
+      let vendorProducts = await VendorProduct.find(queryFilter)
         .populate('vendorId', 'name company performance')
         .sort({ 'costs.totalMachineCost': 1 })
         .lean();
-      
-      logger.info(`Found ${vendorProducts.length} potentially suitable products`);
+
+      logger.info(`📊 After database query: ${vendorProducts.length} products`);
+
+      // POST-QUERY FILTER: Essential features with normalization
+      if (normalizedEssential && normalizedEssential.length > 0) {
+        const beforeCount = vendorProducts.length;
+        vendorProducts = vendorProducts.filter(product => {
+          const productFeatures = (product.features || []).map(f => normalizeFeature(f));
+          const hasAllFeatures = normalizedEssential.every(reqFeature =>
+            productFeatures.includes(reqFeature)
+          );
+          return hasAllFeatures;
+        });
+        logger.info(`📊 After essential features filter: ${vendorProducts.length} products (removed ${beforeCount - vendorProducts.length}, required: [${normalizedEssential.join(', ')}])`);
+      }
 
       if (vendorProducts.length === 0) {
-        logger.warn('No products found matching basic criteria', queryFilter);
+        logger.warn('❌ No products found matching all hard filters');
+        logger.warn('Filter criteria:', {
+          availability: true,
+          volumeRange,
+          minSpeed: minSpeed || 'none',
+          essentialFeatures: essentialFeatures || [],
+          paperSizes: { primary: requiredPaperSize, additional: additionalSizes },
+          maxDutyCycle: userMonthlyVolume ? Math.ceil(userMonthlyVolume / 0.8) : 'none'
+        });
         return this.generateFallbackRecommendations(quoteRequest, userVolume);
       }
 
