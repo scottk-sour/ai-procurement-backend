@@ -752,19 +752,28 @@ class AIRecommendationEngine {
 
       // Helper function: Extract vendor ID as string
       const getVendorId = (product) => {
-        if (!product || !product.vendor) return 'unknown';
+        if (!product) return 'unknown';
 
-        // If vendor has an _id field (populated vendor object)
-        if (product.vendor._id) {
-          return typeof product.vendor._id === 'string'
-            ? product.vendor._id
-            : String(product.vendor._id);
+        // Check vendorId field (direct field in product)
+        if (product.vendorId) {
+          return typeof product.vendorId === 'string'
+            ? product.vendorId
+            : String(product.vendorId);
         }
 
-        // If vendor is directly the ID (ObjectId or string)
-        return typeof product.vendor === 'string'
-          ? product.vendor
-          : String(product.vendor);
+        // Fallback: Check vendor field (populated vendor object)
+        if (product.vendor) {
+          if (product.vendor._id) {
+            return typeof product.vendor._id === 'string'
+              ? product.vendor._id
+              : String(product.vendor._id);
+          }
+          return typeof product.vendor === 'string'
+            ? product.vendor
+            : String(product.vendor);
+        }
+
+        return 'unknown';
       };
 
       // Helper function: Select products with vendor diversity
