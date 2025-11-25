@@ -123,7 +123,7 @@ class AIEngineAdapter {
           logger.warn('Skipping recommendation with missing manufacturer/model/vendorId');
           continue;
         }
-        const vendorKey = product.vendorId + '-' + product.manufacturer.trim() + '-' + product.model.trim();
+        const vendorKey = product.vendorId.toString();
         const currentScore = rec.overallScore || rec.suitability?.score || 0;
         if (!vendorMap.has(vendorKey)) {
           vendorMap.set(vendorKey, {
