@@ -409,14 +409,18 @@ class AIRecommendationEngine {
       const buyoutRequired = quoteRequest.currentSetup?.buyoutRequired || false;
       const buyoutCost = quoteRequest.currentSetup?.buyoutCost || 0;
       let effectiveMonthlyCostWithBuyout = newTotalMonthlyCost;
+      let buyoutSpreadMonths = 0;
+      let monthlyBuyoutCost = 0;
 
       if (buyoutRequired && buyoutCost > 0) {
-        // Spread buyout cost across the lease term (or first year)
+        // HYBRID APPROACH: Spread over 2 years or full term, whichever is shorter
+        // This balances affordability with reasonable payoff period
         const leaseTerm = quoteRequest.budget?.preferredTerm === '36 months' ? 36 :
                          quoteRequest.budget?.preferredTerm === '48 months' ? 48 : 60;
-        const monthlyBuyoutCost = buyoutCost / Math.min(leaseTerm, 12); // Spread over first year max
+        buyoutSpreadMonths = Math.min(leaseTerm, 24); // Max 24 months
+        monthlyBuyoutCost = buyoutCost / buyoutSpreadMonths;
         effectiveMonthlyCostWithBuyout += monthlyBuyoutCost;
-        logger.info(`Added buyout cost: £${buyoutCost} spread over ${Math.min(leaseTerm, 12)} months = £${monthlyBuyoutCost.toFixed(2)}/month`);
+        logger.info(`Added buyout cost: £${buyoutCost} spread over ${buyoutSpreadMonths} months = £${monthlyBuyoutCost.toFixed(2)}/month`);
       }
 
       // Calculate savings
@@ -448,7 +452,11 @@ class AIRecommendationEngine {
         efficiencyScore,
         tco3Year: Math.round(tco3Year * 100) / 100,
         tco5Year: Math.round(tco5Year * 100) / 100,
+        // Buyout/Settlement information
+        buyoutRequired,
         buyoutCost: buyoutRequired ? buyoutCost : 0,
+        buyoutSpreadMonths: buyoutRequired ? buyoutSpreadMonths : 0,
+        monthlyBuyoutCost: buyoutRequired ? Math.round(monthlyBuyoutCost * 100) / 100 : 0,
         breakdown: {
           currentLease: Math.round(currentMonthlyLease * 100) / 100,
           newLease: Math.round(newMonthlyLease * 100) / 100,
@@ -864,7 +872,10 @@ class AIRecommendationEngine {
             termMonths: requestedTerm,
             overallScore,
             preferenceBonus,
-            
+            // Lease calculation details for Quote document
+            leaseMargin: margin,
+            totalLeaseValue: Math.round(totalLeaseValue * 100) / 100,
+
             // Legacy compatibility fields
             vendorName: product.manufacturer,
             model: product.model,
@@ -1240,7 +1251,36 @@ class AIRecommendationEngine {
               },
               // Add TCO fields
               tco3Year: recommendation.costInfo?.tco3Year || 0,
-              tco5Year: recommendation.costInfo?.tco5Year || 0
+              tco5Year: recommendation.costInfo?.tco5Year || 0,
+              // Settlement/Buyout from existing contract
+              currentSetup: {
+                buyoutRequired: recommendation.costInfo?.buyoutRequired || false,
+                buyoutCost: recommendation.costInfo?.buyoutCost || 0,
+                buyoutMonthlyImpact: recommendation.costInfo?.monthlyBuyoutCost || 0,
+                buyoutSpreadMonths: recommendation.costInfo?.buyoutSpreadMonths || 0
+              },
+              // Effective monthly cost including buyout
+              effectiveMonthlyCost: {
+                baseMonthly: recommendation.costInfo?.newTotalMonthlyCost || totalMonthlyCost,
+                withBuyout: recommendation.costInfo?.effectiveMonthlyCost || totalMonthlyCost,
+                buyoutPortion: recommendation.costInfo?.monthlyBuyoutCost || 0
+              },
+              // Lease calculation breakdown for transparency
+              leaseCalculation: {
+                machineCostBreakdown: {
+                  baseMachineCost: recommendation.product.costs?.machineCost || 0,
+                  installation: recommendation.product.costs?.installation || 0,
+                  profitMargin: recommendation.product.costs?.profitMargin || 0,
+                  total: recommendation.product.costs?.totalMachineCost || 0
+                },
+                leaseMargin: recommendation.leaseMargin || 0.55,
+                leaseMarginPercent: `${Math.round((recommendation.leaseMargin || 0.55) * 100)}%`,
+                totalLeaseValue: recommendation.totalLeaseValue || 0,
+                term: recommendation.termMonths || 60,
+                quarterlyPayment: recommendation.quarterlyLease || 0,
+                monthlyPayment: Math.round((recommendation.quarterlyLease || 0) / 3 * 100) / 100,
+                calculationFormula: `(£${recommendation.product.costs?.totalMachineCost || 0} × ${(1 + (recommendation.leaseMargin || 0.55)).toFixed(2)}) ÷ ${recommendation.termMonths || 60} months × 3 quarters`
+              }
             },
             
             // REQUIRED: matchScore - **FIXED WITH BREAKDOWN**

@@ -75,6 +75,35 @@ const quoteSchema = new mongoose.Schema({
         percentageSaved: { type: Number },
       },
     },
+    // Settlement/Buyout from existing contract
+    currentSetup: {
+      buyoutRequired: { type: Boolean, default: false },
+      buyoutCost: { type: Number, default: 0 },
+      buyoutMonthlyImpact: { type: Number, default: 0 },
+      buyoutSpreadMonths: { type: Number, default: 0 },
+    },
+    // Effective monthly cost including buyout
+    effectiveMonthlyCost: {
+      baseMonthly: { type: Number },
+      withBuyout: { type: Number },
+      buyoutPortion: { type: Number },
+    },
+    // Lease calculation breakdown for transparency
+    leaseCalculation: {
+      machineCostBreakdown: {
+        baseMachineCost: { type: Number },
+        installation: { type: Number },
+        profitMargin: { type: Number },
+        total: { type: Number },
+      },
+      leaseMargin: { type: Number },
+      leaseMarginPercent: { type: String },
+      totalLeaseValue: { type: Number },
+      term: { type: Number },
+      quarterlyPayment: { type: Number },
+      monthlyPayment: { type: Number },
+      calculationFormula: { type: String },
+    },
   },
   leaseOptions: [{
     term: { type: Number, required: true },
