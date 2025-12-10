@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -22,6 +22,7 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
+import { suggestCopiers } from './controllers/aiController.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -37,24 +38,13 @@ app.set('trust proxy', 1);
 // 🔒 SECURITY HEADERS
 // ========================================
 app.use((req, res, next) => {
-  // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-
-  // Enforce HTTPS
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-
-  // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
-
-  // XSS Protection (for older browsers)
   res.setHeader('X-XSS-Protection', '1; mode=block');
-
-  // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-
   next();
 });
-// ========================================
 
 // Request ID middleware (for tracing)
 app.use(requestId);
@@ -175,19 +165,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 if (config.isDevelopment()) {
   app.use(morgan('dev'));
 } else {
-  // Production: use combined format and stream to Winston
   app.use(morgan('combined', { stream: logger.stream }));
 }
 
 // Request/Response logging
 app.use((req, res, next) => {
   logger.logRequest(req);
-
-  // Log response on finish
   res.on('finish', () => {
     logger.logResponse(req, res);
   });
-
   next();
 });
 
@@ -212,54 +198,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
 
-// AI Copier Suggestions Route
-app.post('/api/suggest-copiers', async (req, res) => {
-  try {
-    logger.info('🤖 AI Copier suggestion request:', req.body);
-    const suggestions = [];
-    const { monthlyVolume, industryType, colour, min_speed, serviceType } = req.body;
-    if (monthlyVolume?.total > 5000) {
-      suggestions.push("High-volume multifunction device recommended for your print requirements");
-    }
-    if (monthlyVolume?.total < 1000) {
-      suggestions.push("Compact desktop printer suitable for low-volume needs");
-    }
-    if (industryType === 'Legal' || industryType === 'Healthcare') {
-      suggestions.push("Security-focused models with encryption and audit trails recommended");
-    }
-    if (industryType === 'Manufacturing' || industryType === 'Government') {
-      suggestions.push("Industrial-grade devices with enhanced durability features");
-    }
-    if (colour === 'Color') {
-      suggestions.push("Color multifunction printer with professional-grade output quality");
-    }
-    if (colour === 'Black & White') {
-      suggestions.push("High-efficiency monochrome printer optimized for text documents");
-    }
-    if (min_speed && min_speed > 30) {
-      suggestions.push("High-speed printing capability (30+ PPM) recommended for productivity");
-    }
-    if (serviceType === 'Production') {
-      suggestions.push("Production-level equipment with finishing capabilities recommended");
-    }
-    if (suggestions.length === 0 && (monthlyVolume?.total || industryType)) {
-      suggestions.push("Multifunction device with print, scan, and copy capabilities");
-      suggestions.push("Energy-efficient model to reduce operational costs");
-    }
-    res.json({
-      suggestions,
-      message: suggestions.length > 0 ? "AI suggestions generated based on your requirements" : "Please provide more details for personalized recommendations",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error('❌ Error in suggest-copiers:', error);
-    res.status(500).json({
-      error: 'Failed to generate suggestions',
-      suggestions: [],
-      message: 'AI suggestion service temporarily unavailable',
-    });
-  }
-});
+// AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
+app.post('/api/suggest-copiers', suggestCopiers);
 
 // Test endpoint
 app.get('/api/test-dashboard', async (req, res) => {
@@ -304,10 +244,10 @@ app.get('/api/test-dashboard', async (req, res) => {
         { category: 'Vendor Upload', path: '/api/vendors/upload', method: 'POST', status: 'Available', description: 'Upload vendor products' },
         { category: 'Vendor Upload', path: '/api/vendors/products', method: 'GET', status: 'Available', description: 'Get vendor products' },
         { category: 'Vendor Upload', path: '/api/vendors/upload-template', method: 'GET', status: 'Available', description: 'Download upload template' },
-        { category: 'AI Features', path: '/api/suggest-copiers', method: 'POST', status: 'Available', description: 'Get AI-powered copier suggestions' },
+        { category: 'AI Features', path: '/api/suggest-copiers', method: 'POST', status: 'Available', description: 'Get AI-powered copier suggestions with real vendor quotes' },
       ],
       totalEndpoints: 21,
-      message: '✅ All dashboard endpoints are now available including AI suggestions!',
+      message: '✅ All dashboard endpoints are now available including AI suggestions with real vendor data!',
       note: 'Your TendorAI platform is ready for production use with AI-powered recommendations.',
       dashboardFeatures: [
         '✅ User authentication and authorization',
@@ -320,7 +260,7 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ Multi-role support (Users, Vendors, Admins)',
         '✅ Dynamic CORS for Vercel deployments',
         '✅ Vendor product upload system',
-        '✅ AI-powered copier suggestions',
+        '✅ AI-powered copier suggestions with real pricing',
       ],
     };
     res.json(testResults);
@@ -362,15 +302,15 @@ app.get('/', (req, res) => {
       'Notification system',
       'Dynamic CORS for Vercel deployments',
       'Vendor product upload system',
-      'AI copier suggestions',
+      'AI copier suggestions with real vendor quotes',
     ],
   });
 });
 
-// 404 Not Found handler - must be placed after all routes
+// 404 Not Found handler
 app.use(notFoundHandler);
 
-// Centralized error handler - must be placed after notFoundHandler
+// Centralized error handler
 app.use(errorHandler);
 
 // Start server
