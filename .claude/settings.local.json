@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(nul)",
+      "Bash(node --check:*)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(npm start)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(git push)",
+      "Bash(Select-String -Path \"C:\\Users\\pmeth\\Projects\\ai-procurement-backend\\index.js\" -Pattern \"allowedHeaders\" -Context 0,10)",
+      "Bash(node check-vendor-products.mjs:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
