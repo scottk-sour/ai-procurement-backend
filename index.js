@@ -19,6 +19,7 @@ import vendorUploadRoutes from './routes/vendorUploadRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
+import publicVendorRoutes from './routes/publicVendorRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -197,6 +198,7 @@ app.use('/api/submit-request', submitRequestRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', copierQuoteRoutes);
+app.use('/api/public', publicVendorRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
 app.post('/api/suggest-copiers', suggestCopiers);
@@ -245,8 +247,11 @@ app.get('/api/test-dashboard', async (req, res) => {
         { category: 'Vendor Upload', path: '/api/vendors/products', method: 'GET', status: 'Available', description: 'Get vendor products' },
         { category: 'Vendor Upload', path: '/api/vendors/upload-template', method: 'GET', status: 'Available', description: 'Download upload template' },
         { category: 'AI Features', path: '/api/suggest-copiers', method: 'POST', status: 'Available', description: 'Get AI-powered copier suggestions with real vendor quotes' },
+        { category: 'Public Directory', path: '/api/public/vendors', method: 'GET', status: 'Available', description: 'Public vendor directory (no auth)' },
+        { category: 'Public Directory', path: '/api/public/categories', method: 'GET', status: 'Available', description: 'List service categories' },
+        { category: 'Public Directory', path: '/api/public/locations', method: 'GET', status: 'Available', description: 'List coverage locations' },
       ],
-      totalEndpoints: 21,
+      totalEndpoints: 24,
       message: '✅ All dashboard endpoints are now available including AI suggestions with real vendor data!',
       note: 'Your TendorAI platform is ready for production use with AI-powered recommendations.',
       dashboardFeatures: [
@@ -261,6 +266,7 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ Dynamic CORS for Vercel deployments',
         '✅ Vendor product upload system',
         '✅ AI-powered copier suggestions with real pricing',
+        '✅ Public vendor directory API (GEO optimised)',
       ],
     };
     res.json(testResults);
@@ -303,6 +309,7 @@ app.get('/', (req, res) => {
       'Dynamic CORS for Vercel deployments',
       'Vendor product upload system',
       'AI copier suggestions with real vendor quotes',
+      'Public vendor directory API',
     ],
   });
 });
@@ -361,6 +368,7 @@ async function startServer() {
       logger.info(`🏥 Health check: /`);
       logger.info(`📤 Vendor upload: /api/vendors/upload`);
       logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
+      logger.info(`🌐 Public API: /api/public/vendors`);
       logger.info(`🎉 TendorAI Backend is ready!`);
     });
     
