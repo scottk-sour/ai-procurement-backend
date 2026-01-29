@@ -3,7 +3,7 @@
 
 import express from 'express';
 import Stripe from 'stripe';
-import { authMiddleware, vendorAuth } from '../middleware/authMiddleware.js';
+import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
 import { logger } from '../logger.js';
 import { sendSubscriptionConfirmation } from '../utils/emailService.js';
@@ -69,10 +69,10 @@ router.get('/plans', (req, res) => {
 });
 
 // Create checkout session for subscription
-router.post('/create-checkout-session', authMiddleware, vendorAuth, async (req, res) => {
+router.post('/create-checkout-session', vendorAuth, async (req, res) => {
   try {
     const { planId } = req.body;
-    const vendor = await Vendor.findById(req.vendor._id);
+    const vendor = await Vendor.findById(req.vendor.id);
 
     if (!vendor) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
@@ -140,9 +140,9 @@ router.post('/create-checkout-session', authMiddleware, vendorAuth, async (req, 
 });
 
 // Create customer portal session (for managing subscriptions)
-router.post('/create-portal-session', authMiddleware, vendorAuth, async (req, res) => {
+router.post('/create-portal-session', vendorAuth, async (req, res) => {
   try {
-    const vendor = await Vendor.findById(req.vendor._id);
+    const vendor = await Vendor.findById(req.vendor.id);
 
     if (!vendor || !vendor.stripeCustomerId) {
       return res.status(400).json({
@@ -164,9 +164,9 @@ router.post('/create-portal-session', authMiddleware, vendorAuth, async (req, re
 });
 
 // Get current subscription status
-router.get('/subscription-status', authMiddleware, vendorAuth, async (req, res) => {
+router.get('/subscription-status', vendorAuth, async (req, res) => {
   try {
-    const vendor = await Vendor.findById(req.vendor._id);
+    const vendor = await Vendor.findById(req.vendor.id);
 
     if (!vendor) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
