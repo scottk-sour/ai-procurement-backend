@@ -26,7 +26,7 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import publicVendorRoutes from './routes/publicVendorRoutes.js';
 import vendorAnalyticsRoutes from './routes/vendorAnalyticsRoutes.js';
 import sitemapRoutes from './routes/sitemap.js';
-import stripeRoutes from './routes/stripeRoutes.js';
+// import stripeRoutes from './routes/stripeRoutes.js'; // TODO: Re-enable when Stripe env vars are configured
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -221,22 +221,12 @@ app.use((error, req, res, next) => {
 app.use(cookieParser());
 
 // Stripe webhook needs raw body, so handle it before JSON parsing
-app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+// TODO: Re-enable when Stripe env vars are configured
+// app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
-// JSON body parsing for all other routes
-app.use((req, res, next) => {
-  if (req.originalUrl === '/api/stripe/webhook') {
-    return next();
-  }
-  express.json({ limit: '10mb' })(req, res, next);
-});
-
-app.use((req, res, next) => {
-  if (req.originalUrl === '/api/stripe/webhook') {
-    return next();
-  }
-  express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
-});
+// JSON body parsing for all routes
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // HTTP request logging with Morgan + Winston
 if (config.isDevelopment()) {
@@ -276,7 +266,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', quoteLimiter, copierQuoteRoutes);
 app.use('/api/public', publicVendorRoutes);
 app.use('/api/analytics', vendorAnalyticsRoutes);
-app.use('/api/stripe', stripeRoutes);
+// app.use('/api/stripe', stripeRoutes); // TODO: Re-enable when Stripe env vars are configured
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
