@@ -172,6 +172,20 @@ const vendorSchema = new mongoose.Schema({
     }]
   },
 
+  // Stripe & Subscription
+  stripeCustomerId: { type: String, sparse: true },
+  tier: {
+    type: String,
+    default: 'free',
+    enum: ['free', 'basic', 'managed', 'enterprise']
+  },
+  subscriptionStatus: {
+    type: String,
+    default: 'none',
+    enum: ['none', 'active', 'past_due', 'cancelled', 'trialing']
+  },
+  subscriptionEndDate: { type: Date },
+
   // Platform Integration
   integration: {
     apiKey: { type: String, unique: true, sparse: true },
