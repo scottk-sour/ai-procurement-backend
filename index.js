@@ -3,6 +3,10 @@ import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import morgan from 'morgan';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,16 +40,68 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ========================================
-// 🔒 SECURITY HEADERS
+// 🔒 SECURITY MIDDLEWARE
 // ========================================
-app.use((req, res, next) => {
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
+
+// Helmet - Set security HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'", "https://www.tendorai.com", "https://tendorai.com", "https://ai-procurement-backend-q35u.onrender.com"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Needed for cross-origin resources
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
+
+// Rate limiting - General API (100 requests per 15 minutes)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: {
+    error: 'Too many requests',
+    message: 'You have exceeded the 100 requests in 15 minutes limit. Please try again later.',
+    retryAfter: '15 minutes',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/' || req.path === '/api/test-dashboard';
+  },
 });
+
+// Strict rate limiting for quote endpoints (10 requests per hour)
+const quoteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  message: {
+    error: 'Quote request limit exceeded',
+    message: 'You have exceeded the 10 quote requests per hour limit. Please try again later.',
+    retryAfter: '1 hour',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general rate limiter to all routes
+app.use('/api/', generalLimiter);
+
+// Data sanitization against NoSQL injection
+app.use(mongoSanitize({
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    logger.warn(`🛡️ NoSQL Injection attempt blocked - Key: ${key}, IP: ${req.ip}`);
+  },
+}));
+
+// Data sanitization against XSS
+app.use(xss());
 
 // Request ID middleware (for tracing)
 app.use(requestId);
@@ -159,6 +215,7 @@ app.use((error, req, res, next) => {
 });
 
 // Middleware
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -193,15 +250,15 @@ app.use('/api/vendors/listings', vendorListingsRoutes);
 app.use('/api/vendor-products', vendorProductRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/quotes', quoteRoutes);
+app.use('/api/quotes', quoteLimiter, quoteRoutes);
 app.use('/api/submit-request', submitRequestRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/copier-quotes', copierQuoteRoutes);
+app.use('/api/copier-quotes', quoteLimiter, copierQuoteRoutes);
 app.use('/api/public', publicVendorRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
-app.post('/api/suggest-copiers', suggestCopiers);
+app.post('/api/suggest-copiers', quoteLimiter, suggestCopiers);
 
 // Test endpoint
 app.get('/api/test-dashboard', async (req, res) => {
@@ -267,6 +324,10 @@ app.get('/api/test-dashboard', async (req, res) => {
         '✅ Vendor product upload system',
         '✅ AI-powered copier suggestions with real pricing',
         '✅ Public vendor directory API (GEO optimised)',
+        '✅ Helmet security headers',
+        '✅ Rate limiting (100/15min general, 10/hour quotes)',
+        '✅ NoSQL injection protection',
+        '✅ XSS protection',
       ],
     };
     res.json(testResults);
@@ -310,6 +371,10 @@ app.get('/', (req, res) => {
       'Vendor product upload system',
       'AI copier suggestions with real vendor quotes',
       'Public vendor directory API',
+      'Helmet security headers',
+      'Rate limiting protection',
+      'NoSQL injection prevention',
+      'XSS attack prevention',
     ],
   });
 });
