@@ -5,6 +5,8 @@
 import express from 'express';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
+import { lookupPostcode } from '../utils/postcodeUtils.js';
+import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
 const router = express.Router();
 
@@ -19,28 +21,32 @@ const TIER_PRIORITY = {
 /**
  * GET /api/public/vendors
  * List vendors with optional filters
- * 
+ *
  * Query params:
  * - category: Filter by service (CCTV, Photocopiers, IT, Telecoms, Security)
  * - location: Filter by coverage area
+ * - postcode: UK postcode for distance-based search
+ * - distance: Max distance in km (requires postcode, default 50)
  * - brand: Filter by brand/accreditation
  * - page: Page number (default 1)
  * - limit: Results per page (default 20, max 100)
- * 
+ *
  * Returns: Array of vendors sorted by tier (paid first) then rating
  */
 router.get('/vendors', async (req, res) => {
   try {
-    const { 
-      category, 
-      location, 
-      brand, 
-      page = 1, 
-      limit = 20 
+    const {
+      category,
+      location,
+      postcode,
+      distance = 50,
+      brand,
+      page = 1,
+      limit = 20
     } = req.query;
 
     // Build query - only active vendors
-    const query = { 
+    const query = {
       'account.status': 'active',
       'account.verificationStatus': 'verified'
     };
@@ -50,14 +56,35 @@ router.get('/vendors', async (req, res) => {
       query.services = { $regex: new RegExp(category, 'i') };
     }
 
-    // Filter by coverage location
-    if (location) {
+    // Filter by coverage location (text-based)
+    if (location && !postcode) {
       query['location.coverage'] = { $regex: new RegExp(location, 'i') };
     }
 
     // Filter by brand/accreditation
     if (brand) {
       query['businessProfile.accreditations'] = { $regex: new RegExp(brand, 'i') };
+    }
+
+    // Postcode-based distance filtering
+    let searchCoords = null;
+    let maxDistanceKm = parseInt(distance) || 50;
+
+    if (postcode) {
+      const postcodeData = await lookupPostcode(postcode);
+      if (postcodeData.valid) {
+        searchCoords = {
+          latitude: postcodeData.latitude,
+          longitude: postcodeData.longitude,
+          postcode: postcodeData.postcode,
+          region: postcodeData.region
+        };
+
+        // Use bounding box for initial DB query (more efficient)
+        const bbox = getBoundingBox(searchCoords.latitude, searchCoords.longitude, maxDistanceKm);
+        query['location.coordinates.latitude'] = { $gte: bbox.minLat, $lte: bbox.maxLat };
+        query['location.coordinates.longitude'] = { $gte: bbox.minLon, $lte: bbox.maxLon };
+      }
     }
 
     // Pagination
@@ -78,6 +105,7 @@ router.get('/vendors', async (req, res) => {
         'location.region': 1,
         'location.coverage': 1,
         'location.postcode': 1,
+        'location.coordinates': 1,
         'performance.rating': 1,
         'performance.reviewCount': 1,
         'performance.responseTime': 1,
@@ -95,14 +123,43 @@ router.get('/vendors', async (req, res) => {
       })
       .lean();
 
-    // Sort by priority score (tier + boost + rating)
-    const sortedVendors = vendors
-      .map(v => ({
-        ...v,
-        _priorityScore: calculatePriorityScore(v)
-      }))
-      .sort((a, b) => b._priorityScore - a._priorityScore)
-      .slice(skip, skip + limitNum);
+    // Calculate distance and filter if postcode search
+    let processedVendors = vendors.map(v => ({
+      ...v,
+      _priorityScore: calculatePriorityScore(v)
+    }));
+
+    if (searchCoords) {
+      // Calculate precise distance for each vendor
+      processedVendors = processedVendors.map(v => {
+        const vendorLat = v.location?.coordinates?.latitude;
+        const vendorLon = v.location?.coordinates?.longitude;
+
+        if (vendorLat && vendorLon) {
+          const dist = calculateDistance(
+            searchCoords.latitude,
+            searchCoords.longitude,
+            vendorLat,
+            vendorLon
+          );
+          return { ...v, _distance: Math.round(dist * 10) / 10 };
+        }
+        return { ...v, _distance: null };
+      })
+      // Filter by actual distance (bounding box is approximate)
+      .filter(v => v._distance === null || v._distance <= maxDistanceKm)
+      // Sort by distance first, then priority
+      .sort((a, b) => {
+        if (a._distance === null) return 1;
+        if (b._distance === null) return -1;
+        return a._distance - b._distance;
+      });
+    } else {
+      // Sort by priority score (tier + boost + rating)
+      processedVendors.sort((a, b) => b._priorityScore - a._priorityScore);
+    }
+
+    const sortedVendors = processedVendors.slice(skip, skip + limitNum);
 
     // Format response - hide pricing flag, add showPricing boolean
     const publicVendors = sortedVendors.map(v => {
@@ -121,6 +178,10 @@ router.get('/vendors', async (req, res) => {
           coverage: v.location?.coverage || [],
           postcode: v.location?.postcode
         },
+        distance: v._distance ? {
+          km: v._distance,
+          formatted: formatDistance(v._distance)
+        } : null,
         rating: v.performance?.rating || 0,
         reviewCount: v.performance?.reviewCount || 0,
         responseTime: v.performance?.responseTime,
@@ -147,15 +208,20 @@ router.get('/vendors', async (req, res) => {
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: total,
-          totalPages: Math.ceil(total / limitNum),
-          hasMore: skip + limitNum < total
+          total: searchCoords ? processedVendors.length : total,
+          totalPages: Math.ceil((searchCoords ? processedVendors.length : total) / limitNum),
+          hasMore: skip + limitNum < (searchCoords ? processedVendors.length : total)
         },
         filters: {
           category: category || null,
           location: location || null,
           brand: brand || null
-        }
+        },
+        search: searchCoords ? {
+          postcode: searchCoords.postcode,
+          maxDistance: maxDistanceKm,
+          region: searchCoords.region
+        } : null
       }
     });
 

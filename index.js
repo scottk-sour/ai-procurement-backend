@@ -24,6 +24,8 @@ import aiRoutes from './routes/aiRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import publicVendorRoutes from './routes/publicVendorRoutes.js';
+import vendorAnalyticsRoutes from './routes/vendorAnalyticsRoutes.js';
+import sitemapRoutes from './routes/sitemap.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -256,6 +258,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', quoteLimiter, copierQuoteRoutes);
 app.use('/api/public', publicVendorRoutes);
+app.use('/api/analytics', vendorAnalyticsRoutes);
+app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
 app.post('/api/suggest-copiers', quoteLimiter, suggestCopiers);
