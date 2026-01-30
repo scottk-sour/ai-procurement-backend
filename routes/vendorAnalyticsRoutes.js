@@ -4,7 +4,7 @@
 import express from 'express';
 import VendorAnalytics from '../models/VendorAnalytics.js';
 import { vendorAuth } from '../middleware/vendorAuth.js';
-import { v4 as uuidv4 } from 'crypto';
+import crypto from 'crypto';
 
 const router = express.Router();
 
