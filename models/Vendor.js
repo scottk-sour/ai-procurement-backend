@@ -76,21 +76,33 @@ const vendorSchema = new mongoose.Schema({
 
   // Business Details
   businessProfile: {
-    yearsInBusiness: { 
-      type: Number, 
+    yearsInBusiness: {
+      type: Number,
       min: 0,
       max: 100,
-      default: 0 
+      default: 0
     },
     companySize: {
       type: String,
-      enum: ['Startup', 'Small (1-50)', 'Medium (51-200)', 'Large (201-1000)', 'Enterprise (1000+)'],
+      enum: ['Startup', 'Small (1-50)', 'Medium (51-200)', 'Large (201-1000)', 'Enterprise (1000+)', ''],
       default: 'Small (1-50)'
     },
+    numEmployees: { type: Number, default: 0 },
     specializations: [{ type: String, trim: true }], // ["Healthcare", "Education", "Finance"]
     certifications: [{ type: String, trim: true }], // ["ISO9001", "ISO27001"]
     accreditations: [{ type: String, trim: true }], // ["Konica Minolta Authorized", "Canon Partner"]
+    description: { type: String, trim: true, default: '' },
   },
+
+  // Brand partnerships
+  brands: [{ type: String, trim: true }], // ["Canon", "Konica Minolta", "Ricoh"]
+
+  // Postcode areas for geographic matching (extracted from postcode)
+  postcodeAreas: [{
+    type: String,
+    uppercase: true,
+    trim: true
+  }],
 
   // Performance & Reputation
   performance: {
@@ -317,6 +329,8 @@ vendorSchema.index({ 'account.status': 1, 'account.verificationStatus': 1 });
 vendorSchema.index({ 'performance.rating': -1 });
 vendorSchema.index({ 'integration.apiKey': 1 }, { sparse: true });
 vendorSchema.index({ listingStatus: 1 });
+vendorSchema.index({ postcodeAreas: 1 });
+vendorSchema.index({ brands: 1 });
 
 const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;

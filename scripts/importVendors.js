@@ -1,11 +1,11 @@
 /**
- * Vendor Import Script
- * Imports vendors from Excel spreadsheet as "unclaimed" listings
+ * Vendor Import Script for TendorAI
+ * Imports vendors from Excel spreadsheet (TendorAI-All-Vendors-Combined.xlsx)
  *
  * Usage:
- *   node scripts/importVendors.js ./path/to/vendors.xlsx
- *   node scripts/importVendors.js ./path/to/vendors.xlsx --dry-run
- *   node scripts/importVendors.js ./path/to/vendors.xlsx --limit=50
+ *   node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --dry-run
+ *   node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --limit=10
+ *   node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx
  */
 
 import mongoose from 'mongoose';
@@ -15,16 +15,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 
-// Load environment variables
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Import Vendor model - adjust path as needed
 import Vendor from '../models/Vendor.js';
 
-// Service category mapping - normalize various inputs to our standard categories
+// Valid services enum
+const VALID_SERVICES = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software'];
+
+// Service name normalization
 const SERVICE_MAP = {
   'photocopiers': 'Photocopiers',
   'photocopier': 'Photocopiers',
@@ -36,9 +37,10 @@ const SERVICE_MAP = {
   'telecommunications': 'Telecoms',
   'phone systems': 'Telecoms',
   'voip': 'Telecoms',
+  'phones': 'Telecoms',
   'cctv': 'CCTV',
-  'security': 'CCTV',
-  'security systems': 'CCTV',
+  'security': 'Security',
+  'security systems': 'Security',
   'cameras': 'CCTV',
   'surveillance': 'CCTV',
   'it': 'IT',
@@ -47,47 +49,101 @@ const SERVICE_MAP = {
   'managed it': 'IT',
   'technology': 'IT',
   'computers': 'IT',
-  'networking': 'IT'
+  'networking': 'IT',
+  'software': 'Software'
 };
 
-const VALID_SERVICES = ['Photocopiers', 'Telecoms', 'CCTV', 'IT'];
-
 /**
- * Normalize service names to our standard categories
+ * Extract postcode area from full postcode
+ * "NP4 0HZ" → ["NP4"], "CF10 1AA" → ["CF10"], "BS1 4DJ" → ["BS1"]
  */
-function normalizeServices(servicesStr) {
-  if (!servicesStr) return ['Photocopiers']; // Default service
+function extractPostcodeAreas(postcode) {
+  if (!postcode) return [];
+  const clean = postcode.toString().toUpperCase().trim();
 
-  const services = servicesStr.toString().split(/[,;|]/).map(s => s.trim().toLowerCase());
-  const normalized = new Set();
+  // Match outward code: 1-2 letters + 1-2 digits (e.g., NP4, CF10, BS1, SW1A)
+  const match = clean.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)/);
+  if (match) return [match[1]];
 
-  for (const service of services) {
-    const mapped = SERVICE_MAP[service];
-    if (mapped && VALID_SERVICES.includes(mapped)) {
-      normalized.add(mapped);
-    }
-  }
-
-  // Return at least one service
-  return normalized.size > 0 ? Array.from(normalized) : ['Photocopiers'];
+  // Fallback: just the letter prefix
+  const letters = clean.match(/^([A-Z]{1,2})/);
+  return letters ? [letters[1]] : [];
 }
 
 /**
- * Parse coverage areas from various formats
+ * Parse comma-separated string into array
  */
-function parseCoverageAreas(coverageStr) {
-  if (!coverageStr) return [];
-  return coverageStr.toString()
+function parseArray(str) {
+  if (!str) return [];
+  return str.toString()
     .split(/[,;|]/)
     .map(s => s.trim())
     .filter(s => s.length > 0);
 }
 
 /**
- * Generate a random temporary password for unclaimed vendors
+ * Normalize service names to valid enum values
  */
-function generateTempPassword() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+function normalizeServices(servicesStr) {
+  if (!servicesStr) return ['Photocopiers']; // Default
+
+  const services = parseArray(servicesStr);
+  const normalized = new Set();
+
+  for (const service of services) {
+    const lower = service.toLowerCase();
+    const mapped = SERVICE_MAP[lower];
+    if (mapped && VALID_SERVICES.includes(mapped)) {
+      normalized.add(mapped);
+    } else if (VALID_SERVICES.includes(service)) {
+      normalized.add(service);
+    }
+  }
+
+  return normalized.size > 0 ? Array.from(normalized) : ['Photocopiers'];
+}
+
+/**
+ * Parse number safely
+ */
+function parseNumber(val) {
+  if (!val) return 0;
+  const num = parseInt(val.toString().replace(/[^0-9]/g, ''), 10);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
+ * Clean phone number
+ */
+function cleanPhone(phone) {
+  if (!phone) return '';
+  let cleaned = phone.toString().replace(/[^0-9+]/g, '');
+  // Add UK prefix if missing
+  if (cleaned.length === 10 && !cleaned.startsWith('+')) {
+    cleaned = '+44' + cleaned;
+  } else if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    cleaned = '+44' + cleaned.substring(1);
+  }
+  return cleaned;
+}
+
+/**
+ * Clean website URL
+ */
+function cleanWebsite(url) {
+  if (!url) return '';
+  let cleaned = url.toString().trim();
+  if (cleaned && !cleaned.startsWith('http')) {
+    cleaned = 'https://' + cleaned;
+  }
+  return cleaned;
+}
+
+/**
+ * Generate random password for unclaimed vendors
+ */
+function generatePassword() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
   let password = '';
   for (let i = 0; i < 16; i++) {
     password += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -96,19 +152,31 @@ function generateTempPassword() {
 }
 
 /**
+ * Map company size to enum value
+ */
+function mapCompanySize(size) {
+  if (!size) return 'Small (1-50)';
+  const lower = size.toString().toLowerCase();
+  if (lower.includes('startup')) return 'Startup';
+  if (lower.includes('small')) return 'Small (1-50)';
+  if (lower.includes('medium')) return 'Medium (51-200)';
+  if (lower.includes('large')) return 'Large (201-1000)';
+  if (lower.includes('enterprise')) return 'Enterprise (1000+)';
+  return 'Small (1-50)';
+}
+
+/**
  * Main import function
  */
 async function importVendors(filePath, options = {}) {
-  const { dryRun = false, limit = null, skipExisting = true } = options;
+  const { dryRun = false, limit = null } = options;
 
-  console.log('\n========================================');
-  console.log('     TENDORAI VENDOR IMPORT SCRIPT');
-  console.log('========================================\n');
+  console.log('\n╔════════════════════════════════════════╗');
+  console.log('║     TENDORAI VENDOR IMPORT SCRIPT      ║');
+  console.log('╚════════════════════════════════════════╝\n');
   console.log(`File: ${filePath}`);
-  console.log(`Dry run: ${dryRun}`);
-  console.log(`Limit: ${limit || 'No limit'}`);
-  console.log(`Skip existing: ${skipExisting}`);
-  console.log('');
+  console.log(`Mode: ${dryRun ? 'DRY RUN (no changes)' : 'LIVE IMPORT'}`);
+  console.log(`Limit: ${limit || 'All rows'}\n`);
 
   // Connect to MongoDB
   const mongoUri = process.env.MONGODB_URI;
@@ -118,166 +186,221 @@ async function importVendors(filePath, options = {}) {
 
   console.log('Connecting to MongoDB...');
   await mongoose.connect(mongoUri);
-  console.log('Connected to MongoDB\n');
+  console.log('✓ Connected to MongoDB\n');
 
   // Read Excel file
   console.log('Reading Excel file...');
   const workbook = XLSX.readFile(filePath);
 
-  // Try common sheet names
-  const sheetNames = ['Vendors', 'vendors', 'Sheet1', 'Data', workbook.SheetNames[0]];
+  // Find the right sheet
+  const sheetNames = ['Vendors', 'vendors', 'Sheet1', 'Data', 'All Vendors'];
   let sheet = null;
-  let usedSheetName = '';
+  let usedSheet = '';
 
   for (const name of sheetNames) {
     if (workbook.Sheets[name]) {
       sheet = workbook.Sheets[name];
-      usedSheetName = name;
+      usedSheet = name;
       break;
     }
   }
 
   if (!sheet) {
-    throw new Error(`Could not find a valid sheet. Available: ${workbook.SheetNames.join(', ')}`);
+    sheet = workbook.Sheets[workbook.SheetNames[0]];
+    usedSheet = workbook.SheetNames[0];
   }
 
-  console.log(`Using sheet: "${usedSheetName}"`);
+  console.log(`✓ Using sheet: "${usedSheet}"`);
 
-  // Convert to JSON with headers from first row
-  const rawData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-  console.log(`Found ${rawData.length} rows in spreadsheet\n`);
+  // Convert to array of arrays
+  const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
 
-  if (rawData.length === 0) {
+  // Spreadsheet structure:
+  // Row 0: Tier labels (FREE TIER / PAID TIER)
+  // Row 1: Column headers
+  // Row 2+: Data
+
+  // Skip first 2 rows (tier labels and headers)
+  const dataRows = rawData.slice(2);
+  console.log(`✓ Found ${dataRows.length} data rows\n`);
+
+  if (dataRows.length === 0) {
     console.log('No data found in spreadsheet');
     await mongoose.disconnect();
     return { total: 0, imported: 0, skipped: 0, errors: [] };
   }
 
-  // Show sample of first row to help with mapping
-  console.log('Sample row columns:', Object.keys(rawData[0]).slice(0, 10).join(', '));
-  console.log('');
+  // Column mapping (0-indexed based on spreadsheet)
+  // FREE TIER: 0-11
+  // PAID TIER: 12-21
+  const COL = {
+    COMPANY_NAME: 0,
+    EMAIL: 1,
+    PHONE: 2,
+    WEBSITE: 3,
+    ADDRESS: 4,
+    CITY: 5,
+    POSTCODE: 6,
+    REGION: 7,
+    COVERAGE: 8,
+    SERVICES: 9,
+    BRANDS: 10,
+    YEARS_IN_BUSINESS: 11,
+    COMPANY_SIZE: 12,
+    NUM_EMPLOYEES: 13,
+    CERTIFICATIONS: 14,
+    ACCREDITATIONS: 15,
+    SPECIALIZATIONS: 16,
+    RESPONSE_TIME: 17,
+    SUPPORT_HOURS: 18,
+    PAYMENT_TERMS: 19,
+    MIN_CONTRACT_VALUE: 20,
+    DESCRIPTION: 21
+  };
 
   const results = {
     total: 0,
     imported: 0,
     skipped: 0,
-    updated: 0,
     errors: []
   };
 
-  const rowsToProcess = limit ? rawData.slice(0, limit) : rawData;
+  const rowsToProcess = limit ? dataRows.slice(0, limit) : dataRows;
 
-  for (const row of rowsToProcess) {
+  for (let i = 0; i < rowsToProcess.length; i++) {
+    const row = rowsToProcess[i];
     results.total++;
 
-    // Try to extract company name from various possible column names
-    const companyName = row.company_name || row.companyName || row.Company ||
-                       row['Company Name'] || row.name || row.Name || '';
-    const email = row.email || row.Email || row['Email Address'] || '';
+    const companyName = (row[COL.COMPANY_NAME] || '').toString().trim();
+    const email = (row[COL.EMAIL] || '').toString().trim().toLowerCase();
 
     // Skip empty rows
-    if (!companyName || companyName.trim() === '') {
-      console.log(`[${results.total}] SKIP: Empty company name`);
+    if (!companyName) {
+      console.log(`[${i + 1}] SKIP: Empty company name`);
       results.skipped++;
       continue;
     }
 
-    // Check if vendor already exists
+    // Check for existing vendor
     const existing = await Vendor.findOne({
       $or: [
-        { company: companyName.trim() },
-        { email: email.trim().toLowerCase() }
-      ].filter(q => Object.values(q)[0]) // Remove empty queries
+        { company: companyName },
+        ...(email ? [{ email: email }] : [])
+      ]
     });
 
-    if (existing && skipExisting) {
-      console.log(`[${results.total}] SKIP: "${companyName}" (already exists)`);
+    if (existing) {
+      console.log(`[${i + 1}] SKIP: "${companyName}" already exists`);
       results.skipped++;
       continue;
     }
 
-    // Extract phone and clean it
-    let phone = row.phone || row.Phone || row['Phone Number'] || row.telephone || '';
-    phone = phone.toString().replace(/[^0-9+]/g, '');
-    if (phone && !phone.startsWith('+') && phone.length === 10) {
-      phone = '+44' + phone.substring(1);
-    } else if (phone && !phone.startsWith('+') && phone.length === 11) {
-      phone = '+44' + phone.substring(1);
-    }
+    // Generate temporary password
+    const tempPassword = generatePassword();
 
-    // Build vendor object
-    const tempPassword = generateTempPassword();
+    // Build vendor document
     const vendorData = {
-      name: companyName.trim(),
-      company: companyName.trim(),
-      email: email.trim().toLowerCase() || `unclaimed-${Date.now()}-${results.total}@tendorai.com`,
+      // Core fields
+      name: companyName,
+      company: companyName,
+      email: email || `unclaimed-${Date.now()}-${i}@tendorai.com`,
       password: tempPassword,
 
-      services: normalizeServices(row.services || row.Services || row.category || row.Category),
+      // Services
+      services: normalizeServices(row[COL.SERVICES]),
 
+      // Brands
+      brands: parseArray(row[COL.BRANDS]),
+
+      // Location
       location: {
-        address: row.address || row.Address || row['Street Address'] || '',
-        city: row.city || row.City || row.town || row.Town || '',
-        postcode: (row.postcode || row.Postcode || row['Post Code'] || row.zip || '').toString().toUpperCase(),
-        region: row.region || row.Region || row.county || row.County || '',
-        coverage: parseCoverageAreas(row.coverage || row.Coverage || row['Coverage Areas'] || row.areas)
+        address: (row[COL.ADDRESS] || '').toString().trim(),
+        city: (row[COL.CITY] || '').toString().trim(),
+        postcode: (row[COL.POSTCODE] || '').toString().trim().toUpperCase(),
+        region: (row[COL.REGION] || '').toString().trim(),
+        coverage: parseArray(row[COL.COVERAGE])
       },
 
+      // Postcode areas for matching
+      postcodeAreas: extractPostcodeAreas(row[COL.POSTCODE]),
+
+      // Contact info
       contactInfo: {
-        phone: phone,
-        website: row.website || row.Website || row.url || row.URL || ''
+        phone: cleanPhone(row[COL.PHONE]),
+        website: cleanWebsite(row[COL.WEBSITE])
       },
 
+      // Business profile
       businessProfile: {
-        yearsInBusiness: parseInt(row.years_in_business || row.yearsInBusiness || row['Years In Business'] || 0) || 0,
-        companySize: row.company_size || row.companySize || row['Company Size'] || 'Small (1-50)',
-        certifications: parseCoverageAreas(row.certifications || row.Certifications || ''),
-        accreditations: parseCoverageAreas(row.accreditations || row.Accreditations || row.brands || row.Brands || ''),
-        specializations: parseCoverageAreas(row.specializations || row.Specializations || '')
+        yearsInBusiness: parseNumber(row[COL.YEARS_IN_BUSINESS]),
+        companySize: mapCompanySize(row[COL.COMPANY_SIZE]),
+        numEmployees: parseNumber(row[COL.NUM_EMPLOYEES]),
+        certifications: parseArray(row[COL.CERTIFICATIONS]),
+        accreditations: parseArray(row[COL.ACCREDITATIONS]),
+        specializations: parseArray(row[COL.SPECIALIZATIONS]),
+        description: (row[COL.DESCRIPTION] || '').toString().trim()
       },
 
+      // Service capabilities
+      serviceCapabilities: {
+        responseTime: row[COL.RESPONSE_TIME] || 'Next day',
+        supportHours: row[COL.SUPPORT_HOURS] || '9-5'
+      },
+
+      // Commercial
+      commercial: {
+        paymentTerms: row[COL.PAYMENT_TERMS] || 'Net 30',
+        minimumOrderValue: parseNumber(row[COL.MIN_CONTRACT_VALUE])
+      },
+
+      // Account settings for imported vendors
       account: {
         status: 'pending',
         verificationStatus: 'unverified',
         tier: 'standard'
       },
 
+      // Subscription
       tier: 'free',
       subscriptionStatus: 'none',
 
-      // Import tracking fields
+      // Import tracking
       listingStatus: 'unclaimed',
       importedAt: new Date(),
       importSource: path.basename(filePath)
     };
 
     if (dryRun) {
-      console.log(`[${results.total}] DRY RUN: Would import "${companyName}" (${vendorData.location.city || 'No city'}, ${vendorData.services.join(', ')})`);
+      const services = vendorData.services.join(', ');
+      const city = vendorData.location.city || 'No city';
+      const postcodes = vendorData.postcodeAreas.join(', ') || 'No postcode';
+      console.log(`[${i + 1}] DRY RUN: "${companyName}" | ${city} | ${postcodes} | ${services}`);
       results.imported++;
     } else {
       try {
-        // Hash the password before saving
+        // Hash password
         const salt = await bcrypt.genSalt(12);
         vendorData.password = await bcrypt.hash(tempPassword, salt);
 
         const vendor = new Vendor(vendorData);
         await vendor.save();
-        console.log(`[${results.total}] IMPORTED: "${companyName}" (${vendorData.location.city || 'No city'})`);
+        console.log(`[${i + 1}] ✓ IMPORTED: "${companyName}" (${vendorData.location.city})`);
         results.imported++;
       } catch (error) {
-        console.error(`[${results.total}] ERROR: "${companyName}" - ${error.message}`);
+        console.error(`[${i + 1}] ✗ ERROR: "${companyName}" - ${error.message}`);
         results.errors.push({
-          row: results.total,
-          companyName,
+          row: i + 1,
+          company: companyName,
           error: error.message
         });
       }
     }
   }
 
-  console.log('\n========================================');
-  console.log('         IMPORT COMPLETE');
-  console.log('========================================');
+  // Summary
+  console.log('\n╔════════════════════════════════════════╗');
+  console.log('║           IMPORT COMPLETE              ║');
+  console.log('╚════════════════════════════════════════╝');
   console.log(`Total rows processed: ${results.total}`);
   console.log(`Successfully imported: ${results.imported}`);
   console.log(`Skipped (existing/empty): ${results.skipped}`);
@@ -286,11 +409,16 @@ async function importVendors(filePath, options = {}) {
   if (results.errors.length > 0) {
     console.log('\nErrors:');
     results.errors.slice(0, 10).forEach(e => {
-      console.log(`  Row ${e.row}: ${e.companyName} - ${e.error}`);
+      console.log(`  Row ${e.row}: ${e.company} - ${e.error}`);
     });
     if (results.errors.length > 10) {
-      console.log(`  ... and ${results.errors.length - 10} more errors`);
+      console.log(`  ... and ${results.errors.length - 10} more`);
     }
+  }
+
+  if (dryRun) {
+    console.log('\n⚠️  DRY RUN - No changes were made to the database');
+    console.log('   Run without --dry-run to actually import vendors');
   }
 
   console.log('\n');
@@ -298,33 +426,39 @@ async function importVendors(filePath, options = {}) {
   return results;
 }
 
-// Run if called directly
+// CLI handling
 const args = process.argv.slice(2);
-const filePath = args.find(a => !a.startsWith('--')) || './data/vendors.xlsx';
+const filePath = args.find(a => !a.startsWith('--'));
 const dryRun = args.includes('--dry-run');
 const limitArg = args.find(a => a.startsWith('--limit='));
 const limit = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
-if (!args.find(a => !a.startsWith('--'))) {
-  console.log('Usage: node scripts/importVendors.js <file.xlsx> [--dry-run] [--limit=N]');
+if (!filePath) {
+  console.log('Usage: node scripts/importVendors.js <file.xlsx> [options]');
   console.log('');
   console.log('Options:');
-  console.log('  --dry-run    Show what would be imported without saving');
-  console.log('  --limit=N    Only process first N rows');
+  console.log('  --dry-run     Preview import without saving');
+  console.log('  --limit=N     Only process first N rows');
   console.log('');
-  console.log('Expected Excel columns (flexible naming):');
-  console.log('  company_name, email, phone, website, address, city, postcode,');
-  console.log('  region, coverage, services, brands, years_in_business,');
-  console.log('  company_size, certifications, accreditations');
+  console.log('Example:');
+  console.log('  node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --dry-run');
+  console.log('  node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --limit=10');
+  console.log('');
+  console.log('Expected spreadsheet columns (22 total):');
+  console.log('  FREE TIER: company_name, email, phone, website, address, city,');
+  console.log('             postcode, region, coverage, services, brands, years_in_business');
+  console.log('  PAID TIER: company_size, num_employees, certifications, accreditations,');
+  console.log('             specializations, response_time, support_hours, payment_terms,');
+  console.log('             min_contract_value, description');
   process.exit(1);
 }
 
 importVendors(filePath, { dryRun, limit })
-  .then((results) => {
+  .then(results => {
     process.exit(results.errors.length > 0 ? 1 : 0);
   })
   .catch(err => {
-    console.error('\nImport failed:', err.message);
+    console.error('\n✗ Import failed:', err.message);
     process.exit(1);
   });
 
