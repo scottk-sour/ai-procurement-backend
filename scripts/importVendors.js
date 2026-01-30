@@ -113,17 +113,136 @@ function parseNumber(val) {
 }
 
 /**
- * Clean phone number
+ * Parse years in business - handles founding years and large numbers
+ */
+function parseYearsInBusiness(val) {
+  if (!val) return null;
+  const str = val.toString().trim();
+  let num = parseInt(str.replace(/[^0-9]/g, ''), 10);
+
+  if (isNaN(num)) return null;
+
+  // If it looks like a founding year (1900-2025), calculate years (cap at 100)
+  if (num > 1900 && num < 2030) {
+    const years = 2026 - num;
+    return Math.min(years, 100); // Cap at schema max
+  }
+
+  // If it's a very large number, try extracting first 4 digits as year
+  if (num > 100000) {
+    const yearStr = str.substring(0, 4);
+    const year = parseInt(yearStr, 10);
+    if (year > 1900 && year < 2030) {
+      const years = 2026 - year;
+      return Math.min(years, 100); // Cap at schema max
+    }
+    return null;
+  }
+
+  // If it's a reasonable number of years (0-100), use it directly
+  if (num >= 0 && num <= 100) {
+    return num;
+  }
+
+  return null;
+}
+
+/**
+ * Map response time to valid enum value
+ * Schema enum: ['4hr', '8hr', 'Next day', '48hr', '3-5 days']
+ */
+function mapResponseTime(val) {
+  if (!val) return null;
+  const lower = val.toString().toLowerCase().trim();
+
+  // Same day / 4 hours variations → '4hr'
+  if (lower.includes('same day') || lower.includes('same-day') ||
+      lower.includes('4 hour') || lower.includes('4-hour') || lower.includes('4hr') ||
+      lower.includes('minutes')) {
+    return '4hr';
+  }
+
+  // 8 hours variations → '8hr'
+  if (lower.includes('8 hour') || lower.includes('8-hour') || lower.includes('8hr')) {
+    return '8hr';
+  }
+
+  // Next day variations → 'Next day'
+  if (lower.includes('next day') || lower.includes('next-day') || lower.includes('nextday') ||
+      lower.includes('next business day') || lower.includes('1 day')) {
+    return 'Next day';
+  }
+
+  // 48 hours / 2 days → '48hr'
+  if (lower.includes('48') || lower.includes('2 day')) {
+    return '48hr';
+  }
+
+  // 3-5 days
+  if (lower.includes('3-5') || lower.includes('3 to 5') || lower.includes('week')) {
+    return '3-5 days';
+  }
+
+  return null;
+}
+
+/**
+ * Map support hours to valid enum value
+ * Schema enum: ['9-5', '8-6', '24/7', 'Extended hours']
+ */
+function mapSupportHours(val) {
+  if (!val) return null;
+  const lower = val.toString().toLowerCase().trim();
+
+  // 24/7 variations
+  if (lower.includes('24/7') || lower.includes('24-7') || lower.includes('24 7') ||
+      lower.includes('around the clock') || lower.includes('all hours')) {
+    return '24/7';
+  }
+
+  // Extended hours
+  if (lower.includes('extended') || lower.includes('8-8') || lower.includes('7am-7pm') ||
+      lower.includes('7-7') || lower.includes('6am') || lower.includes('10pm')) {
+    return 'Extended hours';
+  }
+
+  // 8-6 hours
+  if (lower.includes('8-6') || lower.includes('8:00-18') || lower.includes('8am-6pm')) {
+    return '8-6';
+  }
+
+  // Standard business hours (9-5 or similar) - most common, check last
+  if (lower.includes('9-5') || lower.includes('9:00') || lower.includes('9am') ||
+      lower.includes('8:30') || lower.includes('8-5') || lower.includes('8am') ||
+      lower.includes('business hours') || lower.includes('office hours') ||
+      lower.includes('mon-fri') || lower.includes('weekday')) {
+    return '9-5';
+  }
+
+  return null;
+}
+
+/**
+ * Clean phone number - lenient, returns empty string if invalid
  */
 function cleanPhone(phone) {
   if (!phone) return '';
+  // Remove all non-digit characters except +
   let cleaned = phone.toString().replace(/[^0-9+]/g, '');
-  // Add UK prefix if missing
+
+  // Handle UK numbers
   if (cleaned.length === 10 && !cleaned.startsWith('+')) {
     cleaned = '+44' + cleaned;
   } else if (cleaned.length === 11 && cleaned.startsWith('0')) {
     cleaned = '+44' + cleaned.substring(1);
   }
+
+  // Validate: must be 10-15 digits (with optional +)
+  const digitsOnly = cleaned.replace(/\+/g, '');
+  if (digitsOnly.length < 10 || digitsOnly.length > 15) {
+    return ''; // Invalid, return empty instead of failing
+  }
+
   return cleaned;
 }
 
@@ -178,15 +297,19 @@ async function importVendors(filePath, options = {}) {
   console.log(`Mode: ${dryRun ? 'DRY RUN (no changes)' : 'LIVE IMPORT'}`);
   console.log(`Limit: ${limit || 'All rows'}\n`);
 
-  // Connect to MongoDB
-  const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) {
-    throw new Error('MONGODB_URI environment variable not set');
-  }
+  // Connect to MongoDB (skip in dry-run mode)
+  if (!dryRun) {
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      throw new Error('MONGODB_URI environment variable not set');
+    }
 
-  console.log('Connecting to MongoDB...');
-  await mongoose.connect(mongoUri);
-  console.log('✓ Connected to MongoDB\n');
+    console.log('Connecting to MongoDB...');
+    await mongoose.connect(mongoUri);
+    console.log('✓ Connected to MongoDB\n');
+  } else {
+    console.log('⏭️  Skipping MongoDB connection (dry-run mode)\n');
+  }
 
   // Read Excel file
   console.log('Reading Excel file...');
@@ -281,18 +404,20 @@ async function importVendors(filePath, options = {}) {
       continue;
     }
 
-    // Check for existing vendor
-    const existing = await Vendor.findOne({
-      $or: [
-        { company: companyName },
-        ...(email ? [{ email: email }] : [])
-      ]
-    });
+    // Check for existing vendor (skip in dry-run mode)
+    if (!dryRun) {
+      const existing = await Vendor.findOne({
+        $or: [
+          { company: companyName },
+          ...(email ? [{ email: email }] : [])
+        ]
+      });
 
-    if (existing) {
-      console.log(`[${i + 1}] SKIP: "${companyName}" already exists`);
-      results.skipped++;
-      continue;
+      if (existing) {
+        console.log(`[${i + 1}] SKIP: "${companyName}" already exists`);
+        results.skipped++;
+        continue;
+      }
     }
 
     // Generate temporary password
@@ -332,7 +457,7 @@ async function importVendors(filePath, options = {}) {
 
       // Business profile
       businessProfile: {
-        yearsInBusiness: parseNumber(row[COL.YEARS_IN_BUSINESS]),
+        yearsInBusiness: parseYearsInBusiness(row[COL.YEARS_IN_BUSINESS]),
         companySize: mapCompanySize(row[COL.COMPANY_SIZE]),
         numEmployees: parseNumber(row[COL.NUM_EMPLOYEES]),
         certifications: parseArray(row[COL.CERTIFICATIONS]),
@@ -343,8 +468,8 @@ async function importVendors(filePath, options = {}) {
 
       // Service capabilities
       serviceCapabilities: {
-        responseTime: row[COL.RESPONSE_TIME] || 'Next day',
-        supportHours: row[COL.SUPPORT_HOURS] || '9-5'
+        responseTime: mapResponseTime(row[COL.RESPONSE_TIME]),
+        supportHours: mapSupportHours(row[COL.SUPPORT_HOURS])
       },
 
       // Commercial
@@ -419,10 +544,11 @@ async function importVendors(filePath, options = {}) {
   if (dryRun) {
     console.log('\n⚠️  DRY RUN - No changes were made to the database');
     console.log('   Run without --dry-run to actually import vendors');
+  } else {
+    await mongoose.disconnect();
   }
 
   console.log('\n');
-  await mongoose.disconnect();
   return results;
 }
 
