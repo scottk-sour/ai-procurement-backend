@@ -3,7 +3,7 @@
 
 import express from 'express';
 import VendorAnalytics from '../models/VendorAnalytics.js';
-import { vendorAuth } from '../middleware/vendorAuth.js';
+import vendorAuth from '../middleware/vendorAuth.js';
 import crypto from 'crypto';
 
 const router = express.Router();
