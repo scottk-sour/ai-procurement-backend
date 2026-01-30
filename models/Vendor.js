@@ -206,7 +206,33 @@ const vendorSchema = new mongoose.Schema({
     addedAt: { type: Date, default: Date.now },
     type: { type: String, enum: ['admin', 'system', 'vendor'], default: 'admin' },
     priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' }
-  }]
+  }],
+
+  // Listing Claim Status (for imported vendors)
+  listingStatus: {
+    type: String,
+    enum: ['unclaimed', 'claimed', 'verified', 'suspended'],
+    default: 'unclaimed'
+  },
+
+  claimedAt: {
+    type: Date
+  },
+
+  claimedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  // Import metadata
+  importedAt: {
+    type: Date
+  },
+
+  importSource: {
+    type: String,
+    trim: true
+  }
 
 }, { 
   timestamps: true,
@@ -290,6 +316,7 @@ vendorSchema.index({ 'location.coverage': 1 });
 vendorSchema.index({ 'account.status': 1, 'account.verificationStatus': 1 });
 vendorSchema.index({ 'performance.rating': -1 });
 vendorSchema.index({ 'integration.apiKey': 1 }, { sparse: true });
+vendorSchema.index({ listingStatus: 1 });
 
 const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;

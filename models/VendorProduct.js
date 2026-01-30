@@ -78,6 +78,19 @@ const vendorProductSchema = new mongoose.Schema({
     inStock: { type: Boolean, default: true },
     leadTime: { type: Number, default: 14 },
   },
+
+  // Lease rates - quarterly payments by term length
+  leaseRates: {
+    term36: { type: Number },  // Quarterly payment for 36 month term
+    term48: { type: Number },  // Quarterly payment for 48 month term
+    term60: { type: Number },  // Quarterly payment for 60 month term
+    term72: { type: Number },  // Optional 72 month term
+  },
+
+  minimumQuarterlyCharge: {
+    type: Number,
+    default: 0
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

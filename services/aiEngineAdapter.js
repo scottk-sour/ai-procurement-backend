@@ -319,50 +319,101 @@ class AIEngineAdapter {
   }
 
   /**
-   * Create lease options from your engine's data with error handling
+   * Create lease options from product's actual lease rates or fallback to calculated rates
    */
   static createLeaseOptions(product, quarterlyLease, termMonths) {
     try {
+      const rates = product?.leaseRates || {};
       const baseQuarterly = quarterlyLease || 300;
-      const baseTerm = termMonths || 60;
-      return [
-        {
+
+      const options = [];
+
+      // 36 month term
+      if (rates.term36 || baseQuarterly) {
+        const q36 = rates.term36 || Math.round(baseQuarterly * 1.15 * 100) / 100;
+        options.push({
           term: 36,
-          quarterlyPayment: Math.round(baseQuarterly * 1.1 * 100) / 100,
-          monthlyPayment: Math.round((baseQuarterly * 1.1) / 3 * 100) / 100,
-          totalCost: Math.round(baseQuarterly * 1.1 * 12 * 100) / 100,
+          quarterlyPayment: q36,
+          monthlyPayment: Math.round(q36 / 3 * 100) / 100,
+          totalCost: Math.round(q36 * 12 * 100) / 100,
           margin: 0.65,
-          isRecommended: false
-        },
-        {
-          term: baseTerm,
-          quarterlyPayment: Math.round(baseQuarterly * 100) / 100,
-          monthlyPayment: Math.round(baseQuarterly / 3 * 100) / 100,
-          totalCost: Math.round(baseQuarterly * (baseTerm / 3) * 100) / 100,
+          isRecommended: termMonths === 36
+        });
+      }
+
+      // 48 month term
+      if (rates.term48 || baseQuarterly) {
+        const q48 = rates.term48 || Math.round(baseQuarterly * 100) / 100;
+        options.push({
+          term: 48,
+          quarterlyPayment: q48,
+          monthlyPayment: Math.round(q48 / 3 * 100) / 100,
+          totalCost: Math.round(q48 * 16 * 100) / 100,
           margin: 0.6,
-          isRecommended: true
-        },
-        {
+          isRecommended: termMonths === 48
+        });
+      }
+
+      // 60 month term (default recommended)
+      if (rates.term60 || baseQuarterly) {
+        const q60 = rates.term60 || Math.round(baseQuarterly * 0.88 * 100) / 100;
+        options.push({
+          term: 60,
+          quarterlyPayment: q60,
+          monthlyPayment: Math.round(q60 / 3 * 100) / 100,
+          totalCost: Math.round(q60 * 20 * 100) / 100,
+          margin: 0.58,
+          isRecommended: termMonths === 60 || !termMonths
+        });
+      }
+
+      // 72 month term (optional)
+      if (rates.term72) {
+        options.push({
           term: 72,
-          quarterlyPayment: Math.round(baseQuarterly * 0.9 * 100) / 100,
-          monthlyPayment: Math.round((baseQuarterly * 0.9) / 3 * 100) / 100,
-          totalCost: Math.round(baseQuarterly * 0.9 * 24 * 100) / 100,
+          quarterlyPayment: rates.term72,
+          monthlyPayment: Math.round(rates.term72 / 3 * 100) / 100,
+          totalCost: Math.round(rates.term72 * 24 * 100) / 100,
           margin: 0.55,
-          isRecommended: false
-        }
-      ];
-    } catch (error) {
-      logger.error('Error creating lease options:', error);
-      return [
-        {
+          isRecommended: termMonths === 72
+        });
+      }
+
+      // Ensure at least one option exists
+      if (options.length === 0) {
+        return [{
           term: 60,
           quarterlyPayment: 300,
           monthlyPayment: 100,
           totalCost: 6000,
           margin: 0.6,
           isRecommended: true
+        }];
+      }
+
+      // Ensure exactly one is recommended
+      const hasRecommended = options.some(o => o.isRecommended);
+      if (!hasRecommended && options.length > 0) {
+        // Recommend 60 month if available, otherwise middle option
+        const idx60 = options.findIndex(o => o.term === 60);
+        if (idx60 >= 0) {
+          options[idx60].isRecommended = true;
+        } else {
+          options[Math.floor(options.length / 2)].isRecommended = true;
         }
-      ];
+      }
+
+      return options;
+    } catch (error) {
+      logger.error('Error creating lease options:', error);
+      return [{
+        term: 60,
+        quarterlyPayment: 300,
+        monthlyPayment: 100,
+        totalCost: 6000,
+        margin: 0.6,
+        isRecommended: true
+      }];
     }
   }
 

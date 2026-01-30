@@ -26,6 +26,7 @@ import copierQuoteRoutes from './routes/copierQuoteRoutes.js';
 import publicVendorRoutes from './routes/publicVendorRoutes.js';
 import vendorAnalyticsRoutes from './routes/vendorAnalyticsRoutes.js';
 import sitemapRoutes from './routes/sitemap.js';
+import visibilityRoutes from './routes/visibilityRoutes.js';
 // import stripeRoutes from './routes/stripeRoutes.js'; // TODO: Re-enable when Stripe env vars are configured
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -266,6 +267,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/copier-quotes', quoteLimiter, copierQuoteRoutes);
 app.use('/api/public', publicVendorRoutes);
 app.use('/api/analytics', vendorAnalyticsRoutes);
+app.use('/api/visibility', visibilityRoutes);
 // app.use('/api/stripe', stripeRoutes); // TODO: Re-enable when Stripe env vars are configured
 app.use('/', sitemapRoutes);
 
