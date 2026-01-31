@@ -521,8 +521,13 @@ router.post('/suppliers',
     try {
       const { service, location, features, limit = 10, referralSource } = req.body;
 
-      // Build query for active vendors
-      const query = { status: 'active' };
+      // Build query for active vendors (check both old and new status field locations)
+      const query = {
+        $or: [
+          { 'account.status': 'active' },
+          { status: 'active' }
+        ]
+      };
 
       // Filter by service if provided
       if (service) {
@@ -544,20 +549,24 @@ router.post('/suppliers',
         query.services = { $in: [normalizedService] };
       }
 
-      // Filter by location/region if provided
+      // Filter by location/region if provided (match Vendor model fields)
       if (location) {
-        query.$or = [
-          { 'coverage.regions': { $regex: location, $options: 'i' } },
-          { 'coverage.postcodes': { $regex: location, $options: 'i' } },
-          { 'address.city': { $regex: location, $options: 'i' } },
-          { 'address.county': { $regex: location, $options: 'i' } }
-        ];
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { 'location.coverage': { $regex: location, $options: 'i' } },
+            { 'location.city': { $regex: location, $options: 'i' } },
+            { 'location.region': { $regex: location, $options: 'i' } },
+            { 'location.postcode': { $regex: location, $options: 'i' } },
+            { postcodeAreas: { $regex: location, $options: 'i' } }
+          ]
+        });
       }
 
       // Find vendors (prioritize paid tiers)
       const vendors = await Vendor.find(query)
-        .select('company services description coverage address ratings account.tier showPricing slug')
-        .sort({ 'account.tier': -1, 'ratings.average': -1 })
+        .select('company services businessProfile.description location performance account tier brands businessProfile.accreditations businessProfile.certifications')
+        .sort({ tier: -1, 'performance.rating': -1 })
         .limit(Math.min(limit, 20))
         .lean();
 
@@ -565,16 +574,20 @@ router.post('/suppliers',
       const suppliers = vendors.map(v => ({
         id: v._id,
         name: v.company,
-        slug: v.slug,
         services: v.services || [],
-        description: v.description || '',
-        coverage: v.coverage?.regions || [],
-        location: v.address?.city ? `${v.address.city}, ${v.address.county || ''}`.trim() : '',
-        rating: v.ratings?.average || null,
-        reviewCount: v.ratings?.count || 0,
-        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'standard'].includes(v.account?.tier) || v.showPricing === true,
-        profileUrl: `https://tendorai.com/suppliers/${v.slug || v._id}`,
-        quoteUrl: `https://tendorai.com/suppliers/${v.slug || v._id}?quote=true`
+        description: v.businessProfile?.description || '',
+        coverage: v.location?.coverage || [],
+        location: v.location?.city ? `${v.location.city}${v.location.region ? ', ' + v.location.region : ''}`.trim() : '',
+        postcode: v.location?.postcode || '',
+        rating: v.performance?.rating || null,
+        reviewCount: v.performance?.reviewCount || 0,
+        brands: v.brands || [],
+        accreditations: v.businessProfile?.accreditations || [],
+        certifications: v.businessProfile?.certifications || [],
+        tier: v.tier || v.account?.tier || 'free',
+        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
+        profileUrl: `https://tendorai.com/suppliers/${v._id}`,
+        quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
       }));
 
       // Log AI referral for analytics
@@ -626,7 +639,13 @@ router.get('/suppliers',
     try {
       const { service, location, limit = 10 } = req.query;
 
-      const queryFilter = { status: 'active' };
+      // Check both old and new status field locations
+      const queryFilter = {
+        $or: [
+          { 'account.status': 'active' },
+          { status: 'active' }
+        ]
+      };
 
       if (service) {
         const serviceMap = {
@@ -643,15 +662,20 @@ router.get('/suppliers',
       }
 
       if (location) {
-        queryFilter.$or = [
-          { 'coverage.regions': { $regex: location, $options: 'i' } },
-          { 'address.city': { $regex: location, $options: 'i' } }
-        ];
+        queryFilter.$and = queryFilter.$and || [];
+        queryFilter.$and.push({
+          $or: [
+            { 'location.coverage': { $regex: location, $options: 'i' } },
+            { 'location.city': { $regex: location, $options: 'i' } },
+            { 'location.region': { $regex: location, $options: 'i' } },
+            { postcodeAreas: { $regex: location, $options: 'i' } }
+          ]
+        });
       }
 
       const vendors = await Vendor.find(queryFilter)
-        .select('company services description coverage address ratings slug')
-        .sort({ 'ratings.average': -1 })
+        .select('company services businessProfile.description location performance tier account brands')
+        .sort({ tier: -1, 'performance.rating': -1 })
         .limit(Math.min(parseInt(limit), 20))
         .lean();
 
@@ -659,9 +683,15 @@ router.get('/suppliers',
         id: v._id,
         name: v.company,
         services: v.services || [],
-        location: v.address?.city || '',
-        rating: v.ratings?.average || null,
-        profileUrl: `https://tendorai.com/suppliers/${v.slug || v._id}`
+        description: v.businessProfile?.description || '',
+        location: v.location?.city || '',
+        coverage: v.location?.coverage || [],
+        rating: v.performance?.rating || null,
+        reviewCount: v.performance?.reviewCount || 0,
+        brands: v.brands || [],
+        tier: v.tier || v.account?.tier || 'free',
+        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
+        profileUrl: `https://tendorai.com/suppliers/${v._id}`
       }));
 
       res.json({
@@ -736,8 +766,10 @@ router.get('/services', (req, res) => {
  */
 router.get('/locations', async (req, res) => {
   try {
-    // Get unique regions from vendor coverage
-    const regions = await Vendor.distinct('coverage.regions', { status: 'active' });
+    // Get unique regions from vendor coverage (check both status field locations)
+    const regions = await Vendor.distinct('location.coverage', {
+      $or: [{ 'account.status': 'active' }, { status: 'active' }]
+    });
 
     // Standard UK regions
     const ukRegions = [
@@ -916,11 +948,10 @@ router.get('/supplier/:id', async (req, res) => {
     const { id } = req.params;
 
     const vendor = await Vendor.findOne({
-      $or: [
-        { _id: id },
-        { slug: id }
-      ],
-      status: 'active'
+      $and: [
+        { $or: [{ _id: id }, { slug: id }] },
+        { $or: [{ 'account.status': 'active' }, { status: 'active' }] }
+      ]
     }).select('-password -refreshToken').lean();
 
     if (!vendor) {
@@ -935,29 +966,34 @@ router.get('/supplier/:id', async (req, res) => {
       supplier: {
         id: vendor._id,
         name: vendor.company,
-        slug: vendor.slug,
-        description: vendor.description || '',
+        description: vendor.businessProfile?.description || '',
         services: vendor.services || [],
-        coverage: {
-          regions: vendor.coverage?.regions || [],
-          postcodes: vendor.coverage?.postcodes || [],
-          nationwide: vendor.coverage?.nationwide || false
-        },
+        coverage: vendor.location?.coverage || [],
         location: {
-          city: vendor.address?.city || '',
-          county: vendor.address?.county || '',
-          postcode: vendor.address?.postcode || ''
+          city: vendor.location?.city || '',
+          region: vendor.location?.region || '',
+          postcode: vendor.location?.postcode || '',
+          address: vendor.location?.address || ''
         },
         contact: {
-          phone: vendor.phone || '',
+          phone: vendor.contactInfo?.phone || '',
           email: vendor.email || '',
-          website: vendor.website || ''
+          website: vendor.contactInfo?.website || ''
         },
-        rating: vendor.ratings?.average || null,
-        reviewCount: vendor.ratings?.count || 0,
-        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'standard'].includes(vendor.account?.tier) || vendor.showPricing === true,
-        profileUrl: `https://tendorai.com/suppliers/${vendor.slug || vendor._id}`,
-        quoteUrl: `https://tendorai.com/suppliers/${vendor.slug || vendor._id}?quote=true`
+        businessProfile: {
+          yearsInBusiness: vendor.businessProfile?.yearsInBusiness || 0,
+          companySize: vendor.businessProfile?.companySize || '',
+          certifications: vendor.businessProfile?.certifications || [],
+          accreditations: vendor.businessProfile?.accreditations || []
+        },
+        brands: vendor.brands || [],
+        rating: vendor.performance?.rating || null,
+        reviewCount: vendor.performance?.reviewCount || 0,
+        responseTime: vendor.serviceCapabilities?.responseTime || 'Next day',
+        tier: vendor.tier || vendor.account?.tier || 'free',
+        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(vendor.tier || vendor.account?.tier),
+        profileUrl: `https://tendorai.com/suppliers/${vendor._id}`,
+        quoteUrl: `https://tendorai.com/suppliers/${vendor._id}?quote=true`
       }
     });
 

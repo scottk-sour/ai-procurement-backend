@@ -282,6 +282,25 @@ app.use('/', sitemapRoutes);
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
 app.post('/api/suggest-copiers', quoteLimiter, suggestCopiers);
 
+// OpenAPI specification for AI assistants (ChatGPT Actions, Claude MCP, etc.)
+app.get('/openapi.json', (req, res) => {
+  const openapiPath = path.join(__dirname, 'public', 'openapi.json');
+  if (fs.existsSync(openapiPath)) {
+    res.sendFile(openapiPath);
+  } else {
+    res.status(404).json({ error: 'OpenAPI specification not found' });
+  }
+});
+
+app.get('/.well-known/openapi.json', (req, res) => {
+  const openapiPath = path.join(__dirname, 'public', 'openapi.json');
+  if (fs.existsSync(openapiPath)) {
+    res.sendFile(openapiPath);
+  } else {
+    res.status(404).json({ error: 'OpenAPI specification not found' });
+  }
+});
+
 // Test endpoint
 app.get('/api/test-dashboard', async (req, res) => {
   try {
