@@ -21,11 +21,11 @@ const vendorLeadSchema = new mongoose.Schema({
   equipmentType: String,
   monthlyVolume: {
     type: String,
-    enum: ['Under 1,000', '1,000 - 5,000', '5,000 - 10,000', '10,000 - 25,000', '25,000+', 'Not sure']
+    enum: ['low', 'medium', 'high', 'enterprise', 'not-sure']
   },
   currentSetup: {
     type: String,
-    enum: ['New setup', 'Replacing existing', 'Adding to fleet', 'Not sure']
+    enum: ['none', 'outdated', 'leased', 'owned', 'multiple']
   },
   features: [{
     type: String
@@ -34,15 +34,15 @@ const vendorLeadSchema = new mongoose.Schema({
   // Timeline and budget
   timeline: {
     type: String,
-    enum: ['ASAP', 'Within 1 month', '1-3 months', '3-6 months', 'Just researching']
+    enum: ['urgent', 'soon', 'planning', 'future']
   },
   contractPreference: {
     type: String,
-    enum: ['Lease', 'Rental', 'Purchase', 'Not sure']
+    enum: ['lease', 'purchase', 'managed', 'flexible']
   },
   budgetRange: {
     type: String,
-    enum: ['Under £200/mo', '£200-400/mo', '£400-800/mo', '£800+/mo', 'Flexible']
+    enum: ['under-100', '100-250', '250-500', '500-1000', 'over-1000', 'discuss']
   },
 
   // Customer details

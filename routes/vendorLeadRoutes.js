@@ -13,6 +13,9 @@ const router = express.Router();
  */
 router.post('/', async (req, res) => {
   try {
+    // Debug: Log incoming request body
+    console.log('[VendorLead] Incoming request body:', JSON.stringify(req.body, null, 2));
+
     const {
       vendorId,
       service,
