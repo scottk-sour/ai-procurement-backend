@@ -112,14 +112,26 @@ router.post('/test-create', async (req, res) => {
 
 // Vendor signup (rate limiter temporarily disabled for debugging)
 router.post('/signup', async (req, res) => {
+    console.log('DEBUG SIGNUP: Route entered');
     try {
+        console.log('DEBUG SIGNUP: Inside try block');
+        console.log('DEBUG SIGNUP: req.body =', JSON.stringify(req.body));
+
         const { name, email, password, company, services = ['Photocopiers'] } = req.body;
+        console.log('DEBUG SIGNUP: Destructured -', { name, email, company, services, hasPassword: !!password });
+
         if (!name || !email || !password || !company) {
+            console.log('DEBUG SIGNUP: Missing required fields');
             return res.status(400).json({ message: 'Name, email, password, and company are required.' });
         }
+
+        console.log('DEBUG SIGNUP: Checking existing vendor');
         const existingVendor = await Vendor.findOne({ email });
+        console.log('DEBUG SIGNUP: Existing vendor check complete:', existingVendor ? 'FOUND' : 'NOT FOUND');
+
         if (existingVendor) return res.status(400).json({ message: 'Vendor already exists.' });
 
+        console.log('DEBUG SIGNUP: Creating new Vendor object');
         // Don't hash password here - the Vendor model's pre-save hook handles hashing
         const newVendor = new Vendor({
             name,
@@ -131,7 +143,9 @@ router.post('/signup', async (req, res) => {
                 status: 'active'
             }
         });
+        console.log('DEBUG SIGNUP: Vendor object created, about to save');
         await newVendor.save();
+        console.log('DEBUG SIGNUP: Vendor saved successfully');
 
         try {
             await VendorActivity.createActivity({
