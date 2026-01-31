@@ -112,16 +112,16 @@ router.get('/vendors', async (req, res) => {
         'location.coordinates': 1,
         'performance.rating': 1,
         'performance.reviewCount': 1,
-        'performance.responseTime': 1,
-        'account.tier': 1,
-        'businessProfile.companyDescription': 1,
+        'tier': 1,
+        'businessProfile.description': 1,
         'businessProfile.accreditations': 1,
-        'businessProfile.yearEstablished': 1,
-        'businessProfile.employeeCount': 1,
+        'businessProfile.yearsInBusiness': 1,
+        'businessProfile.numEmployees': 1,
         'businessProfile.logoUrl': 1,
-        'contactDetails.phone': 1,
-        'contactDetails.website': 1,
-        'subscription.pricingVisible': 1,
+        'contactInfo.phone': 1,
+        'contactInfo.website': 1,
+        'serviceCapabilities.responseTime': 1,
+        'brands': 1,
         'subscription.priorityBoost': 1,
         'createdAt': 1
       })
@@ -197,9 +197,9 @@ router.get('/vendors', async (req, res) => {
 
     // Format response - hide pricing flag, add showPricing boolean
     const publicVendors = sortedVendors.map(v => {
-      const tier = v.account?.tier || 'free';
+      const tier = v.tier || 'free';
       const paidTiers = ['basic', 'managed', 'enterprise'];
-      const showPricing = paidTiers.includes(tier) && v.subscription?.pricingVisible === true;
+      const showPricing = paidTiers.includes(tier);
 
       return {
         id: v._id,
@@ -219,15 +219,16 @@ router.get('/vendors', async (req, res) => {
         } : null,
         rating: v.performance?.rating || 0,
         reviewCount: v.performance?.reviewCount || 0,
-        responseTime: v.performance?.responseTime,
+        responseTime: v.serviceCapabilities?.responseTime,
         tier: tier,
-        description: v.businessProfile?.companyDescription,
+        description: v.businessProfile?.description,
         accreditations: v.businessProfile?.accreditations || [],
-        yearEstablished: v.businessProfile?.yearEstablished,
-        employeeCount: v.businessProfile?.employeeCount,
+        yearsInBusiness: v.businessProfile?.yearsInBusiness,
+        employeeCount: v.businessProfile?.numEmployees,
         logoUrl: v.businessProfile?.logoUrl,
-        phone: showPricing ? v.contactDetails?.phone : undefined,
-        website: v.contactDetails?.website,
+        brands: v.brands || [],
+        phone: showPricing ? v.contactInfo?.phone : undefined,
+        website: v.contactInfo?.website,
         showPricing: showPricing,
         // Schema.org metadata for AI consumption
         '@context': 'https://schema.org',
@@ -287,15 +288,17 @@ router.get('/vendors/:id', async (req, res) => {
     .select({
       'company': 1,
       'name': 1,
+      'email': 1,
       'services': 1,
       'location': 1,
       'performance': 1,
       'account.tier': 1,
+      'tier': 1,
       'businessProfile': 1,
-      'contactDetails.phone': 1,
-      'contactDetails.website': 1,
-      'contactDetails.email': 1,
-      'subscription.pricingVisible': 1,
+      'contactInfo': 1,
+      'brands': 1,
+      'serviceCapabilities': 1,
+      'subscriptionStatus': 1,
       'createdAt': 1
     })
     .lean();
@@ -307,16 +310,17 @@ router.get('/vendors/:id', async (req, res) => {
       });
     }
 
-    const tier = vendor.account?.tier || 'free';
+    // Use top-level tier (free/basic/managed/enterprise) for pricing visibility
+    const tier = vendor.tier || 'free';
     const paidTiers = ['basic', 'managed', 'enterprise'];
-    const showPricing = paidTiers.includes(tier) && vendor.subscription?.pricingVisible === true;
+    const showPricing = paidTiers.includes(tier);
 
     // Get vendor products if pricing visible
     let products = [];
     if (showPricing) {
-      products = await VendorProduct.find({ 
+      products = await VendorProduct.find({
         vendorId: vendor._id,
-        isActive: true 
+        isActive: true
       })
       .select({
         'productName': 1,
@@ -342,25 +346,29 @@ router.get('/vendors/:id', async (req, res) => {
       },
       rating: vendor.performance?.rating || 0,
       reviewCount: vendor.performance?.reviewCount || 0,
-      responseTime: vendor.performance?.responseTime,
+      responseTime: vendor.serviceCapabilities?.responseTime || vendor.performance?.averageResponseTime,
+      supportHours: vendor.serviceCapabilities?.supportHours,
       completedJobs: vendor.performance?.completedJobs || 0,
       tier: tier,
-      description: vendor.businessProfile?.companyDescription,
+      description: vendor.businessProfile?.description,
       accreditations: vendor.businessProfile?.accreditations || [],
-      yearEstablished: vendor.businessProfile?.yearEstablished,
-      employeeCount: vendor.businessProfile?.employeeCount,
+      certifications: vendor.businessProfile?.certifications || [],
+      specializations: vendor.businessProfile?.specializations || [],
+      yearsInBusiness: vendor.businessProfile?.yearsInBusiness,
+      companySize: vendor.businessProfile?.companySize,
+      employeeCount: vendor.businessProfile?.numEmployees,
       logoUrl: vendor.businessProfile?.logoUrl,
-      serviceAreas: vendor.businessProfile?.serviceAreas || [],
-      phone: showPricing ? vendor.contactDetails?.phone : undefined,
-      email: showPricing ? vendor.contactDetails?.email : undefined,
-      website: vendor.contactDetails?.website,
+      brands: vendor.brands || [],
+      phone: showPricing ? vendor.contactInfo?.phone : undefined,
+      email: showPricing ? vendor.email : undefined,
+      website: vendor.contactInfo?.website,
       showPricing: showPricing,
       products: showPricing ? products : [],
       // Schema.org metadata
       '@context': 'https://schema.org',
       '@type': 'LocalBusiness',
       'name': vendor.company,
-      'description': vendor.businessProfile?.companyDescription,
+      'description': vendor.businessProfile?.description,
       'areaServed': vendor.location?.coverage || [],
       'aggregateRating': vendor.performance?.rating ? {
         '@type': 'AggregateRating',
@@ -420,12 +428,12 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
         'location.coverage': 1,
         'performance.rating': 1,
         'performance.reviewCount': 1,
-        'account.tier': 1,
-        'businessProfile.companyDescription': 1,
+        'tier': 1,
+        'businessProfile.description': 1,
         'businessProfile.accreditations': 1,
         'businessProfile.logoUrl': 1,
-        'contactDetails.website': 1,
-        'subscription.pricingVisible': 1,
+        'contactInfo.website': 1,
+        'brands': 1,
         'subscription.priorityBoost': 1
       })
       .lean();
@@ -437,9 +445,9 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
       .slice(skip, skip + limitNum);
 
     const publicVendors = sortedVendors.map(v => {
-      const tier = v.account?.tier || 'free';
+      const tier = v.tier || 'free';
       const paidTiers = ['basic', 'managed', 'enterprise'];
-      const showPricing = paidTiers.includes(tier) && v.subscription?.pricingVisible === true;
+      const showPricing = paidTiers.includes(tier);
 
       return {
         id: v._id,
@@ -450,10 +458,11 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
         rating: v.performance?.rating || 0,
         reviewCount: v.performance?.reviewCount || 0,
         tier: tier,
-        description: v.businessProfile?.companyDescription,
+        description: v.businessProfile?.description,
         accreditations: v.businessProfile?.accreditations || [],
         logoUrl: v.businessProfile?.logoUrl,
-        website: v.contactDetails?.website,
+        brands: v.brands || [],
+        website: v.contactInfo?.website,
         showPricing: showPricing
       };
     });
@@ -648,7 +657,7 @@ router.get('/stats', async (req, res) => {
 // Helper function to calculate priority score
 function calculatePriorityScore(vendor) {
   const tierWeights = { free: 0, basic: 25, managed: 50, enterprise: 100 };
-  const tier = vendor.account?.tier || 'free';
+  const tier = vendor.tier || 'free';
   const tierScore = tierWeights[tier] || 0;
   const boostScore = vendor.subscription?.priorityBoost || 0;
   const ratingScore = (vendor.performance?.rating || 0) * 10;
