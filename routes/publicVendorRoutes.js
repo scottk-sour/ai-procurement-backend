@@ -5,7 +5,7 @@
 import express from 'express';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
-import { lookupPostcode } from '../utils/postcodeUtils.js';
+import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
 const router = express.Router();
@@ -68,7 +68,8 @@ router.get('/vendors', async (req, res) => {
 
     // Postcode-based distance filtering
     let searchCoords = null;
-    let maxDistanceKm = parseInt(distance) || 50;
+    let maxDistanceMiles = parseInt(distance) || 50;
+    let maxDistanceKm = maxDistanceMiles * 1.60934; // Convert miles to km
 
     if (postcode) {
       const postcodeData = await lookupPostcode(postcode);
@@ -80,10 +81,13 @@ router.get('/vendors', async (req, res) => {
           region: postcodeData.region
         };
 
-        // Use bounding box for initial DB query (more efficient)
-        const bbox = getBoundingBox(searchCoords.latitude, searchCoords.longitude, maxDistanceKm);
-        query['location.coordinates.latitude'] = { $gte: bbox.minLat, $lte: bbox.maxLat };
-        query['location.coordinates.longitude'] = { $gte: bbox.minLon, $lte: bbox.maxLon };
+        // Use bounding box for initial DB query IF vendors have coordinates
+        // Skip this for now as we need to geocode vendors dynamically
+        // const bbox = getBoundingBox(searchCoords.latitude, searchCoords.longitude, maxDistanceKm);
+        // query['location.coordinates.latitude'] = { $gte: bbox.minLat, $lte: bbox.maxLat };
+        // query['location.coordinates.longitude'] = { $gte: bbox.minLon, $lte: bbox.maxLon };
+      } else {
+        console.log('Postcode lookup failed for:', postcode, postcodeData.error);
       }
     }
 
@@ -130,10 +134,40 @@ router.get('/vendors', async (req, res) => {
     }));
 
     if (searchCoords) {
+      // Collect vendor postcodes that need geocoding
+      const vendorsNeedingGeocode = processedVendors.filter(v =>
+        !v.location?.coordinates?.latitude && v.location?.postcode
+      );
+
+      // Bulk lookup postcodes for vendors without coordinates (max 100)
+      let geocodedPostcodes = {};
+      if (vendorsNeedingGeocode.length > 0) {
+        const postcodeList = [...new Set(vendorsNeedingGeocode.map(v => v.location.postcode))];
+        const results = await bulkLookupPostcodes(postcodeList.slice(0, 100));
+        results.forEach(r => {
+          if (r.valid) {
+            geocodedPostcodes[r.query.toUpperCase().replace(/\s+/g, '')] = {
+              latitude: r.latitude,
+              longitude: r.longitude
+            };
+          }
+        });
+      }
+
       // Calculate precise distance for each vendor
       processedVendors = processedVendors.map(v => {
-        const vendorLat = v.location?.coordinates?.latitude;
-        const vendorLon = v.location?.coordinates?.longitude;
+        let vendorLat = v.location?.coordinates?.latitude;
+        let vendorLon = v.location?.coordinates?.longitude;
+
+        // If no stored coordinates, try geocoded lookup
+        if (!vendorLat && v.location?.postcode) {
+          const normalizedPostcode = v.location.postcode.toUpperCase().replace(/\s+/g, '');
+          const geocoded = geocodedPostcodes[normalizedPostcode];
+          if (geocoded) {
+            vendorLat = geocoded.latitude;
+            vendorLon = geocoded.longitude;
+          }
+        }
 
         if (vendorLat && vendorLon) {
           const dist = calculateDistance(
@@ -146,8 +180,8 @@ router.get('/vendors', async (req, res) => {
         }
         return { ...v, _distance: null };
       })
-      // Filter by actual distance (bounding box is approximate)
-      .filter(v => v._distance === null || v._distance <= maxDistanceKm)
+      // Filter by actual distance - exclude vendors without coordinates
+      .filter(v => v._distance !== null && v._distance <= maxDistanceKm)
       // Sort by distance first, then priority
       .sort((a, b) => {
         if (a._distance === null) return 1;
@@ -180,7 +214,8 @@ router.get('/vendors', async (req, res) => {
         },
         distance: v._distance ? {
           km: v._distance,
-          formatted: formatDistance(v._distance)
+          miles: Math.round(v._distance / 1.60934 * 10) / 10,
+          formatted: `${Math.round(v._distance / 1.60934)} miles`
         } : null,
         rating: v.performance?.rating || 0,
         reviewCount: v.performance?.reviewCount || 0,
@@ -219,7 +254,8 @@ router.get('/vendors', async (req, res) => {
         },
         search: searchCoords ? {
           postcode: searchCoords.postcode,
-          maxDistance: maxDistanceKm,
+          maxDistance: maxDistanceMiles,
+          maxDistanceKm: maxDistanceKm,
           region: searchCoords.region
         } : null
       }

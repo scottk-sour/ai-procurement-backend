@@ -52,6 +52,10 @@ const vendorSchema = new mongoose.Schema({
     postcode: { type: String, trim: true, default: '' },
     region: { type: String, trim: true, default: '' },
     coverage: [{ type: String, trim: true }], // ["London", "Birmingham", "Manchester"]
+    coordinates: {
+      latitude: { type: Number },
+      longitude: { type: Number }
+    }
   },
 
   contactInfo: {
