@@ -285,7 +285,7 @@ router.get('/vendors', async (req, res) => {
 
 /**
  * GET /api/public/vendors/:id
- * Get single vendor details
+ * Get single vendor profile with badges and tier-based visibility
  */
 router.get('/vendors/:id', async (req, res) => {
   try {
@@ -295,127 +295,130 @@ router.get('/vendors/:id', async (req, res) => {
       _id: id,
       'account.status': 'active',
       'account.verificationStatus': 'verified'
-    })
-    .select({
-      'company': 1,
-      'name': 1,
-      'email': 1,
-      'services': 1,
-      'location': 1,
-      'city': 1,
-      'region': 1,
-      'postcode': 1,
-      'coverageAreas': 1,
-      'performance': 1,
-      'rating': 1,
-      'reviewCount': 1,
-      'account.tier': 1,
-      'tier': 1,
-      'businessProfile': 1,
-      'description': 1,
-      'yearsInBusiness': 1,
-      'numEmployees': 1,
-      'accreditations': 1,
-      'certifications': 1,
-      'contactInfo': 1,
-      'phone': 1,
-      'website': 1,
-      'brands': 1,
-      'serviceCapabilities': 1,
-      'subscriptionStatus': 1,
-      'showPricing': 1,
-      'createdAt': 1
-    })
-    .lean();
+    }).lean();
 
     if (!vendor) {
       return res.status(404).json({
         success: false,
-        message: 'Vendor not found'
+        error: 'Vendor not found'
       });
     }
 
-    // Use top-level tier (free/basic/managed/enterprise) for pricing visibility
-    // Also check legacy showPricing field for backwards compatibility
-    const tier = vendor.tier || 'free';
-    const paidTiers = ['basic', 'managed', 'enterprise'];
-    const showPricing = paidTiers.includes(tier) || vendor.showPricing === true;
+    // Get vendor's products (machines) - only show public info, hide pricing
+    const products = await VendorProduct.find({
+      vendorId: vendor._id,
+      isActive: { $ne: false }
+    }).lean();
 
-    // Get vendor products if pricing visible
-    let products = [];
-    if (showPricing) {
-      products = await VendorProduct.find({
-        vendorId: vendor._id,
-        isActive: true
-      })
-      .select({
-        'productName': 1,
-        'manufacturer': 1,
-        'category': 1,
-        'costs': 1,
-        'specifications': 1
-      })
-      .lean();
-    }
+    // Determine tier and what to show
+    const tier = vendor.account?.tier || vendor.tier || 'free';
+    const isPaid = ['basic', 'managed', 'enterprise', 'standard'].includes(tier);
+    const isPremium = ['managed', 'enterprise'].includes(tier);
+    const isVerified = vendor.account?.verificationStatus === 'verified' || isPaid || vendor.showPricing === true;
 
-    // Support both nested schema (imported vendors) and flat schema (legacy vendors)
-    const publicVendor = {
+    // Base data - everyone sees this
+    const profileData = {
       id: vendor._id,
-      company: vendor.company,
+      company: vendor.company || vendor.companyName,
       name: vendor.name,
       services: vendor.services || [],
       location: {
-        city: vendor.location?.city || vendor.city,
-        region: vendor.location?.region || vendor.region,
+        city: vendor.location?.city || vendor.city || '',
+        region: vendor.location?.region || vendor.region || '',
         coverage: vendor.location?.coverage || vendor.coverageAreas || [],
-        postcode: vendor.location?.postcode || vendor.postcode,
-        address: showPricing ? vendor.location?.address : undefined
+        postcode: vendor.location?.postcode || vendor.postcode || ''
       },
-      rating: vendor.performance?.rating || vendor.rating || 0,
-      reviewCount: vendor.performance?.reviewCount || vendor.reviewCount || 0,
-      responseTime: vendor.serviceCapabilities?.responseTime || vendor.performance?.averageResponseTime,
-      supportHours: vendor.serviceCapabilities?.supportHours,
-      completedJobs: vendor.performance?.completedJobs || 0,
       tier: tier,
-      description: vendor.businessProfile?.description || vendor.description,
-      accreditations: vendor.businessProfile?.accreditations || vendor.accreditations || [],
-      certifications: vendor.businessProfile?.certifications || vendor.certifications || [],
-      specializations: vendor.businessProfile?.specializations || [],
-      yearsInBusiness: vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness,
-      yearEstablished: vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness, // Alias for frontend compatibility
-      companySize: vendor.businessProfile?.companySize,
-      employeeCount: vendor.businessProfile?.numEmployees || vendor.numEmployees,
-      logoUrl: vendor.businessProfile?.logoUrl,
-      brands: vendor.brands || [],
-      phone: showPricing ? (vendor.contactInfo?.phone || vendor.phone) : undefined,
-      email: showPricing ? vendor.email : undefined,
-      website: vendor.contactInfo?.website || vendor.website,
-      showPricing: showPricing,
-      products: showPricing ? products : [],
-      // Schema.org metadata
+      badges: {
+        verified: isVerified,
+        premium: isPremium
+      },
+
+      // Schema.org
       '@context': 'https://schema.org',
       '@type': 'LocalBusiness',
-      'name': vendor.company,
-      'description': vendor.businessProfile?.description || vendor.description,
-      'areaServed': vendor.location?.coverage || vendor.coverageAreas || [],
-      'aggregateRating': vendor.performance?.rating ? {
-        '@type': 'AggregateRating',
-        'ratingValue': vendor.performance.rating,
-        'reviewCount': vendor.performance.reviewCount || 0
-      } : undefined
+      'areaServed': vendor.location?.coverage || vendor.coverageAreas || []
     };
 
-    res.json({
-      success: true,
-      data: publicVendor
-    });
+    // Always show these if they exist
+    profileData.rating = vendor.performance?.rating || vendor.rating || 0;
+    profileData.reviewCount = vendor.performance?.reviewCount || vendor.reviewCount || 0;
+    profileData.description = vendor.businessProfile?.description || vendor.description || '';
+    profileData.yearsInBusiness = vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness || 0;
+    profileData.yearEstablished = profileData.yearsInBusiness; // Alias for frontend
+    profileData.brands = vendor.brands || [];
+    profileData.accreditations = vendor.businessProfile?.accreditations || vendor.accreditations || [];
+    profileData.certifications = vendor.businessProfile?.certifications || vendor.certifications || [];
+    profileData.logoUrl = vendor.businessProfile?.logoUrl || vendor.logoUrl || null;
+
+    // Contact info and products - paid tiers only (or legacy showPricing)
+    const canShowDetails = isPaid || vendor.showPricing === true;
+
+    if (canShowDetails) {
+      profileData.phone = vendor.phone || vendor.contactInfo?.phone || '';
+      profileData.email = vendor.email || '';
+      profileData.website = vendor.website || vendor.contactInfo?.website || '';
+      profileData.numEmployees = vendor.businessProfile?.numEmployees || vendor.numEmployees || 0;
+      profileData.employeeCount = profileData.numEmployees; // Alias
+      profileData.responseTime = vendor.serviceCapabilities?.responseTime || vendor.responseTime || '';
+      profileData.supportHours = vendor.serviceCapabilities?.supportHours || vendor.supportHours || '';
+      profileData.canReceiveQuotes = true;
+      profileData.showPricing = true;
+
+      // Add products/machines (without CPC pricing - keep that private)
+      profileData.products = products.map(p => ({
+        id: p._id,
+        productName: p.productName,
+        manufacturer: p.manufacturer,
+        model: p.model,
+        category: p.category,
+        type: p.type,
+        colour: p.colourMono || p.colour,
+        speed: p.speedPpm || p.speed,
+        isA3: p.isA3,
+        features: p.features || [],
+        description: p.description || '',
+        minVolume: p.volumeRange?.min || p.minVolume,
+        maxVolume: p.volumeRange?.max || p.maxVolume,
+        inStock: p.availability?.inStock ?? true,
+        leadTime: p.availability?.leadTimeDays || 0,
+        image: p.image || null,
+        specifications: p.specifications || {}
+        // NOTE: No CPC rates, no lease rates, no machine cost - pricing stays private
+      }));
+      profileData.productCount = products.length;
+    } else {
+      // Free tier - limited info, no contact details, no products
+      profileData.phone = '';
+      profileData.email = '';
+      profileData.website = '';
+      profileData.products = [];
+      profileData.productCount = 0;
+      profileData.canReceiveQuotes = false;
+      profileData.showPricing = false;
+      profileData.upgradePrompt = {
+        message: 'Upgrade to see full profile and request quotes',
+        tier: 'basic',
+        price: '£99/mo'
+      };
+    }
+
+    // Add Schema.org aggregate rating if exists
+    if (profileData.rating > 0) {
+      profileData.aggregateRating = {
+        '@type': 'AggregateRating',
+        'ratingValue': profileData.rating,
+        'reviewCount': profileData.reviewCount
+      };
+    }
+
+    res.json({ success: true, data: profileData });
 
   } catch (error) {
-    console.error('Public vendor detail API error:', error);
+    console.error('Vendor profile error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch vendor',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Failed to load vendor profile'
     });
   }
 });
