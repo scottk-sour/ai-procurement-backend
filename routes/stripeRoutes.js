@@ -8,10 +8,27 @@ import logger from '../services/logger.js';
 
 const router = express.Router();
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia',
-});
+// Initialize Stripe (with graceful handling for missing API key)
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-11-20.acacia',
+  });
+  logger.info('Stripe initialized successfully');
+} else {
+  logger.warn('STRIPE_SECRET_KEY not configured - Stripe routes will return errors');
+}
+
+// Middleware to check if Stripe is configured
+const requireStripe = (req, res, next) => {
+  if (!stripe) {
+    return res.status(503).json({
+      success: false,
+      message: 'Stripe is not configured. Please contact support.'
+    });
+  }
+  next();
+};
 
 // Price IDs from environment variables
 const PRICE_IDS = {
@@ -101,7 +118,7 @@ router.get('/plans', (req, res) => {
 });
 
 // Create checkout session for subscription
-router.post('/create-checkout-session', authenticateVendor, async (req, res) => {
+router.post('/create-checkout-session', requireStripe, authenticateVendor, async (req, res) => {
   try {
     const { planId } = req.body;
     const vendor = req.vendor;
@@ -210,7 +227,7 @@ router.post('/create-checkout-session', authenticateVendor, async (req, res) => 
 });
 
 // Create customer portal session (for managing subscriptions)
-router.post('/create-portal-session', authenticateVendor, async (req, res) => {
+router.post('/create-portal-session', requireStripe, authenticateVendor, async (req, res) => {
   try {
     const vendor = req.vendor;
 
@@ -236,7 +253,7 @@ router.post('/create-portal-session', authenticateVendor, async (req, res) => {
 });
 
 // Get current subscription status
-router.get('/subscription-status', authenticateVendor, async (req, res) => {
+router.get('/subscription-status', requireStripe, authenticateVendor, async (req, res) => {
   try {
     const vendor = req.vendor;
 
@@ -317,7 +334,7 @@ router.get('/subscription-status', authenticateVendor, async (req, res) => {
 
 // Stripe webhook handler
 // Note: This route expects raw body - configured in index.js
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', requireStripe, async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
