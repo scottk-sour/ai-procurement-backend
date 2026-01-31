@@ -83,8 +83,8 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// Vendor signup
-router.post('/signup', signupLimiter, async (req, res) => {
+// Vendor signup (rate limiter temporarily disabled for debugging)
+router.post('/signup', async (req, res) => {
     try {
         const { name, email, password, company, services = ['Photocopiers'] } = req.body;
         if (!name || !email || !password || !company) {
