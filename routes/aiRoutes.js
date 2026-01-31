@@ -1,9 +1,17 @@
 import express from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, query, validationResult } from 'express-validator';
 import helmet from 'helmet';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { suggestCopiers, healthCheck, aiRateLimit } from '../controllers/aiController.js';
 import logger from '../services/logger.js';
+import Vendor from '../models/Vendor.js';
+import VendorLead from '../models/VendorLead.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
@@ -355,79 +363,608 @@ router.get('/metrics', (req, res) => {
 // Enhanced API documentation endpoint
 router.get('/docs', (req, res) => {
   res.json({
-    title: 'TendorAI Copier Suggestion API',
-    version: '2.0.0',
-    description: 'AI-powered copier and printer recommendation service',
+    title: 'TendorAI API',
+    version: '3.0.0',
+    description: 'AI-powered UK office equipment supplier discovery and quote request service',
     baseUrl: `${req.protocol}://${req.get('host')}/api/ai`,
-    endpoints: {
-      'POST /suggest-copiers': {
-        description: 'Get AI-powered copier recommendations based on requirements',
-        rateLimit: '10 requests per minute per IP',
-        maxRequestSize: '10KB',
-        authentication: 'None required',
-        requestFormat: {
-          formData: {
-            monthlyVolume: {
-              total: 'number (0-1000000, optional) - Total monthly page volume',
-              mono: 'number (0-1000000, optional) - Monthly monochrome pages',
-              colour: 'number (0-1000000, optional) - Monthly color pages'
+    sections: {
+      aiAssistant: {
+        title: 'AI Assistant Integration',
+        description: 'Endpoints designed for ChatGPT, Claude, and other AI assistants',
+        endpoints: {
+          'POST /suppliers': {
+            description: 'Search for UK suppliers by service type and location',
+            rateLimit: '10 requests per minute',
+            authentication: 'None required',
+            requestBody: {
+              service: 'string (optional) - Service type: photocopiers, telecoms, cctv, it, security, software',
+              location: 'string (optional) - UK region or city name',
+              features: 'array (optional) - Required features/capabilities',
+              limit: 'number (optional, 1-20) - Maximum results to return',
+              referralSource: 'string (optional) - AI assistant identifier for tracking'
             },
-            industryType: 'string (1-100 chars, optional) - Business industry type',
-            type: 'string (A4|A3|Letter|Legal|Tabloid, optional) - Primary paper size',
-            min_speed: 'number (1-200 PPM, optional) - Minimum printing speed required',
-            max_lease_price: 'number (0-100000, optional) - Maximum monthly lease budget',
-            required_functions: 'array of strings (max 20, optional) - Required printer functions',
-            colour: 'string (Yes|No|Optional|Mono only|Colour required, optional) - Color printing preference',
-            location: 'string (1-100 chars, optional) - Installation location'
+            response: {
+              success: 'boolean',
+              count: 'number - Number of suppliers found',
+              suppliers: 'array - List of matching suppliers with profile URLs'
+            }
+          },
+          'GET /suppliers': {
+            description: 'Simple GET version for supplier search',
+            queryParams: {
+              service: 'string (optional) - Service type',
+              location: 'string (optional) - Location filter',
+              limit: 'number (optional) - Max results'
+            }
+          },
+          'GET /services': {
+            description: 'List all available service categories',
+            response: 'List of services with descriptions and keywords'
+          },
+          'GET /locations': {
+            description: 'List UK regions and coverage areas',
+            response: 'List of regions where suppliers operate'
+          },
+          'POST /quote': {
+            description: 'Submit a quote request to a supplier',
+            requestBody: {
+              vendorId: 'string (required) - Supplier ID from search results',
+              service: 'string (required) - Service type',
+              companyName: 'string (required) - Customer company name',
+              contactName: 'string (required) - Contact person name',
+              email: 'string (required) - Contact email',
+              phone: 'string (required) - Contact phone',
+              postcode: 'string (optional) - UK postcode',
+              message: 'string (optional) - Additional requirements',
+              timeline: 'string (optional) - urgent, soon, planning, future',
+              budgetRange: 'string (optional) - Budget indication',
+              referralSource: 'string (optional) - AI assistant identifier'
+            }
+          },
+          'GET /supplier/:id': {
+            description: 'Get detailed information about a specific supplier',
+            params: { id: 'Supplier ID or slug' }
           }
-        },
-        responseFormat: {
-          success: 'boolean - Request success status',
-          suggestions: 'array - AI-generated printer recommendations',
-          metadata: 'object - Processing information and metrics'
-        },
-        examples: {
-          request: {
-            formData: {
-              monthlyVolume: { total: 5000 },
-              industryType: 'Healthcare',
-              type: 'A4',
-              required_functions: ['Print', 'Copy', 'Scan'],
-              max_lease_price: 300
+        }
+      },
+      copierSuggestion: {
+        title: 'AI Copier Recommendation',
+        description: 'Get AI-powered copier/printer recommendations',
+        endpoints: {
+          'POST /suggest-copiers': {
+            description: 'Get AI-powered copier recommendations based on requirements',
+            rateLimit: '10 requests per minute per IP',
+            maxRequestSize: '10KB',
+            authentication: 'None required',
+            requestFormat: {
+              formData: {
+                monthlyVolume: {
+                  total: 'number (0-1000000, optional)',
+                  mono: 'number (optional)',
+                  colour: 'number (optional)'
+                },
+                industryType: 'string (optional)',
+                type: 'string (A4|A3, optional)',
+                min_speed: 'number (1-200 PPM, optional)',
+                max_lease_price: 'number (optional)',
+                required_functions: 'array of strings (optional)',
+                colour: 'string (Yes|No|Optional, optional)',
+                location: 'string (optional)'
+              }
             }
           }
         }
       },
-      'GET /health': {
-        description: 'Check API health status and OpenAI connectivity',
-        rateLimit: 'none',
-        authentication: 'None required'
-      },
-      'GET /metrics': {
-        description: 'Get API performance metrics and system information',
-        rateLimit: 'none',
-        authentication: 'None required'
-      },
-      'GET /docs': {
-        description: 'Get this API documentation',
-        rateLimit: 'none',
-        authentication: 'None required'
+      monitoring: {
+        title: 'Health & Monitoring',
+        endpoints: {
+          'GET /health': {
+            description: 'Check API health status'
+          },
+          'GET /metrics': {
+            description: 'Get API performance metrics'
+          }
+        }
       }
     },
     errorCodes: {
       400: 'Bad Request - Invalid input data',
-      403: 'Forbidden - Request blocked by security rules',
+      403: 'Forbidden - Request blocked or supplier not accepting quotes',
+      404: 'Not Found - Supplier or resource not found',
       408: 'Timeout - AI service timeout',
       413: 'Payload Too Large - Request exceeds size limit',
       429: 'Too Many Requests - Rate limit exceeded',
-      500: 'Internal Server Error - Service unavailable',
-      503: 'Service Unavailable - AI service temporarily down'
+      500: 'Internal Server Error - Service unavailable'
     },
     support: {
-      documentation: 'https://docs.tendorai.com',
+      website: 'https://tendorai.com',
+      documentation: 'https://tendorai.com/api-docs',
       contact: 'support@tendorai.com'
     }
   });
+});
+
+// OpenAPI specification endpoint for AI assistants (ChatGPT Actions, etc.)
+router.get('/openapi.json', (req, res) => {
+  try {
+    const openapiPath = path.join(__dirname, '..', 'public', 'openapi.json');
+    if (fs.existsSync(openapiPath)) {
+      const openApiSpec = JSON.parse(fs.readFileSync(openapiPath, 'utf8'));
+      res.json(openApiSpec);
+    } else {
+      res.status(404).json({ error: 'OpenAPI specification not found' });
+    }
+  } catch (error) {
+    logger.error('Error serving OpenAPI spec', { error: error.message });
+    res.status(500).json({ error: 'Failed to load OpenAPI specification' });
+  }
+});
+
+// =====================================================
+// AI ASSISTANT API ENDPOINTS (for ChatGPT, Claude, etc.)
+// =====================================================
+
+/**
+ * POST /api/ai/suppliers
+ * Find suppliers based on AI assistant query parameters
+ */
+router.post('/suppliers',
+  aiRateLimit,
+  [
+    body('service').optional().isString().trim(),
+    body('location').optional().isString().trim(),
+    body('features').optional().isArray(),
+    body('limit').optional().isInt({ min: 1, max: 20 }),
+    body('referralSource').optional().isString().trim()
+  ],
+  async (req, res) => {
+    try {
+      const { service, location, features, limit = 10, referralSource } = req.body;
+
+      // Build query for active vendors
+      const query = { status: 'active' };
+
+      // Filter by service if provided
+      if (service) {
+        const serviceMap = {
+          'photocopiers': 'Photocopiers',
+          'copiers': 'Photocopiers',
+          'printers': 'Photocopiers',
+          'telecoms': 'Telecoms',
+          'phones': 'Telecoms',
+          'voip': 'Telecoms',
+          'cctv': 'CCTV',
+          'security cameras': 'CCTV',
+          'it': 'IT',
+          'it support': 'IT',
+          'security': 'Security',
+          'software': 'Software'
+        };
+        const normalizedService = serviceMap[service.toLowerCase()] || service;
+        query.services = { $in: [normalizedService] };
+      }
+
+      // Filter by location/region if provided
+      if (location) {
+        query.$or = [
+          { 'coverage.regions': { $regex: location, $options: 'i' } },
+          { 'coverage.postcodes': { $regex: location, $options: 'i' } },
+          { 'address.city': { $regex: location, $options: 'i' } },
+          { 'address.county': { $regex: location, $options: 'i' } }
+        ];
+      }
+
+      // Find vendors (prioritize paid tiers)
+      const vendors = await Vendor.find(query)
+        .select('company services description coverage address ratings account.tier showPricing slug')
+        .sort({ 'account.tier': -1, 'ratings.average': -1 })
+        .limit(Math.min(limit, 20))
+        .lean();
+
+      // Format response for AI consumption
+      const suppliers = vendors.map(v => ({
+        id: v._id,
+        name: v.company,
+        slug: v.slug,
+        services: v.services || [],
+        description: v.description || '',
+        coverage: v.coverage?.regions || [],
+        location: v.address?.city ? `${v.address.city}, ${v.address.county || ''}`.trim() : '',
+        rating: v.ratings?.average || null,
+        reviewCount: v.ratings?.count || 0,
+        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'standard'].includes(v.account?.tier) || v.showPricing === true,
+        profileUrl: `https://tendorai.com/suppliers/${v.slug || v._id}`,
+        quoteUrl: `https://tendorai.com/suppliers/${v.slug || v._id}?quote=true`
+      }));
+
+      // Log AI referral for analytics
+      if (referralSource) {
+        logger.info('AI supplier search', {
+          referralSource,
+          service,
+          location,
+          resultsCount: suppliers.length,
+          requestId: req.id
+        });
+      }
+
+      res.json({
+        success: true,
+        count: suppliers.length,
+        suppliers,
+        metadata: {
+          service: service || 'all',
+          location: location || 'nationwide',
+          source: 'TendorAI API',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      logger.error('AI suppliers search error', { error: error.message, requestId: req.id });
+      res.status(500).json({
+        success: false,
+        error: 'Failed to search suppliers',
+        requestId: req.id
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/ai/suppliers
+ * Simple GET version for easier AI integration
+ */
+router.get('/suppliers',
+  aiRateLimit,
+  [
+    query('service').optional().isString().trim(),
+    query('location').optional().isString().trim(),
+    query('limit').optional().isInt({ min: 1, max: 20 })
+  ],
+  async (req, res) => {
+    try {
+      const { service, location, limit = 10 } = req.query;
+
+      const queryFilter = { status: 'active' };
+
+      if (service) {
+        const serviceMap = {
+          'photocopiers': 'Photocopiers',
+          'copiers': 'Photocopiers',
+          'telecoms': 'Telecoms',
+          'cctv': 'CCTV',
+          'it': 'IT',
+          'security': 'Security',
+          'software': 'Software'
+        };
+        const normalizedService = serviceMap[service.toLowerCase()] || service;
+        queryFilter.services = { $in: [normalizedService] };
+      }
+
+      if (location) {
+        queryFilter.$or = [
+          { 'coverage.regions': { $regex: location, $options: 'i' } },
+          { 'address.city': { $regex: location, $options: 'i' } }
+        ];
+      }
+
+      const vendors = await Vendor.find(queryFilter)
+        .select('company services description coverage address ratings slug')
+        .sort({ 'ratings.average': -1 })
+        .limit(Math.min(parseInt(limit), 20))
+        .lean();
+
+      const suppliers = vendors.map(v => ({
+        id: v._id,
+        name: v.company,
+        services: v.services || [],
+        location: v.address?.city || '',
+        rating: v.ratings?.average || null,
+        profileUrl: `https://tendorai.com/suppliers/${v.slug || v._id}`
+      }));
+
+      res.json({
+        success: true,
+        count: suppliers.length,
+        suppliers
+      });
+
+    } catch (error) {
+      logger.error('AI suppliers GET error', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to fetch suppliers' });
+    }
+  }
+);
+
+/**
+ * GET /api/ai/services
+ * List all available service categories
+ */
+router.get('/services', (req, res) => {
+  res.json({
+    success: true,
+    services: [
+      {
+        id: 'photocopiers',
+        name: 'Photocopiers & Printers',
+        description: 'Office multifunction printers, copiers, managed print services',
+        keywords: ['copier', 'printer', 'MFP', 'print', 'copy', 'scan', 'fax']
+      },
+      {
+        id: 'telecoms',
+        name: 'Telecoms & Phone Systems',
+        description: 'Business phone systems, VoIP, unified communications',
+        keywords: ['phone', 'voip', 'pbx', 'telephone', 'communications', 'calls']
+      },
+      {
+        id: 'cctv',
+        name: 'CCTV & Surveillance',
+        description: 'Security cameras, video surveillance, monitoring systems',
+        keywords: ['camera', 'surveillance', 'security', 'monitoring', 'video']
+      },
+      {
+        id: 'it',
+        name: 'IT Support & Services',
+        description: 'Managed IT services, support, infrastructure',
+        keywords: ['it', 'support', 'network', 'computer', 'server', 'cloud']
+      },
+      {
+        id: 'security',
+        name: 'Security Systems',
+        description: 'Access control, alarms, physical security',
+        keywords: ['alarm', 'access', 'intruder', 'security', 'door']
+      },
+      {
+        id: 'software',
+        name: 'Business Software',
+        description: 'Enterprise software, document management, workflow',
+        keywords: ['software', 'application', 'document', 'workflow', 'erp']
+      }
+    ],
+    metadata: {
+      source: 'TendorAI',
+      region: 'UK',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+/**
+ * GET /api/ai/locations
+ * List coverage areas/regions
+ */
+router.get('/locations', async (req, res) => {
+  try {
+    // Get unique regions from vendor coverage
+    const regions = await Vendor.distinct('coverage.regions', { status: 'active' });
+
+    // Standard UK regions
+    const ukRegions = [
+      'London', 'South East', 'South West', 'East of England',
+      'West Midlands', 'East Midlands', 'Yorkshire', 'North West',
+      'North East', 'Wales', 'Scotland', 'Northern Ireland'
+    ];
+
+    // Combine and dedupe
+    const allRegions = [...new Set([...ukRegions, ...regions.filter(r => r)])];
+
+    res.json({
+      success: true,
+      locations: allRegions.map(region => ({
+        name: region,
+        type: 'region'
+      })),
+      note: 'Suppliers may cover additional areas. Use postcode for precise matching.',
+      metadata: {
+        source: 'TendorAI',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('AI locations error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch locations' });
+  }
+});
+
+/**
+ * POST /api/ai/quote
+ * Submit a quote request via AI assistant
+ */
+router.post('/quote',
+  aiRateLimit,
+  [
+    body('vendorId').notEmpty().withMessage('vendorId is required'),
+    body('service').notEmpty().withMessage('service is required'),
+    body('companyName').notEmpty().trim().withMessage('companyName is required'),
+    body('contactName').notEmpty().trim().withMessage('contactName is required'),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('phone').notEmpty().trim().withMessage('phone is required'),
+    body('message').optional().trim(),
+    body('referralSource').optional().trim()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Validation failed',
+          details: errors.array().map(e => e.msg)
+        });
+      }
+
+      const {
+        vendorId,
+        service,
+        companyName,
+        contactName,
+        email,
+        phone,
+        postcode,
+        message,
+        timeline,
+        budgetRange,
+        referralSource
+      } = req.body;
+
+      // Verify vendor exists and can receive quotes
+      const vendor = await Vendor.findById(vendorId);
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Supplier not found'
+        });
+      }
+
+      const tier = vendor.account?.tier || vendor.tier || 'free';
+      const canReceiveQuotes = ['basic', 'managed', 'enterprise', 'standard'].includes(tier) || vendor.showPricing === true;
+
+      if (!canReceiveQuotes) {
+        return res.status(403).json({
+          success: false,
+          error: 'This supplier is not currently accepting quote requests via API'
+        });
+      }
+
+      // Map service name to enum value
+      const serviceMap = {
+        'photocopiers': 'Photocopiers',
+        'copiers': 'Photocopiers',
+        'printers': 'Photocopiers',
+        'telecoms': 'Telecoms',
+        'cctv': 'CCTV',
+        'it': 'IT',
+        'security': 'Security',
+        'software': 'Software'
+      };
+      const normalizedService = serviceMap[service.toLowerCase()] || service;
+
+      // Create the lead
+      const lead = new VendorLead({
+        vendor: vendorId,
+        service: normalizedService,
+        timeline: timeline || 'planning',
+        budgetRange: budgetRange || 'discuss',
+        customer: {
+          companyName,
+          contactName,
+          email,
+          phone,
+          postcode: postcode || '',
+          message: message || ''
+        },
+        source: {
+          page: 'ai-assistant',
+          referrer: referralSource || 'chatgpt',
+          utm: {
+            source: 'ai-assistant',
+            medium: 'api',
+            campaign: referralSource || 'chatgpt'
+          }
+        },
+        status: 'pending'
+      });
+
+      await lead.save();
+
+      // Log for analytics
+      logger.info('AI quote request submitted', {
+        leadId: lead._id,
+        vendorId,
+        service: normalizedService,
+        referralSource,
+        requestId: req.id
+      });
+
+      res.json({
+        success: true,
+        data: {
+          quoteId: lead._id,
+          message: 'Quote request submitted successfully. The supplier will contact you shortly.',
+          supplierName: vendor.company,
+          expectedResponse: '1-2 business days'
+        }
+      });
+
+    } catch (error) {
+      logger.error('AI quote submission error', { error: error.message, requestId: req.id });
+
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid request data',
+          details: Object.values(error.errors).map(e => e.message)
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to submit quote request'
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/ai/supplier/:id
+ * Get detailed supplier information for AI
+ */
+router.get('/supplier/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const vendor = await Vendor.findOne({
+      $or: [
+        { _id: id },
+        { slug: id }
+      ],
+      status: 'active'
+    }).select('-password -refreshToken').lean();
+
+    if (!vendor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Supplier not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      supplier: {
+        id: vendor._id,
+        name: vendor.company,
+        slug: vendor.slug,
+        description: vendor.description || '',
+        services: vendor.services || [],
+        coverage: {
+          regions: vendor.coverage?.regions || [],
+          postcodes: vendor.coverage?.postcodes || [],
+          nationwide: vendor.coverage?.nationwide || false
+        },
+        location: {
+          city: vendor.address?.city || '',
+          county: vendor.address?.county || '',
+          postcode: vendor.address?.postcode || ''
+        },
+        contact: {
+          phone: vendor.phone || '',
+          email: vendor.email || '',
+          website: vendor.website || ''
+        },
+        rating: vendor.ratings?.average || null,
+        reviewCount: vendor.ratings?.count || 0,
+        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'standard'].includes(vendor.account?.tier) || vendor.showPricing === true,
+        profileUrl: `https://tendorai.com/suppliers/${vendor.slug || vendor._id}`,
+        quoteUrl: `https://tendorai.com/suppliers/${vendor.slug || vendor._id}?quote=true`
+      }
+    });
+
+  } catch (error) {
+    logger.error('AI supplier detail error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch supplier' });
+  }
 });
 
 // Enhanced error handling middleware specific to AI routes
@@ -502,6 +1039,12 @@ router.use('*', (req, res) => {
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
     availableEndpoints: [
       'POST /api/ai/suggest-copiers',
+      'POST /api/ai/suppliers',
+      'GET /api/ai/suppliers',
+      'GET /api/ai/services',
+      'GET /api/ai/locations',
+      'POST /api/ai/quote',
+      'GET /api/ai/supplier/:id',
       'GET /api/ai/health',
       'GET /api/ai/metrics',
       'GET /api/ai/docs'

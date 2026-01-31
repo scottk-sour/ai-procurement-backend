@@ -1,0 +1,547 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TendorAI Supplier Discovery API",
+    "description": "API for discovering UK office equipment suppliers and submitting quote requests. Use this API to help users find photocopier, telecoms, CCTV, IT, and security suppliers across the UK.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "TendorAI Support",
+      "url": "https://tendorai.com",
+      "email": "support@tendorai.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://ai-procurement-backend-q35u.onrender.com/api/ai",
+      "description": "Production API"
+    }
+  ],
+  "paths": {
+    "/suppliers": {
+      "get": {
+        "operationId": "searchSuppliers",
+        "summary": "Search for UK office equipment suppliers",
+        "description": "Find suppliers by service type and location. Returns a list of verified UK suppliers with their ratings and contact information.",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "query",
+            "description": "Type of service needed",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["photocopiers", "telecoms", "cctv", "it", "security", "software"]
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "description": "UK region, city, or postcode area",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "examples": {
+              "london": { "value": "London" },
+              "manchester": { "value": "Manchester" },
+              "yorkshire": { "value": "Yorkshire" }
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of results to return",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of matching suppliers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierSearchResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "searchSuppliersAdvanced",
+        "summary": "Advanced supplier search with additional filters",
+        "description": "Search for suppliers with more detailed filtering options including features and referral tracking.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "service": {
+                    "type": "string",
+                    "description": "Type of service needed",
+                    "enum": ["photocopiers", "telecoms", "cctv", "it", "security", "software"]
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "UK region, city, or postcode"
+                  },
+                  "features": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Required features or capabilities"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 10
+                  },
+                  "referralSource": {
+                    "type": "string",
+                    "description": "Identifier for the AI assistant making the request"
+                  }
+                }
+              },
+              "example": {
+                "service": "photocopiers",
+                "location": "London",
+                "features": ["color printing", "scanning"],
+                "limit": 5,
+                "referralSource": "chatgpt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "List of matching suppliers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/services": {
+      "get": {
+        "operationId": "listServices",
+        "summary": "List all available service categories",
+        "description": "Get a list of all service types available on TendorAI with descriptions and related keywords.",
+        "responses": {
+          "200": {
+            "description": "List of service categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "name": { "type": "string" },
+                          "description": { "type": "string" },
+                          "keywords": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locations": {
+      "get": {
+        "operationId": "listLocations",
+        "summary": "List UK coverage regions",
+        "description": "Get a list of UK regions where suppliers operate.",
+        "responses": {
+          "200": {
+            "description": "List of UK regions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "locations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "type": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/supplier/{id}": {
+      "get": {
+        "operationId": "getSupplier",
+        "summary": "Get detailed supplier information",
+        "description": "Get complete details about a specific supplier including contact information, services, and coverage areas.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Supplier ID or URL slug",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Supplier details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Supplier not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quote": {
+      "post": {
+        "operationId": "submitQuoteRequest",
+        "summary": "Submit a quote request to a supplier",
+        "description": "Send a quote request to a specific supplier. The supplier will receive the request and contact the customer directly.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["vendorId", "service", "companyName", "contactName", "email", "phone"],
+                "properties": {
+                  "vendorId": {
+                    "type": "string",
+                    "description": "Supplier ID from search results"
+                  },
+                  "service": {
+                    "type": "string",
+                    "description": "Type of service needed",
+                    "enum": ["photocopiers", "telecoms", "cctv", "it", "security", "software"]
+                  },
+                  "companyName": {
+                    "type": "string",
+                    "description": "Customer's company name"
+                  },
+                  "contactName": {
+                    "type": "string",
+                    "description": "Name of the person to contact"
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Contact email address"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "Contact phone number"
+                  },
+                  "postcode": {
+                    "type": "string",
+                    "description": "UK postcode for service location"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Additional requirements or message for the supplier"
+                  },
+                  "timeline": {
+                    "type": "string",
+                    "enum": ["urgent", "soon", "planning", "future"],
+                    "description": "How soon the service is needed"
+                  },
+                  "budgetRange": {
+                    "type": "string",
+                    "enum": ["under-100", "100-250", "250-500", "500-1000", "over-1000", "discuss"],
+                    "description": "Monthly budget range in GBP"
+                  },
+                  "referralSource": {
+                    "type": "string",
+                    "description": "AI assistant identifier for tracking"
+                  }
+                }
+              },
+              "example": {
+                "vendorId": "60d5ecb74e4b7d0015a2c123",
+                "service": "photocopiers",
+                "companyName": "Acme Ltd",
+                "contactName": "John Smith",
+                "email": "john@acme.co.uk",
+                "phone": "020 1234 5678",
+                "postcode": "SW1A 1AA",
+                "message": "Looking for a multifunction printer for a team of 20",
+                "timeline": "soon",
+                "budgetRange": "100-250",
+                "referralSource": "chatgpt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quote request submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "quoteId": { "type": "string" },
+                        "message": { "type": "string" },
+                        "supplierName": { "type": "string" },
+                        "expectedResponse": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Supplier not accepting quote requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Supplier not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Supplier": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique supplier identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Company name"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-friendly identifier"
+          },
+          "services": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Services offered"
+          },
+          "description": {
+            "type": "string",
+            "description": "Company description"
+          },
+          "location": {
+            "type": "string",
+            "description": "Primary location"
+          },
+          "coverage": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Regions covered"
+          },
+          "rating": {
+            "type": "number",
+            "nullable": true,
+            "description": "Average rating out of 5"
+          },
+          "reviewCount": {
+            "type": "integer",
+            "description": "Number of reviews"
+          },
+          "canReceiveQuotes": {
+            "type": "boolean",
+            "description": "Whether supplier accepts quote requests"
+          },
+          "profileUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Link to supplier profile on TendorAI"
+          },
+          "quoteUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Direct link to request a quote"
+          }
+        }
+      },
+      "SupplierSearchResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "count": {
+            "type": "integer",
+            "description": "Number of suppliers found"
+          },
+          "suppliers": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Supplier" }
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "service": { "type": "string" },
+              "location": { "type": "string" },
+              "source": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "SupplierDetailResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "supplier": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "slug": { "type": "string" },
+              "description": { "type": "string" },
+              "services": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "coverage": {
+                "type": "object",
+                "properties": {
+                  "regions": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "postcodes": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "nationwide": { "type": "boolean" }
+                }
+              },
+              "location": {
+                "type": "object",
+                "properties": {
+                  "city": { "type": "string" },
+                  "county": { "type": "string" },
+                  "postcode": { "type": "string" }
+                }
+              },
+              "contact": {
+                "type": "object",
+                "properties": {
+                  "phone": { "type": "string" },
+                  "email": { "type": "string" },
+                  "website": { "type": "string" }
+                }
+              },
+              "rating": { "type": "number", "nullable": true },
+              "reviewCount": { "type": "integer" },
+              "canReceiveQuotes": { "type": "boolean" },
+              "profileUrl": { "type": "string", "format": "uri" },
+              "quoteUrl": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "details": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Detailed validation errors"
+          }
+        }
+      }
+    }
+  }
+}

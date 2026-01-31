@@ -254,6 +254,13 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
+// Serve public directory for OpenAPI spec and other static assets
+const publicDir = path.join(__dirname, 'public');
+if (!fs.existsSync(publicDir)) {
+  fs.mkdirSync(publicDir, { recursive: true });
+}
+app.use('/public', express.static(publicDir));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorUploadRoutes);
