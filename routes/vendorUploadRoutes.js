@@ -102,8 +102,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
             services,
             account: {
                 status: 'active'
-            },
-            status: 'active'  // Also set top-level status for compatibility
+            }
         });
         await newVendor.save();
 
