@@ -83,6 +83,33 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
+// DEBUG: Test vendor creation endpoint
+router.post('/test-create', async (req, res) => {
+    try {
+        console.log('DEBUG: Starting test-create');
+        const testVendor = new Vendor({
+            name: 'Debug Test',
+            email: `debug${Date.now()}@test.com`,
+            password: 'Test123!',
+            company: 'Debug Company',
+            services: ['Photocopiers'],
+            account: { status: 'active' }
+        });
+        console.log('DEBUG: Vendor object created, about to save');
+        await testVendor.save();
+        console.log('DEBUG: Vendor saved successfully');
+        res.json({ success: true, id: testVendor._id });
+    } catch (error) {
+        console.error('DEBUG: Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            name: error.name,
+            stack: error.stack?.split('\n').slice(0, 5)
+        });
+    }
+});
+
 // Vendor signup (rate limiter temporarily disabled for debugging)
 router.post('/signup', async (req, res) => {
     try {
