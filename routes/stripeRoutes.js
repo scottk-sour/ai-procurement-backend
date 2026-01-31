@@ -92,7 +92,13 @@ const authenticateVendor = async (req, res, next) => {
     const jwt = await import('jsonwebtoken');
     const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
 
-    const vendor = await Vendor.findById(decoded.userId || decoded.id);
+    // Support multiple ID field names (vendorId from vendor login, userId/id from other sources)
+    const vendorId = decoded.vendorId || decoded.userId || decoded.id;
+    if (!vendorId) {
+      return res.status(401).json({ success: false, message: 'Invalid token structure' });
+    }
+
+    const vendor = await Vendor.findById(vendorId);
     if (!vendor) {
       return res.status(404).json({ success: false, message: 'Vendor not found' });
     }

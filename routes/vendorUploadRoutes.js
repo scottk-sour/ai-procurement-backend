@@ -241,7 +241,7 @@ router.get('/verify', async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         if (!decoded.vendorId) return res.status(401).json({ message: 'Invalid token payload.' });
 
-        const vendor = await Vendor.findById(decoded.vendorId).select('-password status account');
+        const vendor = await Vendor.findById(decoded.vendorId).select('-password');
         if (!vendor) return res.status(401).json({ message: 'Invalid token.' });
 
         res.json({
@@ -261,7 +261,7 @@ router.get('/verify', async (req, res) => {
 // Vendor profile
 router.get('/profile', vendorAuth, async (req, res) => {
     try {
-        const vendor = await Vendor.findById(req.vendorId).select('-password status account');
+        const vendor = await Vendor.findById(req.vendorId).select('-password');
         if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
         res.status(200).json({
