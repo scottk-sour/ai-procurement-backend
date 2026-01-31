@@ -83,127 +83,18 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// DEBUG: Test vendor creation endpoint
-router.post('/test-create', async (req, res) => {
+// Vendor signup with rate limiting
+router.post('/signup', signupLimiter, async (req, res) => {
     try {
-        console.log('DEBUG: Starting test-create');
-        const testVendor = new Vendor({
-            name: 'Debug Test',
-            email: `debug${Date.now()}@test.com`,
-            password: 'Test123!',
-            company: 'Debug Company',
-            services: ['Photocopiers'],
-            account: { status: 'active' }
-        });
-        console.log('DEBUG: Vendor object created, about to save');
-        await testVendor.save();
-        console.log('DEBUG: Vendor saved successfully');
-        res.json({ success: true, id: testVendor._id });
-    } catch (error) {
-        console.error('DEBUG: Error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            name: error.name,
-            stack: error.stack?.split('\n').slice(0, 5)
-        });
-    }
-});
-
-// DEBUG: Test signup logic with request body (returns detailed errors)
-router.post('/test-signup', async (req, res) => {
-    const steps = [];
-    try {
-        steps.push('1. Route entered');
-        steps.push(`2. Body received: ${JSON.stringify(req.body)}`);
-
         const { name, email, password, company, services = ['Photocopiers'] } = req.body;
-        steps.push(`3. Destructured: name=${name}, email=${email}, company=${company}`);
 
         if (!name || !email || !password || !company) {
-            return res.status(400).json({ success: false, message: 'Missing required fields', steps });
-        }
-        steps.push('4. Validation passed');
-
-        // Wrap findOne in its own try-catch
-        let existingVendor = null;
-        try {
-            existingVendor = await Vendor.findOne({ email });
-            steps.push(`5. Existing check: ${existingVendor ? 'FOUND' : 'NOT FOUND'}`);
-        } catch (findError) {
-            steps.push(`5. ERROR in findOne: ${findError.message}`);
-            return res.status(500).json({ success: false, error: findError.message, steps });
-        }
-
-        if (existingVendor) {
-            return res.status(400).json({ success: false, message: 'Vendor exists', steps });
-        }
-
-        steps.push('6. Creating Vendor object');
-        let newVendor;
-        try {
-            newVendor = new Vendor({
-                name,
-                email,
-                password,
-                company,
-                services,
-                account: { status: 'active' }
-            });
-            steps.push('7. Vendor object created');
-        } catch (createError) {
-            steps.push(`7. ERROR creating Vendor: ${createError.message}`);
-            return res.status(500).json({ success: false, error: createError.message, steps });
-        }
-
-        try {
-            await newVendor.save();
-            steps.push('8. Vendor saved');
-        } catch (saveError) {
-            steps.push(`8. ERROR saving: ${saveError.message}`);
-            return res.status(500).json({ success: false, error: saveError.message, steps });
-        }
-
-        res.status(201).json({
-            success: true,
-            message: 'Vendor created',
-            id: newVendor._id,
-            steps
-        });
-    } catch (error) {
-        steps.push(`OUTER CATCH: ${error.message}`);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            name: error.name,
-            steps,
-            stack: error.stack?.split('\n').slice(0, 5)
-        });
-    }
-});
-
-// Vendor signup (rate limiter temporarily disabled for debugging)
-router.post('/signup', async (req, res) => {
-    console.log('DEBUG SIGNUP: Route entered');
-    try {
-        console.log('DEBUG SIGNUP: Inside try block');
-        console.log('DEBUG SIGNUP: req.body =', JSON.stringify(req.body));
-
-        const { name, email, password, company, services = ['Photocopiers'] } = req.body;
-        console.log('DEBUG SIGNUP: Destructured -', { name, email, company, services, hasPassword: !!password });
-
-        if (!name || !email || !password || !company) {
-            console.log('DEBUG SIGNUP: Missing required fields');
             return res.status(400).json({ message: 'Name, email, password, and company are required.' });
         }
 
-        console.log('DEBUG SIGNUP: Checking existing vendor');
         const existingVendor = await Vendor.findOne({ email });
-        console.log('DEBUG SIGNUP: Existing vendor check complete:', existingVendor ? 'FOUND' : 'NOT FOUND');
-
         if (existingVendor) return res.status(400).json({ message: 'Vendor already exists.' });
 
-        console.log('DEBUG SIGNUP: Creating new Vendor object');
         // Don't hash password here - the Vendor model's pre-save hook handles hashing
         const newVendor = new Vendor({
             name,
@@ -215,9 +106,7 @@ router.post('/signup', async (req, res) => {
                 status: 'active'
             }
         });
-        console.log('DEBUG SIGNUP: Vendor object created, about to save');
         await newVendor.save();
-        console.log('DEBUG SIGNUP: Vendor saved successfully');
 
         try {
             await VendorActivity.createActivity({
