@@ -1,7 +1,5 @@
 import express from 'express';
 import { body, query, validationResult } from 'express-validator';
-import helmet from 'helmet';
-import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,59 +13,8 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// Security middleware for AI routes - Fixed CSP for OpenAI
-router.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://api.openai.com"], // Required for OpenAI API calls
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  },
-  crossOriginEmbedderPolicy: false // Required for API integrations
-}));
-
-// Enhanced CORS configuration for production
-router.use(cors({
-  origin: function (origin, callback) {
-    // Define allowed origins - handle environment variables properly
-    const allowedOrigins = process.env.ALLOWED_ORIGINS 
-      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-      : ['http://localhost:3000', 'http://localhost:3001'];
-    
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      logger.warn('CORS origin not allowed', { 
-        origin, 
-        allowedOrigins,
-        userAgent: origin ? 'browser' : 'no-origin'
-      });
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['POST', 'GET', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Request-ID',
-    'User-Agent',
-    'Accept'
-  ],
-  credentials: true,
-  maxAge: 86400, // 24 hours
-  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
-}));
+// NOTE: CORS is handled globally in index.js - no route-specific CORS needed
+// The global CORS allows: tendorai.com, www.tendorai.com, localhost:3000, Vercel previews
 
 // Request ID middleware for tracking
 router.use((req, res, next) => {
