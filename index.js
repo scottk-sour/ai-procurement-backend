@@ -28,7 +28,7 @@ import vendorAnalyticsRoutes from './routes/vendorAnalyticsRoutes.js';
 import sitemapRoutes from './routes/sitemap.js';
 import visibilityRoutes from './routes/visibilityRoutes.js';
 import vendorLeadRoutes from './routes/vendorLeadRoutes.js';
-// import stripeRoutes from './routes/stripeRoutes.js'; // TODO: Re-enable when Stripe env vars are configured
+import stripeRoutes from './routes/stripeRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -223,8 +223,7 @@ app.use((error, req, res, next) => {
 app.use(cookieParser());
 
 // Stripe webhook needs raw body, so handle it before JSON parsing
-// TODO: Re-enable when Stripe env vars are configured
-// app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
 // JSON body parsing for all routes
 app.use(express.json({ limit: '10mb' }));
@@ -277,7 +276,7 @@ app.use('/api/public', publicVendorRoutes);
 app.use('/api/vendor-leads', vendorLeadRoutes);
 app.use('/api/analytics', vendorAnalyticsRoutes);
 app.use('/api/visibility', visibilityRoutes);
-// app.use('/api/stripe', stripeRoutes); // TODO: Re-enable when Stripe env vars are configured
+app.use('/api/stripe', stripeRoutes);
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
