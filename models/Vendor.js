@@ -289,7 +289,15 @@ vendorSchema.pre('save', async function(next) {
 
 // FIXED: Generate API key if needed - using ES modules crypto import
 vendorSchema.pre('save', function(next) {
-  if (!this.integration.apiKey && this.account.status === 'active') {
+  // Safely check nested properties before accessing
+  const accountStatus = this.account?.status || this.status;
+  const hasApiKey = this.integration?.apiKey;
+
+  if (!hasApiKey && accountStatus === 'active') {
+    // Ensure integration object exists
+    if (!this.integration) {
+      this.integration = {};
+    }
     this.integration.apiKey = crypto.randomBytes(32).toString('hex');
   }
   next();

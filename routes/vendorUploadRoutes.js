@@ -93,16 +93,17 @@ router.post('/signup', signupLimiter, async (req, res) => {
         const existingVendor = await Vendor.findOne({ email });
         if (existingVendor) return res.status(400).json({ message: 'Vendor already exists.' });
 
-        const hashedPassword = await bcrypt.hash(password, 12);
+        // Don't hash password here - the Vendor model's pre-save hook handles hashing
         const newVendor = new Vendor({
             name,
             email,
-            password: hashedPassword,
+            password,  // Plain password - will be hashed by model pre-save hook
             company,
             services,
             account: {
                 status: 'active'
-            }
+            },
+            status: 'active'  // Also set top-level status for compatibility
         });
         await newVendor.save();
 
