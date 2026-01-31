@@ -7,7 +7,8 @@ const POSTCODES_API = 'https://api.postcodes.io';
 
 /**
  * Lookup a UK postcode and return coordinates and location data
- * @param {string} postcode - UK postcode (e.g., "SW1A 1AA")
+ * Supports both full postcodes (e.g., "SW1A 1AA") and outcodes (e.g., "SW1A", "NP44")
+ * @param {string} postcode - UK postcode or outcode
  * @returns {Object} - { valid, latitude, longitude, region, county, country, parliamentary_constituency }
  */
 export async function lookupPostcode(postcode) {
@@ -19,34 +20,72 @@ export async function lookupPostcode(postcode) {
     // Normalize postcode (remove spaces, uppercase)
     const normalizedPostcode = postcode.replace(/\s+/g, '').toUpperCase();
 
-    const response = await axios.get(`${POSTCODES_API}/postcodes/${encodeURIComponent(normalizedPostcode)}`, {
-      timeout: 5000
-    });
+    // First, try full postcode lookup
+    try {
+      const response = await axios.get(`${POSTCODES_API}/postcodes/${encodeURIComponent(normalizedPostcode)}`, {
+        timeout: 5000
+      });
 
-    if (response.data?.status === 200 && response.data?.result) {
-      const result = response.data.result;
-      return {
-        valid: true,
-        postcode: result.postcode,
-        latitude: result.latitude,
-        longitude: result.longitude,
-        region: result.region,
-        county: result.admin_county || result.admin_district,
-        country: result.country,
-        constituency: result.parliamentary_constituency,
-        outcode: result.outcode,
-        incode: result.incode,
-        adminDistrict: result.admin_district,
-        adminWard: result.admin_ward
-      };
+      if (response.data?.status === 200 && response.data?.result) {
+        const result = response.data.result;
+        return {
+          valid: true,
+          postcode: result.postcode,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          region: result.region,
+          county: result.admin_county || result.admin_district,
+          country: result.country,
+          constituency: result.parliamentary_constituency,
+          outcode: result.outcode,
+          incode: result.incode,
+          adminDistrict: result.admin_district,
+          adminWard: result.admin_ward,
+          isOutcode: false
+        };
+      }
+    } catch (postcodeError) {
+      // If full postcode lookup fails with 404, try outcode lookup
+      if (postcodeError.response?.status === 404) {
+        // Continue to outcode lookup below
+      } else {
+        throw postcodeError;
+      }
+    }
+
+    // Try outcode lookup (for partial postcodes like "NP44", "SW1A")
+    try {
+      const outcodeResponse = await axios.get(`${POSTCODES_API}/outcodes/${encodeURIComponent(normalizedPostcode)}`, {
+        timeout: 5000
+      });
+
+      if (outcodeResponse.data?.status === 200 && outcodeResponse.data?.result) {
+        const result = outcodeResponse.data.result;
+        return {
+          valid: true,
+          postcode: result.outcode,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          region: result.admin_district?.[0] || null,
+          county: result.admin_county?.[0] || result.admin_district?.[0] || null,
+          country: result.country?.[0] || null,
+          constituency: result.parliamentary_constituency?.[0] || null,
+          outcode: result.outcode,
+          incode: null,
+          adminDistrict: result.admin_district?.[0] || null,
+          adminWard: result.admin_ward?.[0] || null,
+          isOutcode: true
+        };
+      }
+    } catch (outcodeError) {
+      if (outcodeError.response?.status !== 404) {
+        throw outcodeError;
+      }
     }
 
     return { valid: false, error: 'Postcode not found' };
 
   } catch (error) {
-    if (error.response?.status === 404) {
-      return { valid: false, error: 'Postcode not found' };
-    }
     console.error('Postcode lookup error:', error.message);
     return { valid: false, error: 'Postcode lookup failed' };
   }
