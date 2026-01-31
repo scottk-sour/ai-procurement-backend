@@ -234,6 +234,7 @@ router.get('/vendors', async (req, res) => {
         description: v.businessProfile?.description || v.description,
         accreditations: v.businessProfile?.accreditations || v.accreditations || [],
         yearsInBusiness: v.businessProfile?.yearsInBusiness || v.yearsInBusiness,
+        yearEstablished: v.businessProfile?.yearsInBusiness || v.yearsInBusiness, // Alias for frontend
         employeeCount: v.businessProfile?.numEmployees || v.numEmployees,
         logoUrl: v.businessProfile?.logoUrl,
         brands: v.brands || [],
@@ -381,6 +382,7 @@ router.get('/vendors/:id', async (req, res) => {
       certifications: vendor.businessProfile?.certifications || vendor.certifications || [],
       specializations: vendor.businessProfile?.specializations || [],
       yearsInBusiness: vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness,
+      yearEstablished: vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness, // Alias for frontend compatibility
       companySize: vendor.businessProfile?.companySize,
       employeeCount: vendor.businessProfile?.numEmployees || vendor.numEmployees,
       logoUrl: vendor.businessProfile?.logoUrl,
