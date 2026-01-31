@@ -110,6 +110,59 @@ router.post('/test-create', async (req, res) => {
     }
 });
 
+// DEBUG: Test signup logic with request body (returns detailed errors)
+router.post('/test-signup', async (req, res) => {
+    const steps = [];
+    try {
+        steps.push('1. Route entered');
+        steps.push(`2. Body received: ${JSON.stringify(req.body)}`);
+
+        const { name, email, password, company, services = ['Photocopiers'] } = req.body;
+        steps.push(`3. Destructured: name=${name}, email=${email}, company=${company}`);
+
+        if (!name || !email || !password || !company) {
+            return res.status(400).json({ success: false, message: 'Missing required fields', steps });
+        }
+        steps.push('4. Validation passed');
+
+        const existingVendor = await Vendor.findOne({ email });
+        steps.push(`5. Existing check: ${existingVendor ? 'FOUND' : 'NOT FOUND'}`);
+
+        if (existingVendor) {
+            return res.status(400).json({ success: false, message: 'Vendor exists', steps });
+        }
+
+        steps.push('6. Creating Vendor object');
+        const newVendor = new Vendor({
+            name,
+            email,
+            password,
+            company,
+            services,
+            account: { status: 'active' }
+        });
+        steps.push('7. Vendor object created');
+
+        await newVendor.save();
+        steps.push('8. Vendor saved');
+
+        res.status(201).json({
+            success: true,
+            message: 'Vendor created',
+            id: newVendor._id,
+            steps
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            name: error.name,
+            steps,
+            stack: error.stack?.split('\n').slice(0, 5)
+        });
+    }
+});
+
 // Vendor signup (rate limiter temporarily disabled for debugging)
 router.post('/signup', async (req, res) => {
     console.log('DEBUG SIGNUP: Route entered');
