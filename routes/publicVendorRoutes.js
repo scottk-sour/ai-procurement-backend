@@ -99,27 +99,36 @@ router.get('/vendors', async (req, res) => {
     // Get total count
     const total = await Vendor.countDocuments(query);
 
-    // Fetch vendors with public fields only
+    // Fetch vendors with public fields only (support both nested and flat schemas)
     const vendors = await Vendor.find(query)
       .select({
         'company': 1,
         'name': 1,
         'services': 1,
-        'location.city': 1,
-        'location.region': 1,
-        'location.coverage': 1,
-        'location.postcode': 1,
-        'location.coordinates': 1,
+        'location': 1,
+        'city': 1,
+        'region': 1,
+        'postcode': 1,
+        'coverageAreas': 1,
         'performance.rating': 1,
         'performance.reviewCount': 1,
+        'rating': 1,
+        'reviewCount': 1,
         'tier': 1,
+        'showPricing': 1,
         'businessProfile.description': 1,
         'businessProfile.accreditations': 1,
         'businessProfile.yearsInBusiness': 1,
         'businessProfile.numEmployees': 1,
         'businessProfile.logoUrl': 1,
+        'description': 1,
+        'accreditations': 1,
+        'yearsInBusiness': 1,
+        'numEmployees': 1,
         'contactInfo.phone': 1,
         'contactInfo.website': 1,
+        'phone': 1,
+        'website': 1,
         'serviceCapabilities.responseTime': 1,
         'brands': 1,
         'subscription.priorityBoost': 1,
@@ -196,10 +205,11 @@ router.get('/vendors', async (req, res) => {
     const sortedVendors = processedVendors.slice(skip, skip + limitNum);
 
     // Format response - hide pricing flag, add showPricing boolean
+    // Support both nested schema (imported vendors) and flat schema (legacy vendors)
     const publicVendors = sortedVendors.map(v => {
       const tier = v.tier || 'free';
       const paidTiers = ['basic', 'managed', 'enterprise'];
-      const showPricing = paidTiers.includes(tier);
+      const showPricing = paidTiers.includes(tier) || v.showPricing === true;
 
       return {
         id: v._id,
@@ -207,33 +217,33 @@ router.get('/vendors', async (req, res) => {
         name: v.name,
         services: v.services || [],
         location: {
-          city: v.location?.city,
-          region: v.location?.region,
-          coverage: v.location?.coverage || [],
-          postcode: v.location?.postcode
+          city: v.location?.city || v.city,
+          region: v.location?.region || v.region,
+          coverage: v.location?.coverage || v.coverageAreas || [],
+          postcode: v.location?.postcode || v.postcode
         },
         distance: v._distance ? {
           km: v._distance,
           miles: Math.round(v._distance / 1.60934 * 10) / 10,
           formatted: `${Math.round(v._distance / 1.60934)} miles`
         } : null,
-        rating: v.performance?.rating || 0,
-        reviewCount: v.performance?.reviewCount || 0,
+        rating: v.performance?.rating || v.rating || 0,
+        reviewCount: v.performance?.reviewCount || v.reviewCount || 0,
         responseTime: v.serviceCapabilities?.responseTime,
         tier: tier,
-        description: v.businessProfile?.description,
-        accreditations: v.businessProfile?.accreditations || [],
-        yearsInBusiness: v.businessProfile?.yearsInBusiness,
-        employeeCount: v.businessProfile?.numEmployees,
+        description: v.businessProfile?.description || v.description,
+        accreditations: v.businessProfile?.accreditations || v.accreditations || [],
+        yearsInBusiness: v.businessProfile?.yearsInBusiness || v.yearsInBusiness,
+        employeeCount: v.businessProfile?.numEmployees || v.numEmployees,
         logoUrl: v.businessProfile?.logoUrl,
         brands: v.brands || [],
-        phone: showPricing ? v.contactInfo?.phone : undefined,
-        website: v.contactInfo?.website,
+        phone: showPricing ? (v.contactInfo?.phone || v.phone) : undefined,
+        website: v.contactInfo?.website || v.website,
         showPricing: showPricing,
         // Schema.org metadata for AI consumption
         '@context': 'https://schema.org',
         '@type': 'LocalBusiness',
-        'areaServed': v.location?.coverage || []
+        'areaServed': v.location?.coverage || v.coverageAreas || []
       };
     });
 
@@ -291,14 +301,28 @@ router.get('/vendors/:id', async (req, res) => {
       'email': 1,
       'services': 1,
       'location': 1,
+      'city': 1,
+      'region': 1,
+      'postcode': 1,
+      'coverageAreas': 1,
       'performance': 1,
+      'rating': 1,
+      'reviewCount': 1,
       'account.tier': 1,
       'tier': 1,
       'businessProfile': 1,
+      'description': 1,
+      'yearsInBusiness': 1,
+      'numEmployees': 1,
+      'accreditations': 1,
+      'certifications': 1,
       'contactInfo': 1,
+      'phone': 1,
+      'website': 1,
       'brands': 1,
       'serviceCapabilities': 1,
       'subscriptionStatus': 1,
+      'showPricing': 1,
       'createdAt': 1
     })
     .lean();
@@ -311,9 +335,10 @@ router.get('/vendors/:id', async (req, res) => {
     }
 
     // Use top-level tier (free/basic/managed/enterprise) for pricing visibility
+    // Also check legacy showPricing field for backwards compatibility
     const tier = vendor.tier || 'free';
     const paidTiers = ['basic', 'managed', 'enterprise'];
-    const showPricing = paidTiers.includes(tier);
+    const showPricing = paidTiers.includes(tier) || vendor.showPricing === true;
 
     // Get vendor products if pricing visible
     let products = [];
@@ -332,44 +357,45 @@ router.get('/vendors/:id', async (req, res) => {
       .lean();
     }
 
+    // Support both nested schema (imported vendors) and flat schema (legacy vendors)
     const publicVendor = {
       id: vendor._id,
       company: vendor.company,
       name: vendor.name,
       services: vendor.services || [],
       location: {
-        city: vendor.location?.city,
-        region: vendor.location?.region,
-        coverage: vendor.location?.coverage || [],
-        postcode: vendor.location?.postcode,
+        city: vendor.location?.city || vendor.city,
+        region: vendor.location?.region || vendor.region,
+        coverage: vendor.location?.coverage || vendor.coverageAreas || [],
+        postcode: vendor.location?.postcode || vendor.postcode,
         address: showPricing ? vendor.location?.address : undefined
       },
-      rating: vendor.performance?.rating || 0,
-      reviewCount: vendor.performance?.reviewCount || 0,
+      rating: vendor.performance?.rating || vendor.rating || 0,
+      reviewCount: vendor.performance?.reviewCount || vendor.reviewCount || 0,
       responseTime: vendor.serviceCapabilities?.responseTime || vendor.performance?.averageResponseTime,
       supportHours: vendor.serviceCapabilities?.supportHours,
       completedJobs: vendor.performance?.completedJobs || 0,
       tier: tier,
-      description: vendor.businessProfile?.description,
-      accreditations: vendor.businessProfile?.accreditations || [],
-      certifications: vendor.businessProfile?.certifications || [],
+      description: vendor.businessProfile?.description || vendor.description,
+      accreditations: vendor.businessProfile?.accreditations || vendor.accreditations || [],
+      certifications: vendor.businessProfile?.certifications || vendor.certifications || [],
       specializations: vendor.businessProfile?.specializations || [],
-      yearsInBusiness: vendor.businessProfile?.yearsInBusiness,
+      yearsInBusiness: vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness,
       companySize: vendor.businessProfile?.companySize,
-      employeeCount: vendor.businessProfile?.numEmployees,
+      employeeCount: vendor.businessProfile?.numEmployees || vendor.numEmployees,
       logoUrl: vendor.businessProfile?.logoUrl,
       brands: vendor.brands || [],
-      phone: showPricing ? vendor.contactInfo?.phone : undefined,
+      phone: showPricing ? (vendor.contactInfo?.phone || vendor.phone) : undefined,
       email: showPricing ? vendor.email : undefined,
-      website: vendor.contactInfo?.website,
+      website: vendor.contactInfo?.website || vendor.website,
       showPricing: showPricing,
       products: showPricing ? products : [],
       // Schema.org metadata
       '@context': 'https://schema.org',
       '@type': 'LocalBusiness',
       'name': vendor.company,
-      'description': vendor.businessProfile?.description,
-      'areaServed': vendor.location?.coverage || [],
+      'description': vendor.businessProfile?.description || vendor.description,
+      'areaServed': vendor.location?.coverage || vendor.coverageAreas || [],
       'aggregateRating': vendor.performance?.rating ? {
         '@type': 'AggregateRating',
         'ratingValue': vendor.performance.rating,
