@@ -1,4 +1,4 @@
-﻿// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS FIELD SELECTION)
+// routes/vendorUploadRoutes.js - Complete vendor routes with auth + upload (FIXED STATUS FIELD SELECTION)
 import express from "express";
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -134,8 +134,8 @@ router.post('/signup', signupLimiter, async (req, res) => {
 
         res.status(201).json({ message: 'Vendor registered successfully.' });
     } catch (error) {
-        console.error('âŒ Error registering vendor:', error.message);
-        res.status(500).json({ message: 'Internal server error.', error: error.message });
+        console.error('Error registering vendor:', error.message, error.stack);
+        res.status(500).json({ message: 'Registration failed', error: error.message, errorName: error.name });
     }
 });
 
