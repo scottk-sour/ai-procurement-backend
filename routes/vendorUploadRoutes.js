@@ -125,26 +125,44 @@ router.post('/test-signup', async (req, res) => {
         }
         steps.push('4. Validation passed');
 
-        const existingVendor = await Vendor.findOne({ email });
-        steps.push(`5. Existing check: ${existingVendor ? 'FOUND' : 'NOT FOUND'}`);
+        // Wrap findOne in its own try-catch
+        let existingVendor = null;
+        try {
+            existingVendor = await Vendor.findOne({ email });
+            steps.push(`5. Existing check: ${existingVendor ? 'FOUND' : 'NOT FOUND'}`);
+        } catch (findError) {
+            steps.push(`5. ERROR in findOne: ${findError.message}`);
+            return res.status(500).json({ success: false, error: findError.message, steps });
+        }
 
         if (existingVendor) {
             return res.status(400).json({ success: false, message: 'Vendor exists', steps });
         }
 
         steps.push('6. Creating Vendor object');
-        const newVendor = new Vendor({
-            name,
-            email,
-            password,
-            company,
-            services,
-            account: { status: 'active' }
-        });
-        steps.push('7. Vendor object created');
+        let newVendor;
+        try {
+            newVendor = new Vendor({
+                name,
+                email,
+                password,
+                company,
+                services,
+                account: { status: 'active' }
+            });
+            steps.push('7. Vendor object created');
+        } catch (createError) {
+            steps.push(`7. ERROR creating Vendor: ${createError.message}`);
+            return res.status(500).json({ success: false, error: createError.message, steps });
+        }
 
-        await newVendor.save();
-        steps.push('8. Vendor saved');
+        try {
+            await newVendor.save();
+            steps.push('8. Vendor saved');
+        } catch (saveError) {
+            steps.push(`8. ERROR saving: ${saveError.message}`);
+            return res.status(500).json({ success: false, error: saveError.message, steps });
+        }
 
         res.status(201).json({
             success: true,
@@ -153,6 +171,7 @@ router.post('/test-signup', async (req, res) => {
             steps
         });
     } catch (error) {
+        steps.push(`OUTER CATCH: ${error.message}`);
         res.status(500).json({
             success: false,
             error: error.message,
