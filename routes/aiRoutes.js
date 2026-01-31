@@ -7,6 +7,7 @@ import { suggestCopiers, healthCheck, aiRateLimit } from '../controllers/aiContr
 import logger from '../services/logger.js';
 import Vendor from '../models/Vendor.js';
 import VendorLead from '../models/VendorLead.js';
+import VendorProduct from '../models/VendorProduct.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -517,25 +518,104 @@ router.post('/suppliers',
         .limit(Math.min(limit, 20))
         .lean();
 
-      // Format response for AI consumption
-      const suppliers = vendors.map(v => ({
-        id: v._id,
-        name: v.company,
-        services: v.services || [],
-        description: v.businessProfile?.description || '',
-        coverage: v.location?.coverage || [],
-        location: v.location?.city ? `${v.location.city}${v.location.region ? ', ' + v.location.region : ''}`.trim() : '',
-        postcode: v.location?.postcode || '',
-        rating: v.performance?.rating || null,
-        reviewCount: v.performance?.reviewCount || 0,
-        brands: v.brands || [],
-        accreditations: v.businessProfile?.accreditations || [],
-        certifications: v.businessProfile?.certifications || [],
-        tier: v.tier || v.account?.tier || 'free',
-        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
-        profileUrl: `https://tendorai.com/suppliers/${v._id}`,
-        quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
-      }));
+      // Get monthly volume from request (default 5000 for estimates)
+      const { monthlyVolume = 5000, monoRatio = 0.7 } = req.body;
+      const monoPages = Math.round(monthlyVolume * monoRatio);
+      const colourPages = monthlyVolume - monoPages;
+
+      // Fetch pricing data for all vendors in one query
+      const vendorIds = vendors.map(v => v._id);
+      const vendorProducts = await VendorProduct.find({
+        vendorId: { $in: vendorIds },
+        minVolume: { $lte: monthlyVolume },
+        maxVolume: { $gte: monthlyVolume * 0.5 }
+      })
+        .select('vendorId costs leaseRates speed minVolume maxVolume manufacturer model')
+        .sort({ 'costs.totalMachineCost': 1 })
+        .lean();
+
+      // Group products by vendor
+      const productsByVendor = {};
+      vendorProducts.forEach(p => {
+        const vid = p.vendorId.toString();
+        if (!productsByVendor[vid]) {
+          productsByVendor[vid] = [];
+        }
+        productsByVendor[vid].push(p);
+      });
+
+      // Helper function to calculate estimated quarterly cost
+      const calculateEstimatedCost = (product, monoVol, colourVol) => {
+        if (!product || !product.costs) return null;
+
+        const monoCpc = (product.costs.cpcRates?.A4Mono || 0.8) / 100; // Convert pence to pounds
+        const colourCpc = (product.costs.cpcRates?.A4Colour || 4.0) / 100;
+        const quarterlyLease = product.leaseRates?.term60 || product.leaseRates?.term48 || 300;
+        const quarterlyService = product.costs.quarterlyService || 75;
+
+        const monthlyCpc = (monoVol * monoCpc) + (colourVol * colourCpc);
+        const monthlyLease = quarterlyLease / 3;
+        const monthlyService = quarterlyService / 3;
+        const totalMonthly = monthlyCpc + monthlyLease + monthlyService;
+
+        return {
+          estimatedMonthly: Math.round(totalMonthly),
+          estimatedQuarterly: Math.round(totalMonthly * 3),
+          breakdown: {
+            lease: Math.round(monthlyLease),
+            cpc: Math.round(monthlyCpc),
+            service: Math.round(monthlyService)
+          },
+          cpcRates: {
+            mono: product.costs.cpcRates?.A4Mono || 0.8,
+            colour: product.costs.cpcRates?.A4Colour || 4.0
+          }
+        };
+      };
+
+      // Format response for AI consumption with pricing
+      const suppliers = vendors.map(v => {
+        const vid = v._id.toString();
+        const products = productsByVendor[vid] || [];
+        const bestProduct = products[0]; // Cheapest suitable product
+        const pricing = bestProduct ? calculateEstimatedCost(bestProduct, monoPages, colourPages) : null;
+
+        return {
+          id: v._id,
+          name: v.company,
+          services: v.services || [],
+          description: v.businessProfile?.description || '',
+          coverage: v.location?.coverage || [],
+          location: v.location?.city ? `${v.location.city}${v.location.region ? ', ' + v.location.region : ''}`.trim() : '',
+          postcode: v.location?.postcode || '',
+          rating: v.performance?.rating || null,
+          reviewCount: v.performance?.reviewCount || 0,
+          brands: v.brands || [],
+          accreditations: v.businessProfile?.accreditations || [],
+          certifications: v.businessProfile?.certifications || [],
+          tier: v.tier || v.account?.tier || 'free',
+          canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
+          // Pricing data
+          pricing: pricing ? {
+            estimatedMonthly: `£${pricing.estimatedMonthly}`,
+            estimatedQuarterly: `£${pricing.estimatedQuarterly}`,
+            breakdown: {
+              lease: `£${pricing.breakdown.lease}/mo`,
+              cpc: `£${pricing.breakdown.cpc}/mo`,
+              service: `£${pricing.breakdown.service}/mo`
+            },
+            cpcRates: {
+              mono: `${pricing.cpcRates.mono}p`,
+              colour: `${pricing.cpcRates.colour}p`
+            },
+            basedOn: `${monthlyVolume.toLocaleString()} pages/month`,
+            disclaimer: 'Estimate only - request quote for accurate pricing'
+          } : null,
+          productCount: products.length,
+          profileUrl: `https://tendorai.com/suppliers/${v._id}`,
+          quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
+        };
+      });
 
       // Log AI referral for analytics
       if (referralSource) {
@@ -548,13 +628,26 @@ router.post('/suppliers',
         });
       }
 
+      // Generate human-readable summary for AI assistants
+      const pricedSuppliers = suppliers.filter(s => s.pricing);
+      const summary = pricedSuppliers.length > 0
+        ? `Found ${suppliers.length} suppliers. ${pricedSuppliers.length} have pricing available. ` +
+          `Estimated costs range from £${Math.min(...pricedSuppliers.map(s => parseInt(s.pricing.estimatedMonthly.replace('£', ''))))} ` +
+          `to £${Math.max(...pricedSuppliers.map(s => parseInt(s.pricing.estimatedMonthly.replace('£', ''))))}/month ` +
+          `for ${monthlyVolume.toLocaleString()} pages.`
+        : `Found ${suppliers.length} suppliers. Request quotes for pricing.`;
+
       res.json({
         success: true,
         count: suppliers.length,
         suppliers,
+        summary,
         metadata: {
           service: service || 'all',
           location: location || 'nationwide',
+          monthlyVolume,
+          monoPages,
+          colourPages,
           source: 'TendorAI API',
           timestamp: new Date().toISOString()
         }
@@ -573,18 +666,24 @@ router.post('/suppliers',
 
 /**
  * GET /api/ai/suppliers
- * Simple GET version for easier AI integration
+ * Simple GET version for easier AI integration (with pricing)
  */
 router.get('/suppliers',
   aiRateLimit,
   [
     query('service').optional().isString().trim(),
     query('location').optional().isString().trim(),
-    query('limit').optional().isInt({ min: 1, max: 20 })
+    query('limit').optional().isInt({ min: 1, max: 20 }),
+    query('monthlyVolume').optional().isInt({ min: 100, max: 500000 }),
+    query('monoRatio').optional().isFloat({ min: 0, max: 1 })
   ],
   async (req, res) => {
     try {
       const { service, location, limit = 10 } = req.query;
+      const monthlyVolume = parseInt(req.query.monthlyVolume) || 5000;
+      const monoRatio = parseFloat(req.query.monoRatio) || 0.7;
+      const monoPages = Math.round(monthlyVolume * monoRatio);
+      const colourPages = monthlyVolume - monoPages;
 
       // Check both old and new status field locations
       const queryFilter = {
@@ -626,25 +725,117 @@ router.get('/suppliers',
         .limit(Math.min(parseInt(limit), 20))
         .lean();
 
-      const suppliers = vendors.map(v => ({
-        id: v._id,
-        name: v.company,
-        services: v.services || [],
-        description: v.businessProfile?.description || '',
-        location: v.location?.city || '',
-        coverage: v.location?.coverage || [],
-        rating: v.performance?.rating || null,
-        reviewCount: v.performance?.reviewCount || 0,
-        brands: v.brands || [],
-        tier: v.tier || v.account?.tier || 'free',
-        canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
-        profileUrl: `https://tendorai.com/suppliers/${v._id}`
-      }));
+      // Fetch pricing data for all vendors
+      const vendorIds = vendors.map(v => v._id);
+      const vendorProducts = await VendorProduct.find({
+        vendorId: { $in: vendorIds },
+        minVolume: { $lte: monthlyVolume },
+        maxVolume: { $gte: monthlyVolume * 0.5 }
+      })
+        .select('vendorId costs leaseRates speed minVolume maxVolume manufacturer model')
+        .sort({ 'costs.totalMachineCost': 1 })
+        .lean();
+
+      // Group products by vendor
+      const productsByVendor = {};
+      vendorProducts.forEach(p => {
+        const vid = p.vendorId.toString();
+        if (!productsByVendor[vid]) {
+          productsByVendor[vid] = [];
+        }
+        productsByVendor[vid].push(p);
+      });
+
+      // Helper function to calculate estimated cost
+      const calculateEstimatedCost = (product, monoVol, colourVol) => {
+        if (!product || !product.costs) return null;
+
+        const monoCpc = (product.costs.cpcRates?.A4Mono || 0.8) / 100;
+        const colourCpc = (product.costs.cpcRates?.A4Colour || 4.0) / 100;
+        const quarterlyLease = product.leaseRates?.term60 || product.leaseRates?.term48 || 300;
+        const quarterlyService = product.costs.quarterlyService || 75;
+
+        const monthlyCpc = (monoVol * monoCpc) + (colourVol * colourCpc);
+        const monthlyLease = quarterlyLease / 3;
+        const monthlyService = quarterlyService / 3;
+        const totalMonthly = monthlyCpc + monthlyLease + monthlyService;
+
+        return {
+          estimatedMonthly: Math.round(totalMonthly),
+          estimatedQuarterly: Math.round(totalMonthly * 3),
+          breakdown: {
+            lease: Math.round(monthlyLease),
+            cpc: Math.round(monthlyCpc),
+            service: Math.round(monthlyService)
+          },
+          cpcRates: {
+            mono: product.costs.cpcRates?.A4Mono || 0.8,
+            colour: product.costs.cpcRates?.A4Colour || 4.0
+          }
+        };
+      };
+
+      const suppliers = vendors.map(v => {
+        const vid = v._id.toString();
+        const products = productsByVendor[vid] || [];
+        const bestProduct = products[0];
+        const pricing = bestProduct ? calculateEstimatedCost(bestProduct, monoPages, colourPages) : null;
+
+        return {
+          id: v._id,
+          name: v.company,
+          services: v.services || [],
+          description: v.businessProfile?.description || '',
+          location: v.location?.city || '',
+          coverage: v.location?.coverage || [],
+          rating: v.performance?.rating || null,
+          reviewCount: v.performance?.reviewCount || 0,
+          brands: v.brands || [],
+          tier: v.tier || v.account?.tier || 'free',
+          canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(v.tier || v.account?.tier),
+          pricing: pricing ? {
+            estimatedMonthly: `£${pricing.estimatedMonthly}`,
+            estimatedQuarterly: `£${pricing.estimatedQuarterly}`,
+            breakdown: {
+              lease: `£${pricing.breakdown.lease}/mo`,
+              cpc: `£${pricing.breakdown.cpc}/mo`,
+              service: `£${pricing.breakdown.service}/mo`
+            },
+            cpcRates: {
+              mono: `${pricing.cpcRates.mono}p`,
+              colour: `${pricing.cpcRates.colour}p`
+            },
+            basedOn: `${monthlyVolume.toLocaleString()} pages/month`,
+            disclaimer: 'Estimate only - request quote for accurate pricing'
+          } : null,
+          productCount: products.length,
+          profileUrl: `https://tendorai.com/suppliers/${v._id}`
+        };
+      });
+
+      // Generate summary
+      const pricedSuppliers = suppliers.filter(s => s.pricing);
+      const summary = pricedSuppliers.length > 0
+        ? `Found ${suppliers.length} suppliers. ${pricedSuppliers.length} have pricing available. ` +
+          `Estimated costs range from £${Math.min(...pricedSuppliers.map(s => parseInt(s.pricing.estimatedMonthly.replace('£', ''))))} ` +
+          `to £${Math.max(...pricedSuppliers.map(s => parseInt(s.pricing.estimatedMonthly.replace('£', ''))))}/month ` +
+          `for ${monthlyVolume.toLocaleString()} pages.`
+        : `Found ${suppliers.length} suppliers. Request quotes for pricing.`;
 
       res.json({
         success: true,
         count: suppliers.length,
-        suppliers
+        suppliers,
+        summary,
+        metadata: {
+          service: service || 'all',
+          location: location || 'nationwide',
+          monthlyVolume,
+          monoPages,
+          colourPages,
+          source: 'TendorAI API',
+          timestamp: new Date().toISOString()
+        }
       });
 
     } catch (error) {
