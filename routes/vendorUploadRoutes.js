@@ -265,13 +265,16 @@ router.get('/profile', vendorAuth, async (req, res) => {
         if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
         res.status(200).json({
+            success: true,
             vendor: {
                 vendorId: vendor._id,
                 name: vendor.name,
                 email: vendor.email,
                 company: vendor.company,
                 services: vendor.services,
-                status: vendor.status || vendor.account?.status
+                status: vendor.status || vendor.account?.status,
+                tier: vendor.tier || vendor.account?.tier || 'free',
+                rating: vendor.performance?.rating || 0
             },
         });
     } catch (error) {
