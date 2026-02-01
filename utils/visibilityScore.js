@@ -2,54 +2,57 @@
  * Calculate AI Visibility Score for a vendor
  * Score from 0-100 based on profile completeness and tier
  *
- * This is the core monetisation driver - vendors see how visible they
- * are to AI assistants and are encouraged to upgrade/complete profile
+ * Scoring breakdown:
+ * - PROFILE: 25 points (all vendors)
+ * - PRODUCTS: 25 points (all vendors)
+ * - TRUST: 20 points (all vendors)
+ * - TIER BONUS: 30 points (Listed=0, Visible=15, Verified=30)
+ *
+ * Max scores:
+ * - Listed (free): 70/100
+ * - Visible (£99/mo): 85/100
+ * - Verified (£149/mo): 100/100
  */
 
 export function calculateVisibilityScore(vendor, products = []) {
   const breakdown = {
-    profile: { earned: 0, max: 40, items: [] },
-    products: { earned: 0, max: 30, items: [], locked: false },
-    trust: { earned: 0, max: 20, items: [], locked: false },
-    optimisation: { earned: 0, max: 10, items: [], locked: false }
+    profile: { earned: 0, max: 25, items: [] },
+    products: { earned: 0, max: 25, items: [] },
+    trust: { earned: 0, max: 20, items: [] },
+    tierBonus: { earned: 0, max: 30, items: [] }
   };
 
-  // Check both tier fields - vendor.tier (subscription) and vendor.account?.tier (legacy)
+  // Normalize tier - only 3 tiers: listed (free), visible (£99), verified (£149)
   const rawTier = vendor.tier || vendor.account?.tier || vendor.subscriptionTier || 'free';
-
-  // Normalize tier names - map legacy/alternative names to standard tiers
   const tierMapping = {
-    // Free tier variants
-    'free': 'free',
-    'listed': 'free',
-    // Basic/Visible tier variants (£99/mo)
-    'basic': 'basic',
-    'visible': 'basic',
-    'bronze': 'basic',
-    'standard': 'basic',
-    // Managed/Verified tier variants (£149/mo)
-    'managed': 'managed',
-    'verified': 'managed',
-    'silver': 'managed',
-    'gold': 'managed',
-    // Enterprise tier
-    'enterprise': 'enterprise',
-    'platinum': 'enterprise'
+    'free': 'listed',
+    'listed': 'listed',
+    'basic': 'visible',
+    'visible': 'visible',
+    'bronze': 'visible',
+    'standard': 'visible',
+    'managed': 'verified',
+    'verified': 'verified',
+    'silver': 'verified',
+    'gold': 'verified',
+    'enterprise': 'verified',
+    'platinum': 'verified'
   };
 
-  const tier = tierMapping[rawTier.toLowerCase()] || 'free';
+  const tier = tierMapping[rawTier.toLowerCase()] || 'listed';
   const recommendations = [];
 
-  // PROFILE COMPLETENESS (40 pts) - All tiers can earn these
+  // ============================================
+  // PROFILE COMPLETENESS (25 pts) - All tiers
+  // ============================================
   const profileChecks = [
-    { field: 'company', name: 'Company name', points: 5 },
-    { field: 'location.postcode', name: 'Location/postcode', points: 5, nested: true },
-    { field: 'contactInfo.phone', name: 'Phone number', points: 5, nested: true },
-    { field: 'email', name: 'Email address', points: 5 },
-    { field: 'services', name: 'Services listed', points: 5, isArray: true },
-    { field: 'location.coverage', name: 'Coverage areas', points: 5, nested: true, isArray: true },
-    { field: 'businessProfile.yearsInBusiness', name: 'Years in business', points: 5, nested: true, minValue: 1 },
-    { field: 'contactInfo.website', name: 'Company website', points: 5, nested: true }
+    { field: 'company', name: 'Company name', points: 3 },
+    { field: 'contactInfo.phone', name: 'Phone number', points: 4, nested: true },
+    { field: 'email', name: 'Email address', points: 3 },
+    { field: 'contactInfo.website', name: 'Website', points: 5, nested: true },
+    { field: 'businessProfile.yearsInBusiness', name: 'Years in business', points: 3, nested: true, minValue: 1 },
+    { field: 'businessProfile.description', name: 'Business description', points: 4, nested: true, minLength: 20 },
+    { field: 'location.postcode', name: 'City/Postcode', points: 3, nested: true }
   ];
 
   profileChecks.forEach(check => {
@@ -57,7 +60,6 @@ export function calculateVisibilityScore(vendor, products = []) {
     let value;
 
     if (check.nested) {
-      // Handle nested fields like 'location.postcode'
       const parts = check.field.split('.');
       value = vendor;
       for (const part of parts) {
@@ -68,9 +70,7 @@ export function calculateVisibilityScore(vendor, products = []) {
       value = vendor[check.field];
     }
 
-    if (check.isArray) {
-      completed = value && Array.isArray(value) && value.length > 0;
-    } else if (check.minLength) {
+    if (check.minLength) {
       completed = value && typeof value === 'string' && value.length >= check.minLength;
     } else if (check.minValue) {
       completed = value && value >= check.minValue;
@@ -91,139 +91,151 @@ export function calculateVisibilityScore(vendor, products = []) {
       recommendations.push({
         action: `Add ${check.name.toLowerCase()}`,
         points: check.points,
-        tier: 'free'
+        section: 'profile'
       });
     }
   });
 
-  // PRODUCT DATA (30 pts) - Requires Basic tier or higher
-  const isBasicOrHigher = ['basic', 'managed', 'enterprise'].includes(tier);
+  // ============================================
+  // PRODUCT DATA (25 pts) - All tiers
+  // ============================================
+  const hasProducts = products.length > 0;
+  const hasPricing = products.some(p =>
+    (p.costs?.cpcRates?.A4Mono > 0) ||
+    (p.costs?.totalMachineCost > 0) ||
+    (p.leaseRates?.term36 > 0)
+  );
+  const hasThreeOrMore = products.length >= 3;
 
-  if (!isBasicOrHigher) {
-    breakdown.products.locked = true;
-    breakdown.products.items = [
-      { name: 'Upload product catalog', points: 15, completed: false, requiresTier: 'basic' },
-      { name: 'Add pricing details', points: 10, completed: false, requiresTier: 'basic' },
-      { name: 'Set stock availability', points: 5, completed: false, requiresTier: 'basic' }
+  breakdown.products.items = [
+    { name: 'Products uploaded', points: 10, completed: hasProducts },
+    { name: 'Pricing/CPC data added', points: 10, completed: hasPricing },
+    { name: '3+ products listed', points: 5, completed: hasThreeOrMore }
+  ];
+
+  if (hasProducts) breakdown.products.earned += 10;
+  if (hasPricing) breakdown.products.earned += 10;
+  if (hasThreeOrMore) breakdown.products.earned += 5;
+
+  if (!hasProducts) {
+    recommendations.push({ action: 'Upload your product catalog', points: 10, section: 'products' });
+  } else if (!hasPricing) {
+    recommendations.push({ action: 'Add pricing to your products', points: 10, section: 'products' });
+  }
+  if (hasProducts && !hasThreeOrMore) {
+    recommendations.push({ action: 'Add more products (3+ recommended)', points: 5, section: 'products' });
+  }
+
+  // ============================================
+  // TRUST SIGNALS (20 pts) - All tiers
+  // ============================================
+  const certifications = vendor.businessProfile?.certifications || [];
+  const accreditations = vendor.businessProfile?.accreditations || [];
+  const brands = vendor.brands || [];
+  const coverage = vendor.location?.coverage || [];
+
+  const hasCerts = certifications.length > 0;
+  const hasAccreditations = accreditations.length > 0;
+  const hasBrands = brands.length > 0;
+  const hasCoverage = coverage.length > 0;
+
+  breakdown.trust.items = [
+    { name: 'Certifications (ISO, etc.)', points: 5, completed: hasCerts },
+    { name: 'Accreditations', points: 5, completed: hasAccreditations },
+    { name: 'Brands listed', points: 5, completed: hasBrands },
+    { name: 'Coverage areas', points: 5, completed: hasCoverage }
+  ];
+
+  if (hasCerts) breakdown.trust.earned += 5;
+  if (hasAccreditations) breakdown.trust.earned += 5;
+  if (hasBrands) breakdown.trust.earned += 5;
+  if (hasCoverage) breakdown.trust.earned += 5;
+
+  if (!hasCerts) recommendations.push({ action: 'Add certifications', points: 5, section: 'trust' });
+  if (!hasAccreditations) recommendations.push({ action: 'Add accreditations', points: 5, section: 'trust' });
+  if (!hasBrands) recommendations.push({ action: 'List your brands', points: 5, section: 'trust' });
+  if (!hasCoverage) recommendations.push({ action: 'Set coverage areas', points: 5, section: 'trust' });
+
+  // ============================================
+  // TIER BONUS (30 pts) - Based on subscription
+  // ============================================
+  let tierBonus = 0;
+  let tierBonusLabel = '';
+
+  if (tier === 'verified') {
+    tierBonus = 30;
+    tierBonusLabel = 'Verified tier bonus';
+    breakdown.tierBonus.items = [
+      { name: 'Verified tier bonus', points: 30, completed: true }
+    ];
+  } else if (tier === 'visible') {
+    tierBonus = 15;
+    tierBonusLabel = 'Visible tier bonus';
+    breakdown.tierBonus.items = [
+      { name: 'Visible tier bonus', points: 15, completed: true },
+      { name: 'Upgrade to Verified', points: 15, completed: false, upgrade: true, targetTier: 'verified', price: '£149/mo' }
     ];
     recommendations.push({
-      action: 'Upgrade to Basic to upload products',
-      points: 30,
-      tier: 'basic',
+      action: 'Upgrade to Verified for +15 pts',
+      points: 15,
+      section: 'tierBonus',
+      tier: 'verified',
+      price: '£149/mo'
+    });
+  } else {
+    // Listed (free) tier
+    tierBonus = 0;
+    breakdown.tierBonus.items = [
+      { name: 'Upgrade to Visible', points: 15, completed: false, upgrade: true, targetTier: 'visible', price: '£99/mo' },
+      { name: 'Upgrade to Verified', points: 30, completed: false, upgrade: true, targetTier: 'verified', price: '£149/mo' }
+    ];
+    recommendations.unshift({
+      action: 'Upgrade to Visible for +15 pts',
+      points: 15,
+      section: 'tierBonus',
+      tier: 'visible',
       price: '£99/mo'
     });
-  } else {
-    const hasProducts = products.length > 0;
-    const hasPricing = products.some(p => p.costs && p.costs.totalMachineCost > 0);
-    const hasStock = products.some(p => p.availability && typeof p.availability.inStock === 'boolean');
-
-    breakdown.products.items = [
-      { name: 'Upload product catalog', points: 15, completed: hasProducts },
-      { name: 'Add pricing details', points: 10, completed: hasPricing },
-      { name: 'Set stock availability', points: 5, completed: hasStock }
-    ];
-
-    if (hasProducts) breakdown.products.earned += 15;
-    if (hasPricing) breakdown.products.earned += 10;
-    if (hasStock) breakdown.products.earned += 5;
-
-    if (!hasProducts) {
-      recommendations.push({ action: 'Upload your product catalog', points: 15, tier: 'basic' });
-    }
-    if (!hasPricing && hasProducts) {
-      recommendations.push({ action: 'Add pricing to your products', points: 10, tier: 'basic' });
-    }
   }
 
-  // TRUST SIGNALS (20 pts) - Requires Basic tier or higher
-  if (!isBasicOrHigher) {
-    breakdown.trust.locked = true;
-    breakdown.trust.items = [
-      { name: 'ISO certifications', points: 5, completed: false, requiresTier: 'basic' },
-      { name: 'Brand partnerships', points: 5, completed: false, requiresTier: 'basic' },
-      { name: 'Accreditations', points: 5, completed: false, requiresTier: 'basic' },
-      { name: 'Verified badge', points: 5, completed: false, requiresTier: 'managed' }
-    ];
-  } else {
-    const certs = vendor.businessProfile?.certifications || [];
-    const brands = vendor.businessProfile?.accreditations || [];
-    const accreditations = vendor.businessProfile?.specializations || [];
-    const isManagedTier = ['managed', 'enterprise'].includes(tier);
-    const isVerified = vendor.account?.verificationStatus === 'verified';
-
-    const hasCerts = certs.length > 0;
-    const hasBrands = brands.length > 0;
-    const hasAccreditations = accreditations.length > 0;
-
-    breakdown.trust.items = [
-      { name: 'ISO certifications', points: 5, completed: hasCerts },
-      { name: 'Brand partnerships', points: 5, completed: hasBrands },
-      { name: 'Accreditations', points: 5, completed: hasAccreditations },
-      { name: 'Verified badge', points: 5, completed: isManagedTier && isVerified, requiresTier: 'managed' }
-    ];
-
-    if (hasCerts) breakdown.trust.earned += 5;
-    if (hasBrands) breakdown.trust.earned += 5;
-    if (hasAccreditations) breakdown.trust.earned += 5;
-    if (isManagedTier && isVerified) breakdown.trust.earned += 5;
-
-    if (!hasCerts) {
-      recommendations.push({ action: 'Add your certifications (ISO, etc.)', points: 5, tier: 'basic' });
-    }
-  }
-
-  // AI OPTIMISATION (10 pts) - Requires Managed/Enterprise
-  const isManagedOrHigher = ['managed', 'enterprise'].includes(tier);
-
-  breakdown.optimisation.locked = !isManagedOrHigher;
-
-  if (!isManagedOrHigher) {
-    breakdown.optimisation.items = [
-      { name: 'Real-time sync enabled', points: 5, completed: false, requiresTier: 'managed' },
-      { name: 'API connection active', points: 5, completed: false, requiresTier: 'enterprise' }
-    ];
-    recommendations.push({
-      action: 'Upgrade to Managed for real-time AI sync',
-      points: 10,
-      tier: 'managed',
-      price: '£150/mo'
-    });
-  } else {
-    const hasAutoQuote = vendor.integration?.autoQuoteGeneration === true;
-    const hasApiKey = !!vendor.integration?.apiKey;
-    const isEnterprise = tier === 'enterprise';
-
-    breakdown.optimisation.items = [
-      { name: 'Real-time sync enabled', points: 5, completed: hasAutoQuote },
-      { name: 'API connection active', points: 5, completed: isEnterprise && hasApiKey }
-    ];
-
-    if (hasAutoQuote) breakdown.optimisation.earned += 5;
-    if (isEnterprise && hasApiKey) breakdown.optimisation.earned += 5;
-  }
+  breakdown.tierBonus.earned = tierBonus;
 
   // Calculate total score
   const totalScore =
     breakdown.profile.earned +
     breakdown.products.earned +
     breakdown.trust.earned +
-    breakdown.optimisation.earned;
+    breakdown.tierBonus.earned;
+
+  // Calculate max possible for current tier
+  const maxPossibleForTier = 70 + tierBonus; // 70 base + tier bonus
 
   return {
     score: totalScore,
     maxScore: 100,
+    maxPossibleForTier,
     label: getScoreLabel(totalScore),
     colour: getScoreColour(totalScore),
     tier,
+    tierDisplayName: getTierDisplayName(tier),
     breakdown,
-    recommendations: recommendations.slice(0, 5), // Top 5 recommendations
+    recommendations: recommendations.slice(0, 5),
     nextMilestone: getNextMilestone(totalScore)
   };
 }
 
+function getTierDisplayName(tier) {
+  const names = {
+    'listed': 'Listed (Free)',
+    'visible': 'Visible (£99/mo)',
+    'verified': 'Verified (£149/mo)'
+  };
+  return names[tier] || 'Listed (Free)';
+}
+
 function getScoreLabel(score) {
   if (score <= 20) return 'Poor';
-  if (score <= 40) return 'Basic';
+  if (score <= 40) return 'Fair';
   if (score <= 60) return 'Good';
   if (score <= 80) return 'Strong';
   return 'Excellent';
@@ -238,11 +250,12 @@ function getScoreColour(score) {
 }
 
 function getNextMilestone(score) {
-  if (score < 20) return { target: 20, label: 'Basic', pointsNeeded: 20 - score };
-  if (score < 40) return { target: 40, label: 'Good', pointsNeeded: 40 - score };
-  if (score < 60) return { target: 60, label: 'Strong', pointsNeeded: 60 - score };
-  if (score < 80) return { target: 80, label: 'Excellent', pointsNeeded: 80 - score };
-  return { target: 100, label: 'Perfect', pointsNeeded: 100 - score };
+  if (score < 25) return { target: 25, label: 'Fair', pointsNeeded: 25 - score };
+  if (score < 50) return { target: 50, label: 'Good', pointsNeeded: 50 - score };
+  if (score < 70) return { target: 70, label: 'Strong', pointsNeeded: 70 - score };
+  if (score < 85) return { target: 85, label: 'Excellent', pointsNeeded: 85 - score };
+  if (score < 100) return { target: 100, label: 'Perfect', pointsNeeded: 100 - score };
+  return null;
 }
 
 export default { calculateVisibilityScore };
