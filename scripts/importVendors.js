@@ -72,6 +72,37 @@ function extractPostcodeAreas(postcode) {
 }
 
 /**
+ * Parse pre-formatted postcode areas from spreadsheet
+ * "BS, CF, LD, LL, NP, SA, SY" → ["BS", "CF", "LD", "LL", "NP", "SA", "SY"]
+ */
+function parsePostcodeAreas(areasStr) {
+  if (!areasStr) return null;
+  const areas = areasStr.toString()
+    .toUpperCase()
+    .split(/[,;|]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && /^[A-Z]{1,2}\d{0,2}[A-Z]?$/.test(s));
+  return areas.length > 0 ? areas : null;
+}
+
+/**
+ * Derive services from category if services column is empty
+ */
+function deriveServicesFromCategory(category) {
+  if (!category) return ['Photocopiers'];
+  const lower = category.toLowerCase();
+
+  if (lower === 'both') return ['Photocopiers', 'Telecoms'];
+  if (lower === 'copiers' || lower === 'photocopiers') return ['Photocopiers'];
+  if (lower === 'telecoms' || lower === 'telecommunications') return ['Telecoms'];
+  if (lower === 'it') return ['IT'];
+  if (lower === 'cctv') return ['CCTV'];
+  if (lower === 'security') return ['Security'];
+
+  return ['Photocopiers']; // Default
+}
+
+/**
  * Parse comma-separated string into array
  */
 function parseArray(str) {
@@ -224,6 +255,25 @@ function mapSupportHours(val) {
 }
 
 /**
+ * Map payment terms to valid enum value
+ * Schema enum: ['Net 7', 'Net 14', 'Net 30', 'Net 60', 'COD', 'Due on receipt']
+ */
+function mapPaymentTerms(val) {
+  if (!val) return 'Net 30';
+  const lower = val.toString().toLowerCase().trim();
+
+  if (lower.includes('net 7') || lower === '7') return 'Net 7';
+  if (lower.includes('net 14') || lower === '14') return 'Net 14';
+  if (lower.includes('net 30') || lower === '30') return 'Net 30';
+  if (lower.includes('net 60') || lower === '60') return 'Net 60';
+  if (lower.includes('cod') || lower.includes('cash on delivery')) return 'COD';
+  if (lower.includes('receipt') || lower.includes('due on')) return 'Due on receipt';
+
+  // Default to Net 30 for unrecognized values
+  return 'Net 30';
+}
+
+/**
  * Clean phone number - lenient, returns empty string if invalid
  */
 function cleanPhone(phone) {
@@ -354,32 +404,36 @@ async function importVendors(filePath, options = {}) {
     return { total: 0, imported: 0, skipped: 0, errors: [] };
   }
 
-  // Column mapping (0-indexed based on spreadsheet)
-  // FREE TIER: 0-11
-  // PAID TIER: 12-21
+  // Column mapping (0-indexed based on TendorAI-All-Vendors-Master.xlsx)
+  // Row 0: Tier labels (FREE TIER at col 1, PAID TIER at col 15)
+  // Row 1: Headers
+  // Row 2+: Data
+  // FREE TIER: 0-14, PAID TIER: 15-23
   const COL = {
-    COMPANY_NAME: 0,
-    EMAIL: 1,
-    PHONE: 2,
-    WEBSITE: 3,
-    ADDRESS: 4,
-    CITY: 5,
-    POSTCODE: 6,
-    REGION: 7,
-    COVERAGE: 8,
-    SERVICES: 9,
-    BRANDS: 10,
-    YEARS_IN_BUSINESS: 11,
-    COMPANY_SIZE: 12,
-    NUM_EMPLOYEES: 13,
-    CERTIFICATIONS: 14,
-    ACCREDITATIONS: 15,
-    SPECIALIZATIONS: 16,
-    RESPONSE_TIME: 17,
-    SUPPORT_HOURS: 18,
-    PAYMENT_TERMS: 19,
-    MIN_CONTRACT_VALUE: 20,
-    DESCRIPTION: 21
+    CATEGORY: 0,           // Both, Copiers, Telecoms, etc.
+    COMPANY_NAME: 1,
+    EMAIL: 2,
+    PHONE: 3,
+    WEBSITE: 4,
+    ADDRESS: 5,
+    CITY: 6,
+    POSTCODE: 7,
+    REGION: 8,
+    COVERAGE: 9,
+    POSTCODE_AREAS: 10,    // Pre-parsed postcode areas (BS, CF, LD, etc.)
+    SERVICES: 11,
+    BRANDS: 12,
+    YEARS_IN_BUSINESS: 13,
+    QUALITY_RATING: 14,
+    COMPANY_SIZE: 15,
+    NUM_EMPLOYEES: 16,
+    CERTIFICATIONS: 17,
+    ACCREDITATIONS: 18,
+    RESPONSE_TIME: 19,
+    SUPPORT_HOURS: 20,
+    PAYMENT_TERMS: 21,
+    MIN_CONTRACT_VALUE: 22,
+    DESCRIPTION: 23
   };
 
   const results = {
@@ -409,14 +463,20 @@ async function importVendors(filePath, options = {}) {
     // Email is required for upsert matching - generate placeholder if missing
     const email = rawEmail || `unclaimed-${companyName.toLowerCase().replace(/[^a-z0-9]/g, '-')}@tendorai.com`;
 
+    // Get category from spreadsheet (Both, Copiers, Telecoms, etc.)
+    const category = (row[COL.CATEGORY] || '').toString().trim();
+
     // Build vendor update document (fields to set/update)
     const updateData = {
       // Core fields
       name: companyName,
       company: companyName,
 
-      // Services
-      services: normalizeServices(row[COL.SERVICES]),
+      // Category from spreadsheet
+      category: category,
+
+      // Services - normalize from spreadsheet or derive from category
+      services: normalizeServices(row[COL.SERVICES]) || deriveServicesFromCategory(category),
 
       // Brands
       brands: parseArray(row[COL.BRANDS]),
@@ -430,8 +490,8 @@ async function importVendors(filePath, options = {}) {
         coverage: parseArray(row[COL.COVERAGE])
       },
 
-      // Postcode areas for matching
-      postcodeAreas: extractPostcodeAreas(row[COL.POSTCODE]),
+      // Postcode areas for matching - use pre-parsed column or extract from postcode
+      postcodeAreas: parsePostcodeAreas(row[COL.POSTCODE_AREAS]) || extractPostcodeAreas(row[COL.POSTCODE]),
 
       // Contact info
       contactInfo: {
@@ -446,7 +506,6 @@ async function importVendors(filePath, options = {}) {
         numEmployees: parseNumber(row[COL.NUM_EMPLOYEES]),
         certifications: parseArray(row[COL.CERTIFICATIONS]),
         accreditations: parseArray(row[COL.ACCREDITATIONS]),
-        specializations: parseArray(row[COL.SPECIALIZATIONS]),
         description: (row[COL.DESCRIPTION] || '').toString().trim()
       },
 
@@ -456,9 +515,9 @@ async function importVendors(filePath, options = {}) {
         supportHours: mapSupportHours(row[COL.SUPPORT_HOURS])
       },
 
-      // Commercial
+      // Commercial - payment terms must be valid enum or default to 'Net 30'
       commercial: {
-        paymentTerms: row[COL.PAYMENT_TERMS] || 'Net 30',
+        paymentTerms: mapPaymentTerms(row[COL.PAYMENT_TERMS]),
         minimumOrderValue: parseNumber(row[COL.MIN_CONTRACT_VALUE])
       },
 
@@ -512,15 +571,16 @@ async function importVendors(filePath, options = {}) {
         );
 
         // Check if this was an insert or update
-        // If the document was just created, importedAt will match lastImportedAt closely
-        const wasInserted = !result.importedAt ||
-          (Math.abs(result.importedAt.getTime() - result.lastImportedAt.getTime()) < 1000);
+        // If importedAt and lastImportedAt are very close (within 1 sec), it was an insert
+        const importedAt = result.importedAt ? new Date(result.importedAt).getTime() : 0;
+        const lastImportedAt = result.lastImportedAt ? new Date(result.lastImportedAt).getTime() : Date.now();
+        const wasInserted = !result.importedAt || (Math.abs(importedAt - lastImportedAt) < 1000);
 
         if (wasInserted) {
-          console.log(`[${i + 1}] ✓ INSERTED: "${companyName}" (${updateData.location.city})`);
+          console.log(`[${i + 1}] ✓ INSERTED: "${companyName}" (${updateData.location.city || 'No city'})`);
           results.inserted++;
         } else {
-          console.log(`[${i + 1}] ↻ UPDATED: "${companyName}" (${updateData.location.city})`);
+          console.log(`[${i + 1}] ↻ UPDATED: "${companyName}" (${updateData.location.city || 'No city'})`);
           results.updated++;
         }
       } catch (error) {
@@ -591,12 +651,13 @@ if (!filePath) {
   console.log('  - If email not found: INSERTS a new vendor');
   console.log('  - Account tier, subscription, and password are preserved on updates');
   console.log('');
-  console.log('Expected spreadsheet columns (22 total):');
-  console.log('  FREE TIER: company_name, email, phone, website, address, city,');
-  console.log('             postcode, region, coverage, services, brands, years_in_business');
-  console.log('  PAID TIER: company_size, num_employees, certifications, accreditations,');
-  console.log('             specializations, response_time, support_hours, payment_terms,');
-  console.log('             min_contract_value, description');
+  console.log('Expected spreadsheet columns (24 total - TendorAI-All-Vendors-Master.xlsx):');
+  console.log('  FREE TIER (0-14): category, company_name, email, phone, website, address,');
+  console.log('                    city, postcode, region, coverage_area, postcode_areas,');
+  console.log('                    services, brands, years_in_business, quality_rating');
+  console.log('  PAID TIER (15-23): company_size, num_employees, certifications, accreditations,');
+  console.log('                     response_time, support_hours, payment_terms,');
+  console.log('                     min_contract_value, description');
   process.exit(1);
 }
 
