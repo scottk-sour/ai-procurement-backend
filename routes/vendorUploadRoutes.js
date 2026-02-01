@@ -274,12 +274,119 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 services: vendor.services,
                 status: vendor.status || vendor.account?.status,
                 tier: vendor.tier || vendor.account?.tier || 'free',
-                rating: vendor.performance?.rating || 0
+                rating: vendor.performance?.rating || 0,
+                // Contact info
+                phone: vendor.contactInfo?.phone || '',
+                website: vendor.contactInfo?.website || '',
+                // Location
+                city: vendor.location?.city || '',
+                postcode: vendor.location?.postcode || '',
+                coverage: vendor.location?.coverage || [],
+                // Business profile
+                description: vendor.businessProfile?.description || '',
+                yearsInBusiness: vendor.businessProfile?.yearsInBusiness || 0,
+                certifications: vendor.businessProfile?.certifications || [],
+                accreditations: vendor.businessProfile?.accreditations || [],
+                specializations: vendor.businessProfile?.specializations || [],
+                // Brands
+                brands: vendor.brands || [],
             },
         });
     } catch (error) {
         console.error('âŒ Error fetching vendor profile:', error.message);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
+    }
+});
+
+// Vendor profile - PUT update profile (all tiers can update all fields)
+router.put('/profile', vendorAuth, async (req, res) => {
+    try {
+        const vendorId = req.vendorId;
+        const {
+            company,
+            name,
+            phone,
+            website,
+            city,
+            postcode,
+            coverage,
+            description,
+            yearsInBusiness,
+            services,
+            brands,
+            certifications,
+            accreditations,
+            specializations
+        } = req.body;
+
+        // Build update object - only include fields that were provided
+        const updateFields = {};
+
+        // Basic info
+        if (company !== undefined) updateFields.company = company;
+        if (name !== undefined) updateFields.name = name;
+
+        // Contact info (nested)
+        if (phone !== undefined) updateFields['contactInfo.phone'] = phone;
+        if (website !== undefined) updateFields['contactInfo.website'] = website;
+
+        // Location (nested)
+        if (city !== undefined) updateFields['location.city'] = city;
+        if (postcode !== undefined) updateFields['location.postcode'] = postcode;
+        if (coverage !== undefined) updateFields['location.coverage'] = coverage;
+
+        // Business profile (nested)
+        if (description !== undefined) updateFields['businessProfile.description'] = description;
+        if (yearsInBusiness !== undefined) updateFields['businessProfile.yearsInBusiness'] = parseInt(yearsInBusiness) || 0;
+        if (certifications !== undefined) updateFields['businessProfile.certifications'] = certifications;
+        if (accreditations !== undefined) updateFields['businessProfile.accreditations'] = accreditations;
+        if (specializations !== undefined) updateFields['businessProfile.specializations'] = specializations;
+
+        // Top-level arrays
+        if (services !== undefined) updateFields.services = services;
+        if (brands !== undefined) updateFields.brands = brands;
+
+        // Update the vendor
+        const updatedVendor = await Vendor.findByIdAndUpdate(
+            vendorId,
+            { $set: updateFields },
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        if (!updatedVendor) {
+            return res.status(404).json({ success: false, message: 'Vendor not found.' });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Profile updated successfully',
+            vendor: {
+                vendorId: updatedVendor._id,
+                name: updatedVendor.name,
+                email: updatedVendor.email,
+                company: updatedVendor.company,
+                services: updatedVendor.services || [],
+                tier: updatedVendor.tier || updatedVendor.account?.tier || 'free',
+                phone: updatedVendor.contactInfo?.phone || '',
+                website: updatedVendor.contactInfo?.website || '',
+                city: updatedVendor.location?.city || '',
+                postcode: updatedVendor.location?.postcode || '',
+                coverage: updatedVendor.location?.coverage || [],
+                description: updatedVendor.businessProfile?.description || '',
+                yearsInBusiness: updatedVendor.businessProfile?.yearsInBusiness || 0,
+                certifications: updatedVendor.businessProfile?.certifications || [],
+                accreditations: updatedVendor.businessProfile?.accreditations || [],
+                specializations: updatedVendor.businessProfile?.specializations || [],
+                brands: updatedVendor.brands || [],
+            }
+        });
+    } catch (error) {
+        console.error('Error updating vendor profile:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update profile.',
+            error: error.message
+        });
     }
 });
 
