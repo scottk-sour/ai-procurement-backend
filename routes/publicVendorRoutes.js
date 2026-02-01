@@ -125,6 +125,7 @@ router.get('/vendors', async (req, res) => {
         'showPricing': 1,
         'businessProfile.description': 1,
         'businessProfile.accreditations': 1,
+        'businessProfile.certifications': 1,
         'businessProfile.yearsInBusiness': 1,
         'businessProfile.numEmployees': 1,
         'businessProfile.logoUrl': 1,
@@ -134,6 +135,7 @@ router.get('/vendors', async (req, res) => {
         'numEmployees': 1,
         'contactInfo.phone': 1,
         'contactInfo.website': 1,
+        'email': 1,
         'phone': 1,
         'website': 1,
         'serviceCapabilities.responseTime': 1,
@@ -143,11 +145,26 @@ router.get('/vendors', async (req, res) => {
       })
       .lean();
 
+    // Get product counts for all vendors in one query
+    const vendorIds = vendors.map(v => v._id);
+    const productCounts = await VendorProduct.aggregate([
+      { $match: { vendorId: { $in: vendorIds }, isActive: { $ne: false } } },
+      { $group: { _id: '$vendorId', count: { $sum: 1 } } }
+    ]);
+    const productCountMap = {};
+    productCounts.forEach(p => {
+      productCountMap[p._id.toString()] = p.count;
+    });
+
     // Calculate distance and filter if postcode search
-    let processedVendors = vendors.map(v => ({
-      ...v,
-      _priorityScore: calculatePriorityScore(v)
-    }));
+    let processedVendors = vendors.map(v => {
+      const vendorProductCount = productCountMap[v._id.toString()] || 0;
+      return {
+        ...v,
+        _productCount: vendorProductCount,
+        _priorityScore: calculatePriorityScore({ ...v, hasProducts: vendorProductCount > 0 })
+      };
+    });
 
     if (searchCoords) {
       // Collect vendor postcodes that need geocoding
@@ -250,6 +267,7 @@ router.get('/vendors', async (req, res) => {
         employeeCount: v.businessProfile?.numEmployees || v.numEmployees,
         logoUrl: v.businessProfile?.logoUrl,
         brands: v.brands || [],
+        productCount: v._productCount || 0,
         phone: showPricing ? (v.contactInfo?.phone || v.phone) : undefined,
         website: v.contactInfo?.website || v.website,
         showPricing: showPricing,
