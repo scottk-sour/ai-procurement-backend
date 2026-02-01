@@ -328,7 +328,14 @@ router.put('/profile', vendorAuth, async (req, res) => {
 
         // Contact info (nested)
         if (phone !== undefined) updateFields['contactInfo.phone'] = phone;
-        if (website !== undefined) updateFields['contactInfo.website'] = website;
+        if (website !== undefined) {
+            // Normalize website URL - add https:// if missing
+            let normalizedWebsite = website.trim();
+            if (normalizedWebsite && !normalizedWebsite.match(/^https?:\/\//i)) {
+                normalizedWebsite = 'https://' + normalizedWebsite;
+            }
+            updateFields['contactInfo.website'] = normalizedWebsite;
+        }
 
         // Location (nested)
         if (city !== undefined) updateFields['location.city'] = city;

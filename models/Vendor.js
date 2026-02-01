@@ -61,13 +61,11 @@ const vendorSchema = new mongoose.Schema({
   contactInfo: {
     phone: {
       type: String,
-      match: [/^\+?\d{10,15}$/, 'Please provide a valid phone number'],
       default: '',
     },
-    website: { 
-      type: String, 
+    website: {
+      type: String,
       trim: true,
-      match: [/^https?:\/\/.+/, 'Please provide a valid website URL'],
       default: ''
     },
     linkedIn: { type: String, trim: true, default: '' },
@@ -285,6 +283,18 @@ vendorSchema.pre('save', async function(next) {
   } catch (error) {
     next(error);
   }
+});
+
+// Normalize website URL - add https:// if missing
+vendorSchema.pre('save', function(next) {
+  if (this.contactInfo?.website) {
+    let url = this.contactInfo.website.trim();
+    if (url && !url.match(/^https?:\/\//i)) {
+      // Add https:// prefix if not present
+      this.contactInfo.website = 'https://' + url;
+    }
+  }
+  next();
 });
 
 // FIXED: Generate API key if needed - using ES modules crypto import
