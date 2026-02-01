@@ -1,6 +1,7 @@
 /**
  * Vendor Import Script for TendorAI
  * Imports vendors from Excel spreadsheet (TendorAI-All-Vendors-Combined.xlsx)
+ * Uses UPSERT logic - updates existing vendors (matched by email) or inserts new ones
  *
  * Usage:
  *   node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --dry-run
@@ -294,7 +295,7 @@ async function importVendors(filePath, options = {}) {
   console.log('║     TENDORAI VENDOR IMPORT SCRIPT      ║');
   console.log('╚════════════════════════════════════════╝\n');
   console.log(`File: ${filePath}`);
-  console.log(`Mode: ${dryRun ? 'DRY RUN (no changes)' : 'LIVE IMPORT'}`);
+  console.log(`Mode: ${dryRun ? 'DRY RUN (no changes)' : 'LIVE UPSERT (insert/update)'}`);
   console.log(`Limit: ${limit || 'All rows'}\n`);
 
   // Connect to MongoDB (skip in dry-run mode)
@@ -383,7 +384,8 @@ async function importVendors(filePath, options = {}) {
 
   const results = {
     total: 0,
-    imported: 0,
+    inserted: 0,
+    updated: 0,
     skipped: 0,
     errors: []
   };
@@ -395,7 +397,7 @@ async function importVendors(filePath, options = {}) {
     results.total++;
 
     const companyName = (row[COL.COMPANY_NAME] || '').toString().trim();
-    const email = (row[COL.EMAIL] || '').toString().trim().toLowerCase();
+    const rawEmail = (row[COL.EMAIL] || '').toString().trim().toLowerCase();
 
     // Skip empty rows
     if (!companyName) {
@@ -404,32 +406,14 @@ async function importVendors(filePath, options = {}) {
       continue;
     }
 
-    // Check for existing vendor (skip in dry-run mode)
-    if (!dryRun) {
-      const existing = await Vendor.findOne({
-        $or: [
-          { company: companyName },
-          ...(email ? [{ email: email }] : [])
-        ]
-      });
+    // Email is required for upsert matching - generate placeholder if missing
+    const email = rawEmail || `unclaimed-${companyName.toLowerCase().replace(/[^a-z0-9]/g, '-')}@tendorai.com`;
 
-      if (existing) {
-        console.log(`[${i + 1}] SKIP: "${companyName}" already exists`);
-        results.skipped++;
-        continue;
-      }
-    }
-
-    // Generate temporary password
-    const tempPassword = generatePassword();
-
-    // Build vendor document
-    const vendorData = {
+    // Build vendor update document (fields to set/update)
+    const updateData = {
       // Core fields
       name: companyName,
       company: companyName,
-      email: email || `unclaimed-${Date.now()}-${i}@tendorai.com`,
-      password: tempPassword,
 
       // Services
       services: normalizeServices(row[COL.SERVICES]),
@@ -478,44 +462,73 @@ async function importVendors(filePath, options = {}) {
         minimumOrderValue: parseNumber(row[COL.MIN_CONTRACT_VALUE])
       },
 
-      // Account settings for imported vendors
+      // Import tracking - always update
+      lastImportedAt: new Date(),
+      importSource: path.basename(filePath)
+    };
+
+    // Fields to set only on insert (not update)
+    const setOnInsertData = {
+      email: email,
+      // Account settings for new vendors
       account: {
         status: 'pending',
         verificationStatus: 'unverified',
         tier: 'standard'
       },
-
-      // Subscription
+      // Subscription defaults
       tier: 'free',
       subscriptionStatus: 'none',
-
-      // Import tracking
       listingStatus: 'unclaimed',
-      importedAt: new Date(),
-      importSource: path.basename(filePath)
+      importedAt: new Date()
     };
 
     if (dryRun) {
-      const services = vendorData.services.join(', ');
-      const city = vendorData.location.city || 'No city';
-      const postcodes = vendorData.postcodeAreas.join(', ') || 'No postcode';
-      console.log(`[${i + 1}] DRY RUN: "${companyName}" | ${city} | ${postcodes} | ${services}`);
-      results.imported++;
+      const services = updateData.services.join(', ');
+      const city = updateData.location.city || 'No city';
+      const postcodes = updateData.postcodeAreas.join(', ') || 'No postcode';
+      console.log(`[${i + 1}] DRY RUN: "${companyName}" | ${email} | ${city} | ${postcodes} | ${services}`);
+      results.inserted++; // Count as insert for dry-run
     } else {
       try {
-        // Hash password
+        // Generate password for new vendors
+        const tempPassword = generatePassword();
         const salt = await bcrypt.genSalt(12);
-        vendorData.password = await bcrypt.hash(tempPassword, salt);
+        const hashedPassword = await bcrypt.hash(tempPassword, salt);
+        setOnInsertData.password = hashedPassword;
 
-        const vendor = new Vendor(vendorData);
-        await vendor.save();
-        console.log(`[${i + 1}] ✓ IMPORTED: "${companyName}" (${vendorData.location.city})`);
-        results.imported++;
+        // Upsert: update if email exists, insert if not
+        const result = await Vendor.findOneAndUpdate(
+          { email: email },
+          {
+            $set: updateData,
+            $setOnInsert: setOnInsertData
+          },
+          {
+            upsert: true,
+            new: true,
+            runValidators: true
+          }
+        );
+
+        // Check if this was an insert or update
+        // If the document was just created, importedAt will match lastImportedAt closely
+        const wasInserted = !result.importedAt ||
+          (Math.abs(result.importedAt.getTime() - result.lastImportedAt.getTime()) < 1000);
+
+        if (wasInserted) {
+          console.log(`[${i + 1}] ✓ INSERTED: "${companyName}" (${updateData.location.city})`);
+          results.inserted++;
+        } else {
+          console.log(`[${i + 1}] ↻ UPDATED: "${companyName}" (${updateData.location.city})`);
+          results.updated++;
+        }
       } catch (error) {
         console.error(`[${i + 1}] ✗ ERROR: "${companyName}" - ${error.message}`);
         results.errors.push({
           row: i + 1,
           company: companyName,
+          email: email,
           error: error.message
         });
       }
@@ -527,14 +540,15 @@ async function importVendors(filePath, options = {}) {
   console.log('║           IMPORT COMPLETE              ║');
   console.log('╚════════════════════════════════════════╝');
   console.log(`Total rows processed: ${results.total}`);
-  console.log(`Successfully imported: ${results.imported}`);
-  console.log(`Skipped (existing/empty): ${results.skipped}`);
+  console.log(`New vendors inserted: ${results.inserted}`);
+  console.log(`Existing vendors updated: ${results.updated}`);
+  console.log(`Skipped (empty rows): ${results.skipped}`);
   console.log(`Errors: ${results.errors.length}`);
 
   if (results.errors.length > 0) {
     console.log('\nErrors:');
     results.errors.slice(0, 10).forEach(e => {
-      console.log(`  Row ${e.row}: ${e.company} - ${e.error}`);
+      console.log(`  Row ${e.row}: ${e.company} (${e.email}) - ${e.error}`);
     });
     if (results.errors.length > 10) {
       console.log(`  ... and ${results.errors.length - 10} more`);
@@ -543,9 +557,10 @@ async function importVendors(filePath, options = {}) {
 
   if (dryRun) {
     console.log('\n⚠️  DRY RUN - No changes were made to the database');
-    console.log('   Run without --dry-run to actually import vendors');
+    console.log('   Run without --dry-run to actually import/update vendors');
   } else {
     await mongoose.disconnect();
+    console.log('✓ Disconnected from MongoDB');
   }
 
   console.log('\n');
@@ -569,6 +584,12 @@ if (!filePath) {
   console.log('Example:');
   console.log('  node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --dry-run');
   console.log('  node scripts/importVendors.js ./TendorAI-All-Vendors-Combined.xlsx --limit=10');
+  console.log('');
+  console.log('UPSERT BEHAVIOR:');
+  console.log('  - Matches vendors by EMAIL address');
+  console.log('  - If email exists: UPDATES the vendor with new data');
+  console.log('  - If email not found: INSERTS a new vendor');
+  console.log('  - Account tier, subscription, and password are preserved on updates');
   console.log('');
   console.log('Expected spreadsheet columns (22 total):');
   console.log('  FREE TIER: company_name, email, phone, website, address, city,');
