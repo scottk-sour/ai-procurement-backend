@@ -14,7 +14,30 @@ export function calculateVisibilityScore(vendor, products = []) {
     optimisation: { earned: 0, max: 10, items: [], locked: false }
   };
 
-  const tier = vendor.tier || vendor.subscriptionTier || 'free';
+  // Check both tier fields - vendor.tier (subscription) and vendor.account?.tier (legacy)
+  const rawTier = vendor.tier || vendor.account?.tier || vendor.subscriptionTier || 'free';
+
+  // Normalize tier names - map legacy/alternative names to standard tiers
+  const tierMapping = {
+    // Free tier variants
+    'free': 'free',
+    'listed': 'free',
+    // Basic/Visible tier variants (£99/mo)
+    'basic': 'basic',
+    'visible': 'basic',
+    'bronze': 'basic',
+    'standard': 'basic',
+    // Managed/Verified tier variants (£149/mo)
+    'managed': 'managed',
+    'verified': 'managed',
+    'silver': 'managed',
+    'gold': 'managed',
+    // Enterprise tier
+    'enterprise': 'enterprise',
+    'platinum': 'enterprise'
+  };
+
+  const tier = tierMapping[rawTier.toLowerCase()] || 'free';
   const recommendations = [];
 
   // PROFILE COMPLETENESS (40 pts) - All tiers can earn these
@@ -125,7 +148,7 @@ export function calculateVisibilityScore(vendor, products = []) {
     const certs = vendor.businessProfile?.certifications || [];
     const brands = vendor.businessProfile?.accreditations || [];
     const accreditations = vendor.businessProfile?.specializations || [];
-    const isManaged = ['managed', 'enterprise'].includes(tier);
+    const isManagedTier = ['managed', 'enterprise'].includes(tier);
     const isVerified = vendor.account?.verificationStatus === 'verified';
 
     const hasCerts = certs.length > 0;
@@ -136,13 +159,13 @@ export function calculateVisibilityScore(vendor, products = []) {
       { name: 'ISO certifications', points: 5, completed: hasCerts },
       { name: 'Brand partnerships', points: 5, completed: hasBrands },
       { name: 'Accreditations', points: 5, completed: hasAccreditations },
-      { name: 'Verified badge', points: 5, completed: isManaged && isVerified, requiresTier: 'managed' }
+      { name: 'Verified badge', points: 5, completed: isManagedTier && isVerified, requiresTier: 'managed' }
     ];
 
     if (hasCerts) breakdown.trust.earned += 5;
     if (hasBrands) breakdown.trust.earned += 5;
     if (hasAccreditations) breakdown.trust.earned += 5;
-    if (isManaged && isVerified) breakdown.trust.earned += 5;
+    if (isManagedTier && isVerified) breakdown.trust.earned += 5;
 
     if (!hasCerts) {
       recommendations.push({ action: 'Add your certifications (ISO, etc.)', points: 5, tier: 'basic' });

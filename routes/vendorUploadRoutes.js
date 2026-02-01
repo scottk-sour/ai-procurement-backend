@@ -739,7 +739,13 @@ router.get("/products", async (req, res) => {
             });
         }
 
-        const products = await VendorProduct.find({ vendorId }).lean();
+        // Query with $or to match both ObjectId and string vendorId (handles legacy data)
+        const products = await VendorProduct.find({
+            $or: [
+                { vendorId: vendorId },
+                { vendorId: vendorId.toString() }
+            ]
+        }).lean();
 
         res.status(200).json({
             success: true,

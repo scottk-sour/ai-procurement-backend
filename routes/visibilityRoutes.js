@@ -4,12 +4,27 @@
  */
 
 import express from 'express';
+import mongoose from 'mongoose';
 import vendorAuth from '../middleware/vendorAuth.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 
 const router = express.Router();
+
+/**
+ * Helper to find products by vendorId (handles both ObjectId and string)
+ */
+async function findVendorProducts(vendorId) {
+  // Query with $or to match both ObjectId and string vendorId
+  // This handles legacy products that might have string vendorId
+  return VendorProduct.find({
+    $or: [
+      { vendorId: vendorId },
+      { vendorId: vendorId.toString() }
+    ]
+  });
+}
 
 /**
  * GET /api/visibility/score
@@ -25,7 +40,7 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await VendorProduct.find({ vendorId: vendor._id });
+    const products = await findVendorProducts(vendor._id);
     const scoreData = calculateVisibilityScore(vendor, products);
 
     res.json({
@@ -55,7 +70,7 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await VendorProduct.find({ vendorId: vendor._id });
+    const products = await findVendorProducts(vendor._id);
     const scoreData = calculateVisibilityScore(vendor, products);
 
     // Add more detailed guidance for each section
@@ -101,7 +116,7 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await VendorProduct.find({ vendorId: vendor._id });
+    const products = await findVendorProducts(vendor._id);
     const scoreData = calculateVisibilityScore(vendor, products);
 
     // Enhance recommendations with action URLs
