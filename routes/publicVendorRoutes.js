@@ -236,8 +236,25 @@ router.get('/vendors', async (req, res) => {
     // Format response - hide pricing flag, add showPricing boolean
     // Support both nested schema (imported vendors) and flat schema (legacy vendors)
     const publicVendors = sortedVendors.map(v => {
-      const tier = v.tier || 'free';
-      const paidTiers = ['basic', 'managed', 'enterprise'];
+      // Determine tier - check both flat and nested schema
+      // Normalize legacy tier names to new system
+      const rawTier = v.tier || v.account?.tier || 'free';
+      const tierMapping = {
+        'enterprise': 'verified',
+        'managed': 'verified',
+        'verified': 'verified',
+        'silver': 'verified',
+        'gold': 'verified',
+        'platinum': 'verified',
+        'basic': 'visible',
+        'visible': 'visible',
+        'standard': 'visible',
+        'bronze': 'visible',
+        'free': 'free',
+        'listed': 'free'
+      };
+      const tier = tierMapping[rawTier.toLowerCase()] || 'free';
+      const paidTiers = ['verified', 'visible'];
       const showPricing = paidTiers.includes(tier) || v.showPricing === true;
 
       return {
