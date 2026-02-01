@@ -91,6 +91,19 @@ const vendorProductSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+
+  // Product status - active products show in catalog
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'draft'],
+    default: 'active'
+  },
+
+  // Legacy field for backwards compatibility
+  isActive: {
+    type: Boolean,
+    default: true
+  },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
