@@ -10,12 +10,19 @@ import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } f
 
 const router = express.Router();
 
-// Tier priority for sorting (paid vendors appear first)
+// Tier priority for sorting (Verified > Visible > Free)
+// Verified tiers: enterprise, managed, verified (£149/mo)
+// Visible tiers: basic, visible, standard (£99/mo)
+// Free tiers: free, listed
 const TIER_PRIORITY = {
-  enterprise: 4,
-  managed: 3,
-  basic: 2,
-  free: 1
+  enterprise: 100,  // Verified
+  managed: 100,     // Verified
+  verified: 100,    // Verified
+  basic: 50,        // Visible
+  visible: 50,      // Visible
+  standard: 50,     // Visible
+  free: 0,          // Free
+  listed: 0         // Free
 };
 
 /**
@@ -191,14 +198,19 @@ router.get('/vendors', async (req, res) => {
       })
       // Filter by actual distance - exclude vendors without coordinates
       .filter(v => v._distance !== null && v._distance <= maxDistanceKm)
-      // Sort by distance first, then priority
+      // Sort: Primary = Tier/Priority, Secondary = Visibility Score (in _priorityScore), Tertiary = Distance
       .sort((a, b) => {
-        if (a._distance === null) return 1;
-        if (b._distance === null) return -1;
-        return a._distance - b._distance;
+        // First compare by priority score (tier + visibility)
+        const priorityDiff = b._priorityScore - a._priorityScore;
+        if (priorityDiff !== 0) return priorityDiff;
+
+        // If same priority, sort by distance (closer first)
+        const distA = a._distance ?? Infinity;
+        const distB = b._distance ?? Infinity;
+        return distA - distB;
       });
     } else {
-      // Sort by priority score (tier + boost + rating)
+      // No postcode search - sort by priority score only
       processedVendors.sort((a, b) => b._priorityScore - a._priorityScore);
     }
 
@@ -686,13 +698,42 @@ router.get('/stats', async (req, res) => {
 });
 
 // Helper function to calculate priority score
+// Sort order: Primary = Tier, Secondary = Visibility Score, Tertiary = Distance (handled separately)
 function calculatePriorityScore(vendor) {
-  const tierWeights = { free: 0, basic: 25, managed: 50, enterprise: 100 };
-  const tier = vendor.tier || 'free';
-  const tierScore = tierWeights[tier] || 0;
+  // Tier score (Primary) - 0-100
+  const tierScore = TIER_PRIORITY[vendor.tier] || TIER_PRIORITY[vendor.account?.tier] || 0;
+
+  // Visibility score (Secondary) - estimate from profile completeness (0-70)
+  let visibilityScore = 0;
+
+  // Profile fields (25 pts max)
+  if (vendor.company) visibilityScore += 3;
+  if (vendor.contactInfo?.phone || vendor.phone) visibilityScore += 4;
+  if (vendor.email) visibilityScore += 3;
+  if (vendor.contactInfo?.website || vendor.website) visibilityScore += 5;
+  if (vendor.businessProfile?.yearsInBusiness || vendor.yearsInBusiness) visibilityScore += 3;
+  if (vendor.businessProfile?.description?.length > 20 || vendor.description?.length > 20) visibilityScore += 4;
+  if (vendor.location?.postcode || vendor.postcode) visibilityScore += 3;
+
+  // Product data (25 pts max - estimated)
+  if (vendor.hasProducts) visibilityScore += 15;
+
+  // Trust signals (20 pts max)
+  const certs = vendor.businessProfile?.certifications?.length || 0;
+  const accreds = vendor.businessProfile?.accreditations?.length || vendor.accreditations?.length || 0;
+  const brands = vendor.brands?.length || 0;
+  const coverage = vendor.location?.coverage?.length || vendor.coverageAreas?.length || 0;
+  if (certs > 0) visibilityScore += 5;
+  if (accreds > 0) visibilityScore += 5;
+  if (brands > 0) visibilityScore += 5;
+  if (coverage > 0) visibilityScore += 5;
+
+  // Boost from subscription
   const boostScore = vendor.subscription?.priorityBoost || 0;
-  const ratingScore = (vendor.performance?.rating || 0) * 10;
-  return tierScore + boostScore + ratingScore;
+
+  // Combined score: Tier dominates, then visibility score
+  // Tier: 0-100, Visibility: 0-70, Boost: 0-20
+  return (tierScore * 1000) + (visibilityScore * 10) + boostScore;
 }
 
 // Helper function to capitalize
