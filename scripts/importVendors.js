@@ -529,10 +529,10 @@ async function importVendors(filePath, options = {}) {
     // Fields to set only on insert (not update)
     const setOnInsertData = {
       email: email,
-      // Account settings for new vendors
+      // Account settings for new vendors - set to active/verified so they appear in public API
       account: {
-        status: 'pending',
-        verificationStatus: 'unverified',
+        status: 'active',
+        verificationStatus: 'verified',
         tier: 'standard'
       },
       // Subscription defaults
