@@ -77,14 +77,36 @@ router.get('/stats', adminAuth, async (req, res) => {
       visible: 0,
       verified: 0,
       basic: 0,
-      managed: 0
+      managed: 0,
+      enterprise: 0
     };
     vendorsByTier.forEach(t => {
       if (t._id) tierBreakdown[t._id] = t.count;
     });
 
-    // Active subscriptions
-    const activeSubscriptions = await Vendor.countDocuments({ subscriptionStatus: 'active' });
+    // Active subscriptions (paid tiers)
+    const activeSubscriptions = await Vendor.countDocuments({
+      tier: { $in: ['visible', 'verified', 'basic', 'managed', 'enterprise'] }
+    });
+
+    // Calculate monthly revenue (visible=£99, verified/managed/enterprise=£149)
+    const visibleCount = tierBreakdown.visible + tierBreakdown.basic;
+    const verifiedCount = tierBreakdown.verified + tierBreakdown.managed + tierBreakdown.enterprise;
+    const monthlyRevenue = (visibleCount * 99) + (verifiedCount * 149);
+
+    // Pending claims (vendors with placeholder emails)
+    const pendingClaims = await Vendor.countDocuments({
+      email: { $regex: /^unclaimed-/i }
+    });
+
+    // Users by role
+    const usersByRole = await User.aggregate([
+      { $group: { _id: '$role', count: { $sum: 1 } } }
+    ]);
+    const roleBreakdown = { user: 0, admin: 0, vendor: 0 };
+    usersByRole.forEach(r => {
+      if (r._id) roleBreakdown[r._id] = r.count;
+    });
 
     // Recent signups (last 30 days)
     const thirtyDaysAgo = new Date();
@@ -100,8 +122,11 @@ router.get('/stats', adminAuth, async (req, res) => {
         totalLeads,
         totalProducts,
         activeSubscriptions,
+        monthlyRevenue,
+        pendingClaims,
         recentVendors,
-        tierBreakdown
+        tierBreakdown,
+        roleBreakdown
       }
     });
   } catch (error) {
@@ -156,7 +181,7 @@ router.get('/users', adminAuth, async (req, res) => {
 router.get('/vendors', adminAuth, async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .select('company name email services tier account subscriptionStatus stripeCustomerId stripeSubscriptionId createdAt location performance')
+      .select('company name email services tier account subscriptionStatus stripeCustomerId stripeSubscriptionId createdAt location performance postcodeAreas')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -183,8 +208,11 @@ router.get('/vendors', adminAuth, async (req, res) => {
       subscriptionStatus: v.subscriptionStatus || 'none',
       hasStripe: !!v.stripeCustomerId,
       productCount: productCountMap[v._id.toString()] || 0,
-      location: v.location?.city || v.location?.region || 'N/A',
+      city: v.location?.city || 'N/A',
+      region: v.location?.region || 'N/A',
+      postcodeAreas: v.postcodeAreas || [],
       rating: v.performance?.rating || 0,
+      isClaimed: !v.email?.startsWith('unclaimed-'),
       createdAt: v.createdAt
     }));
 
