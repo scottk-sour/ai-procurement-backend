@@ -372,46 +372,67 @@ function detectAISource(userAgent, referer) {
 
 app.post('/api/ai-query', async (req, res) => {
   try {
-    const { query, postcode, category, volume = 5000, service, location, limit = 10 } = req.body;
+    const {
+      query,
+      postcode,
+      category,
+      volume = 5000,
+      service,
+      location,
+      limit = 10,
+      // New parameters for enhanced matching
+      requirements = {},
+      currentSituation = {},
+      contact = {}
+    } = req.body;
 
     // Import models dynamically to avoid circular dependencies
     const { default: Vendor } = await import('./models/Vendor.js');
     const { default: VendorProduct } = await import('./models/VendorProduct.js');
+    const { default: VendorLead } = await import('./models/VendorLead.js');
 
-    // Build search query - check both old and new status field locations
-    const searchQuery = {
-      $or: [
-        { 'account.status': 'active' },
-        { status: 'active' }
-      ]
+    // Extract requirements
+    const {
+      specificVolume,
+      monthlyVolume: reqVolume,
+      colour,
+      a3,
+      features,
+      leasePreferred
+    } = requirements;
+
+    // Determine volume (prioritize specificVolume > requirements.monthlyVolume > volume param)
+    let actualVolume = specificVolume || parseInt(volume) || 5000;
+    if (!specificVolume && reqVolume) {
+      const volumeMap = { low: 2000, medium: 6000, high: 15000, enterprise: 35000 };
+      actualVolume = volumeMap[reqVolume] || 5000;
+    }
+
+    // Service mapping
+    const serviceType = category || service;
+    const serviceMap = {
+      'photocopiers': 'Photocopiers', 'copiers': 'Photocopiers', 'printers': 'Photocopiers',
+      'mps': 'Photocopiers', 'managed print': 'Photocopiers',
+      'telecoms': 'Telecoms', 'phones': 'Telecoms', 'voip': 'Telecoms',
+      'cctv': 'CCTV', 'security cameras': 'CCTV',
+      'it': 'IT', 'it support': 'IT',
+      'security': 'Security', 'software': 'Software'
     };
 
-    // Service/category filter
-    const serviceType = category || service;
+    // Build vendor search query
+    const searchQuery = {
+      $or: [{ 'account.status': 'active' }, { status: 'active' }]
+    };
+
     if (serviceType) {
-      const serviceMap = {
-        'photocopiers': 'Photocopiers',
-        'copiers': 'Photocopiers',
-        'printers': 'Photocopiers',
-        'mps': 'Photocopiers',
-        'managed print': 'Photocopiers',
-        'telecoms': 'Telecoms',
-        'phones': 'Telecoms',
-        'voip': 'Telecoms',
-        'cctv': 'CCTV',
-        'security cameras': 'CCTV',
-        'it': 'IT',
-        'it support': 'IT',
-        'security': 'Security',
-        'software': 'Software'
-      };
       const normalizedService = serviceMap[serviceType.toLowerCase()] || serviceType;
       searchQuery.services = { $in: [normalizedService] };
     }
 
-    // Location filter (postcode or region)
+    // Location filter
     const searchLocation = postcode || location;
     if (searchLocation) {
+      const postcodePrefix = searchLocation.substring(0, 2).toUpperCase();
       searchQuery.$and = searchQuery.$and || [];
       searchQuery.$and.push({
         $or: [
@@ -419,16 +440,14 @@ app.post('/api/ai-query', async (req, res) => {
           { 'location.city': { $regex: searchLocation, $options: 'i' } },
           { 'location.region': { $regex: searchLocation, $options: 'i' } },
           { 'location.postcode': { $regex: searchLocation, $options: 'i' } },
-          { postcodeAreas: { $regex: searchLocation.substring(0, 2).toUpperCase(), $options: 'i' } }
+          { postcodeAreas: { $regex: postcodePrefix, $options: 'i' } }
         ]
       });
     }
 
-    // Parse natural language query for keywords
+    // Parse natural language query
     if (query && !serviceType && !searchLocation) {
       const queryLower = query.toLowerCase();
-
-      // Extract service from query
       if (queryLower.includes('copier') || queryLower.includes('printer') || queryLower.includes('print')) {
         searchQuery.services = { $in: ['Photocopiers'] };
       } else if (queryLower.includes('phone') || queryLower.includes('telecom') || queryLower.includes('voip')) {
@@ -437,18 +456,13 @@ app.post('/api/ai-query', async (req, res) => {
         searchQuery.services = { $in: ['CCTV'] };
       }
 
-      // Extract location from query (common UK cities/regions)
-      const locationPatterns = [
-        'cardiff', 'newport', 'swansea', 'bristol', 'bath', 'gloucester', 'exeter',
-        'birmingham', 'manchester', 'london', 'leeds', 'sheffield', 'liverpool',
-        'wales', 'south west', 'midlands', 'north west', 'scotland'
-      ];
+      const locationPatterns = ['cardiff', 'newport', 'swansea', 'bristol', 'bath', 'gloucester', 'exeter',
+        'birmingham', 'manchester', 'london', 'leeds', 'sheffield', 'liverpool', 'wales', 'south west', 'midlands'];
       for (const loc of locationPatterns) {
         if (queryLower.includes(loc)) {
           searchQuery.$and = searchQuery.$and || [];
           searchQuery.$and.push({
             $or: [
-              { 'location.coverage': { $regex: loc, $options: 'i' } },
               { 'location.city': { $regex: loc, $options: 'i' } },
               { 'location.region': { $regex: loc, $options: 'i' } }
             ]
@@ -458,26 +472,42 @@ app.post('/api/ai-query', async (req, res) => {
       }
     }
 
-    // Find vendors
+    // Find vendors (prioritize by tier)
     const vendors = await Vendor.find(searchQuery)
       .select('company services businessProfile.description location performance tier account brands postcodeAreas')
       .sort({ tier: -1, 'performance.rating': -1 })
-      .limit(Math.min(parseInt(limit), 20))
+      .limit(Math.min(parseInt(limit) * 3, 30))
       .lean();
 
-    // Calculate pricing estimates
-    const monthlyVolume = parseInt(volume) || 5000;
-    const monoPages = Math.round(monthlyVolume * 0.7);
-    const colourPages = monthlyVolume - monoPages;
-
-    // Fetch pricing data
+    // Build product query using new schema fields
     const vendorIds = vendors.map(v => v._id);
-    const vendorProducts = await VendorProduct.find({
+    const productQuery = {
       vendorId: { $in: vendorIds },
-      minVolume: { $lte: monthlyVolume },
-      maxVolume: { $gte: monthlyVolume * 0.5 }
-    })
-      .select('vendorId costs leaseRates')
+      status: 'active',
+      minVolume: { $lte: actualVolume },
+      maxVolume: { $gte: actualVolume }
+    };
+
+    // Apply colour filter
+    if (colour === true) {
+      productQuery.isColour = true;
+    } else if (colour === false) {
+      productQuery.$or = [{ isColour: false }, { 'costs.cpcRates.A4Colour': 0 }];
+    }
+
+    // Apply A3 filter
+    if (a3 === true) {
+      productQuery.isA3 = true;
+    }
+
+    // Apply features filter
+    if (features && features.length > 0) {
+      productQuery.features = { $all: features };
+    }
+
+    // Find matching products
+    const vendorProducts = await VendorProduct.find(productQuery)
+      .select('vendorId manufacturer model description category speed isColour isA3 features costs leaseRates service availability minVolume maxVolume')
       .sort({ 'costs.totalMachineCost': 1 })
       .lean();
 
@@ -489,28 +519,82 @@ app.post('/api/ai-query', async (req, res) => {
       productsByVendor[vid].push(p);
     });
 
-    // Format response
+    // Helper: Calculate monthly cost
+    const calculateMonthlyCost = (product, monthlyVol, colourRatio = 0.2) => {
+      if (!product?.costs) return null;
+      const monoPages = Math.round(monthlyVol * (1 - colourRatio));
+      const colourPages = Math.round(monthlyVol * colourRatio);
+      const monoCpc = (product.costs.cpcRates?.A4Mono || 0.8) / 100;
+      const colourCpc = (product.costs.cpcRates?.A4Colour || 4.0) / 100;
+      const cpcCost = (monoPages * monoCpc) + (colourPages * colourCpc);
+      const quarterlyLease = product.leaseRates?.term60 || product.leaseRates?.term48 || product.leaseRates?.term36 || 300;
+      const monthlyLease = quarterlyLease / 3;
+      const monthlyService = (product.service?.quarterlyService || 75) / 3;
+      return { total: Math.round(cpcCost + monthlyLease + monthlyService), cpc: Math.round(cpcCost), lease: Math.round(monthlyLease), service: Math.round(monthlyService) };
+    };
+
+    // Helper: Calculate savings
+    const calculateSavings = (newMonthlyCost, currentMonthlyCost) => {
+      if (!newMonthlyCost || !currentMonthlyCost) return null;
+      const monthlySaving = currentMonthlyCost - newMonthlyCost;
+      if (monthlySaving <= 0) return null;
+      return {
+        monthly: Math.round(monthlySaving),
+        annual: Math.round(monthlySaving * 12),
+        percentage: Math.round((monthlySaving / currentMonthlyCost) * 100)
+      };
+    };
+
+    // Helper: Score a match
+    const scoreMatch = (vendor, product, vol) => {
+      let score = 50;
+      // Tier bonus (biggest factor for paid suppliers)
+      if (vendor.tier === 'verified') score += 25;
+      else if (vendor.tier === 'visible') score += 15;
+      else if (vendor.tier === 'basic' || vendor.tier === 'managed') score += 20;
+      // Has product data
+      if (product) score += 10;
+      if (product?.costs?.cpcRates?.A4Mono) score += 5;
+      // Volume sweet spot
+      if (product?.minVolume && product?.maxVolume) {
+        const midPoint = (product.minVolume + product.maxVolume) / 2;
+        const range = product.maxVolume - product.minVolume;
+        const volumeDiff = Math.abs(vol - midPoint);
+        if (volumeDiff < range * 0.25) score += 10;
+        else if (volumeDiff < range * 0.5) score += 5;
+      }
+      // Service level
+      if (product?.service?.includesToner) score += 3;
+      if (product?.service?.includesPartsLabour) score += 3;
+      // Rating
+      if (vendor.performance?.rating >= 4.5) score += 5;
+      else if (vendor.performance?.rating >= 4.0) score += 3;
+      return Math.min(score, 99);
+    };
+
+    // Helper: Generate recommendation reason
+    const generateReason = (vendor, product, savings) => {
+      const reasons = [];
+      if (vendor.tier === 'verified') reasons.push('Verified supplier with excellent track record');
+      else if (vendor.tier === 'visible') reasons.push('Trusted local supplier');
+      if (savings?.annual > 100) reasons.push(`Could save you £${savings.annual}/year`);
+      if (product?.service?.includesToner && product?.service?.includesPartsLabour) {
+        reasons.push('All-inclusive service (toner, parts & labour)');
+      }
+      if (product?.features?.length > 4) reasons.push('Feature-rich machine for your needs');
+      if (vendor.performance?.rating >= 4.5) reasons.push(`Highly rated (${vendor.performance.rating}★)`);
+      return reasons.length > 0 ? reasons.join('. ') + '.' : 'Serves your area with competitive pricing.';
+    };
+
+    // Build results with enhanced matching
+    const currentMonthlyCost = currentSituation?.currentMonthlyCost;
     const results = vendors.map(v => {
       const vid = v._id.toString();
       const products = productsByVendor[vid] || [];
       const bestProduct = products[0];
-
-      let pricing = null;
-      if (bestProduct?.costs) {
-        const monoCpc = (bestProduct.costs.cpcRates?.A4Mono || 0.8) / 100;
-        const colourCpc = (bestProduct.costs.cpcRates?.A4Colour || 4.0) / 100;
-        const quarterlyLease = bestProduct.leaseRates?.term60 || 300;
-        const monthlyCpc = (monoPages * monoCpc) + (colourPages * colourCpc);
-        const monthlyLease = quarterlyLease / 3;
-        const monthlyService = 25;
-
-        pricing = {
-          estimatedMonthly: `£${Math.round(monthlyCpc + monthlyLease + monthlyService)}`,
-          cpcMono: `${bestProduct.costs.cpcRates?.A4Mono || 0.8}p`,
-          cpcColour: `${bestProduct.costs.cpcRates?.A4Colour || 4.0}p`,
-          disclaimer: 'Estimate only - request quote for accurate pricing'
-        };
-      }
+      const pricing = bestProduct ? calculateMonthlyCost(bestProduct, actualVolume) : null;
+      const savings = pricing ? calculateSavings(pricing.total, currentMonthlyCost) : null;
+      const matchScore = scoreMatch(v, bestProduct, actualVolume);
 
       return {
         id: v._id,
@@ -522,30 +606,53 @@ app.post('/api/ai-query', async (req, res) => {
         rating: v.performance?.rating || null,
         brands: v.brands || [],
         tier: v.tier || v.account?.tier || 'free',
-        pricing,
-        profileUrl: `https://www.tendorai.com/suppliers/${v._id}`,
-        quoteUrl: `https://www.tendorai.com/quote?vendor=${v._id}`
+        matchScore,
+        whyRecommended: generateReason(v, bestProduct, savings),
+        product: bestProduct ? {
+          name: `${bestProduct.manufacturer} ${bestProduct.model}`,
+          category: bestProduct.category,
+          speed: bestProduct.speed,
+          isColour: bestProduct.isColour,
+          isA3: bestProduct.isA3,
+          features: bestProduct.features?.slice(0, 5)
+        } : null,
+        pricing: pricing ? {
+          estimatedMonthly: `£${pricing.total}`,
+          breakdown: { lease: `£${pricing.lease}`, cpc: `£${pricing.cpc}`, service: `£${pricing.service}` },
+          cpcMono: bestProduct?.costs?.cpcRates?.A4Mono ? `${bestProduct.costs.cpcRates.A4Mono}p` : null,
+          cpcColour: bestProduct?.costs?.cpcRates?.A4Colour ? `${bestProduct.costs.cpcRates.A4Colour}p` : null,
+          disclaimer: 'Estimate based on your volume. Request quote for final pricing.'
+        } : null,
+        savings,
+        service: bestProduct?.service ? {
+          includesToner: bestProduct.service.includesToner,
+          includesPartsLabour: bestProduct.service.includesPartsLabour,
+          responseTime: bestProduct.service.responseTime
+        } : null,
+        profileUrl: `https://tendorai.com/suppliers/${v._id}`,
+        quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
       };
     });
 
+    // Sort by match score and limit
+    const sortedResults = results
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, Math.min(parseInt(limit), 10));
+
     // Log AI query for analytics
     logger.info('AI Query endpoint called', {
-      query,
-      postcode,
-      category,
-      volume,
-      resultsCount: results.length,
-      ip: req.ip,
-      userAgent: req.get('User-Agent')
+      query, postcode, category, volume: actualVolume,
+      colour, a3, resultsCount: sortedResults.length,
+      ip: req.ip, userAgent: req.get('User-Agent')
     });
 
-    // Track AI mentions for each vendor in results (non-blocking)
+    // Track AI mentions (non-blocking)
     try {
       const { default: VendorAnalytics } = await import('./models/VendorAnalytics.js');
       const userAgent = req.get('User-Agent') || '';
       const aiSource = detectAISource(userAgent, req.get('Referer'));
 
-      const aiMentionEvents = results.map((vendor, index) => ({
+      const aiMentionEvents = sortedResults.map((vendor, index) => ({
         vendorId: vendor.id,
         eventType: 'ai_mention',
         sessionId: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
@@ -556,13 +663,9 @@ app.post('/api/ai-query', async (req, res) => {
           category: category || service || null,
           location: searchLocation || null
         },
-        metadata: {
-          position: index + 1,
-          totalResults: results.length
-        }
+        metadata: { position: index + 1, totalResults: sortedResults.length, matchScore: vendor.matchScore }
       }));
 
-      // Insert all at once (fire and forget)
       if (aiMentionEvents.length > 0) {
         VendorAnalytics.insertMany(aiMentionEvents).catch(err => {
           logger.warn('Failed to track AI mentions', { error: err.message });
@@ -572,15 +675,70 @@ app.post('/api/ai-query', async (req, res) => {
       logger.warn('AI mention tracking error', { error: trackingError.message });
     }
 
+    // Create leads if contact details provided (non-blocking)
+    if (contact?.email && contact?.companyName) {
+      try {
+        const leadsToCreate = sortedResults.slice(0, 3).map(vendor => ({
+          vendor: vendor.id,
+          service: serviceType ? (serviceMap[serviceType.toLowerCase()] || 'Other') : 'Photocopiers',
+          customer: {
+            companyName: contact.companyName,
+            contactName: contact.contactName || '',
+            email: contact.email,
+            phone: contact.phone || '',
+            postcode: searchLocation || ''
+          },
+          specificVolume: actualVolume,
+          colour: colour,
+          a3: a3,
+          features: features,
+          timeline: contact.timeline || 'planning',
+          currentProvider: currentSituation?.currentProvider ? { name: currentSituation.currentProvider } : undefined,
+          currentMonthlyCost: currentMonthlyCost,
+          source: {
+            page: '/api/ai-query',
+            referrer: detectAISource(req.get('User-Agent'), req.get('Referer')),
+            utm: { source: 'ai-assistant', medium: 'api', campaign: 'ai-query' }
+          },
+          status: 'pending'
+        }));
+        VendorLead.insertMany(leadsToCreate).catch(err => {
+          logger.warn('Failed to create AI leads', { error: err.message });
+        });
+      } catch (leadError) {
+        logger.warn('Lead creation error', { error: leadError.message });
+      }
+    }
+
+    // Build summary
+    const pricedResults = sortedResults.filter(r => r.pricing);
+    const maxSavings = sortedResults.filter(r => r.savings).map(r => r.savings.annual);
+    const summary = {
+      totalMatches: sortedResults.length,
+      withPricing: pricedResults.length,
+      priceRange: pricedResults.length > 0 ? {
+        min: Math.min(...pricedResults.map(r => parseInt(r.pricing.estimatedMonthly.replace('£', '')))),
+        max: Math.max(...pricedResults.map(r => parseInt(r.pricing.estimatedMonthly.replace('£', ''))))
+      } : null,
+      maxAnnualSavings: maxSavings.length > 0 ? Math.max(...maxSavings) : null
+    };
+
     res.json({
       success: true,
       query: query || `${category || 'all services'} in ${searchLocation || 'UK'}`,
-      count: results.length,
-      vendors: results,
+      count: sortedResults.length,
+      vendors: sortedResults,
+      summary,
+      filters: { volume: actualVolume, colour, a3, features },
+      note: pricedResults.length > 0
+        ? 'Prices are estimates based on your requirements. Request formal quotes for final pricing.'
+        : 'Request quotes from these suppliers for personalised pricing.',
+      compareUrl: `https://tendorai.com/compare?ids=${sortedResults.map(r => r.id).join(',')}`,
       metadata: {
-        monthlyVolume,
+        monthlyVolume: actualVolume,
         source: 'TendorAI',
-        website: 'https://www.tendorai.com',
+        website: 'https://tendorai.com',
+        apiVersion: '2.0',
         timestamp: new Date().toISOString()
       }
     });
