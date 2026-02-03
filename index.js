@@ -77,7 +77,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => {
     // Skip rate limiting for health checks
-    return req.path === '/' || req.path === '/api/test-dashboard';
+    return req.path === '/';
   },
 });
 
@@ -339,6 +339,202 @@ app.get('/', (req, res) => {
   });
 });
 
+// =====================================================
+// AI QUERY ENDPOINT (for llms.txt / AI assistant discovery)
+// Simplified endpoint for AI assistants (ChatGPT, Claude, etc.)
+// =====================================================
+app.post('/api/ai-query', async (req, res) => {
+  try {
+    const { query, postcode, category, volume = 5000, service, location, limit = 10 } = req.body;
+
+    // Import models dynamically to avoid circular dependencies
+    const { default: Vendor } = await import('./models/Vendor.js');
+    const { default: VendorProduct } = await import('./models/VendorProduct.js');
+
+    // Build search query - check both old and new status field locations
+    const searchQuery = {
+      $or: [
+        { 'account.status': 'active' },
+        { status: 'active' }
+      ]
+    };
+
+    // Service/category filter
+    const serviceType = category || service;
+    if (serviceType) {
+      const serviceMap = {
+        'photocopiers': 'Photocopiers',
+        'copiers': 'Photocopiers',
+        'printers': 'Photocopiers',
+        'mps': 'Photocopiers',
+        'managed print': 'Photocopiers',
+        'telecoms': 'Telecoms',
+        'phones': 'Telecoms',
+        'voip': 'Telecoms',
+        'cctv': 'CCTV',
+        'security cameras': 'CCTV',
+        'it': 'IT',
+        'it support': 'IT',
+        'security': 'Security',
+        'software': 'Software'
+      };
+      const normalizedService = serviceMap[serviceType.toLowerCase()] || serviceType;
+      searchQuery.services = { $in: [normalizedService] };
+    }
+
+    // Location filter (postcode or region)
+    const searchLocation = postcode || location;
+    if (searchLocation) {
+      searchQuery.$and = searchQuery.$and || [];
+      searchQuery.$and.push({
+        $or: [
+          { 'location.coverage': { $regex: searchLocation, $options: 'i' } },
+          { 'location.city': { $regex: searchLocation, $options: 'i' } },
+          { 'location.region': { $regex: searchLocation, $options: 'i' } },
+          { 'location.postcode': { $regex: searchLocation, $options: 'i' } },
+          { postcodeAreas: { $regex: searchLocation.substring(0, 2).toUpperCase(), $options: 'i' } }
+        ]
+      });
+    }
+
+    // Parse natural language query for keywords
+    if (query && !serviceType && !searchLocation) {
+      const queryLower = query.toLowerCase();
+
+      // Extract service from query
+      if (queryLower.includes('copier') || queryLower.includes('printer') || queryLower.includes('print')) {
+        searchQuery.services = { $in: ['Photocopiers'] };
+      } else if (queryLower.includes('phone') || queryLower.includes('telecom') || queryLower.includes('voip')) {
+        searchQuery.services = { $in: ['Telecoms'] };
+      } else if (queryLower.includes('cctv') || queryLower.includes('camera') || queryLower.includes('surveillance')) {
+        searchQuery.services = { $in: ['CCTV'] };
+      }
+
+      // Extract location from query (common UK cities/regions)
+      const locationPatterns = [
+        'cardiff', 'newport', 'swansea', 'bristol', 'bath', 'gloucester', 'exeter',
+        'birmingham', 'manchester', 'london', 'leeds', 'sheffield', 'liverpool',
+        'wales', 'south west', 'midlands', 'north west', 'scotland'
+      ];
+      for (const loc of locationPatterns) {
+        if (queryLower.includes(loc)) {
+          searchQuery.$and = searchQuery.$and || [];
+          searchQuery.$and.push({
+            $or: [
+              { 'location.coverage': { $regex: loc, $options: 'i' } },
+              { 'location.city': { $regex: loc, $options: 'i' } },
+              { 'location.region': { $regex: loc, $options: 'i' } }
+            ]
+          });
+          break;
+        }
+      }
+    }
+
+    // Find vendors
+    const vendors = await Vendor.find(searchQuery)
+      .select('company services businessProfile.description location performance tier account brands postcodeAreas')
+      .sort({ tier: -1, 'performance.rating': -1 })
+      .limit(Math.min(parseInt(limit), 20))
+      .lean();
+
+    // Calculate pricing estimates
+    const monthlyVolume = parseInt(volume) || 5000;
+    const monoPages = Math.round(monthlyVolume * 0.7);
+    const colourPages = monthlyVolume - monoPages;
+
+    // Fetch pricing data
+    const vendorIds = vendors.map(v => v._id);
+    const vendorProducts = await VendorProduct.find({
+      vendorId: { $in: vendorIds },
+      minVolume: { $lte: monthlyVolume },
+      maxVolume: { $gte: monthlyVolume * 0.5 }
+    })
+      .select('vendorId costs leaseRates')
+      .sort({ 'costs.totalMachineCost': 1 })
+      .lean();
+
+    // Group products by vendor
+    const productsByVendor = {};
+    vendorProducts.forEach(p => {
+      const vid = p.vendorId.toString();
+      if (!productsByVendor[vid]) productsByVendor[vid] = [];
+      productsByVendor[vid].push(p);
+    });
+
+    // Format response
+    const results = vendors.map(v => {
+      const vid = v._id.toString();
+      const products = productsByVendor[vid] || [];
+      const bestProduct = products[0];
+
+      let pricing = null;
+      if (bestProduct?.costs) {
+        const monoCpc = (bestProduct.costs.cpcRates?.A4Mono || 0.8) / 100;
+        const colourCpc = (bestProduct.costs.cpcRates?.A4Colour || 4.0) / 100;
+        const quarterlyLease = bestProduct.leaseRates?.term60 || 300;
+        const monthlyCpc = (monoPages * monoCpc) + (colourPages * colourCpc);
+        const monthlyLease = quarterlyLease / 3;
+        const monthlyService = 25;
+
+        pricing = {
+          estimatedMonthly: `£${Math.round(monthlyCpc + monthlyLease + monthlyService)}`,
+          cpcMono: `${bestProduct.costs.cpcRates?.A4Mono || 0.8}p`,
+          cpcColour: `${bestProduct.costs.cpcRates?.A4Colour || 4.0}p`,
+          disclaimer: 'Estimate only - request quote for accurate pricing'
+        };
+      }
+
+      return {
+        id: v._id,
+        company: v.company,
+        services: v.services || [],
+        description: v.businessProfile?.description || '',
+        location: v.location?.city || '',
+        coverage: v.location?.coverage || [],
+        rating: v.performance?.rating || null,
+        brands: v.brands || [],
+        tier: v.tier || v.account?.tier || 'free',
+        pricing,
+        profileUrl: `https://www.tendorai.com/suppliers/${v._id}`,
+        quoteUrl: `https://www.tendorai.com/quote?vendor=${v._id}`
+      };
+    });
+
+    // Log AI query for analytics
+    logger.info('AI Query endpoint called', {
+      query,
+      postcode,
+      category,
+      volume,
+      resultsCount: results.length,
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    });
+
+    res.json({
+      success: true,
+      query: query || `${category || 'all services'} in ${searchLocation || 'UK'}`,
+      count: results.length,
+      vendors: results,
+      metadata: {
+        monthlyVolume,
+        source: 'TendorAI',
+        website: 'https://www.tendorai.com',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('AI Query endpoint error', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process AI query',
+      message: error.message
+    });
+  }
+});
+
 // 404 Not Found handler
 app.use(notFoundHandler);
 
@@ -389,7 +585,6 @@ async function startServer() {
       logger.info(` - http://127.0.0.1:3000`);
       logger.info(` - https://ai-procurement-backend-q35u.onrender.com`);
       logger.info(` - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
-      logger.info(`📊 Test endpoint: /api/test-dashboard`);
       logger.info(`🏥 Health check: /`);
       logger.info(`📤 Vendor upload: /api/vendors/upload`);
       logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
