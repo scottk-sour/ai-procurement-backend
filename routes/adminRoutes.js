@@ -373,4 +373,57 @@ router.get('/quotes', adminAuth, async (req, res) => {
   }
 });
 
+// Export all vendors as CSV for outreach
+router.get('/vendors/export/csv', adminAuth, async (req, res) => {
+  try {
+    const vendors = await Vendor.find({})
+      .select('company name email contactInfo.phone location.city location.region tier listingStatus services createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // CSV header
+    const csvHeader = 'Company,Contact Name,Email,Phone,City,Region,Tier,Claim Status,Services,Created Date\n';
+
+    // Helper to escape CSV fields
+    const escapeCSV = (field) => {
+      if (field === null || field === undefined) return '';
+      const str = String(field);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // CSV rows
+    const csvRows = vendors.map(v => {
+      const services = Array.isArray(v.services) ? v.services.join('; ') : '';
+      const createdDate = v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-GB') : '';
+
+      return [
+        escapeCSV(v.company),
+        escapeCSV(v.name),
+        escapeCSV(v.email),
+        escapeCSV(v.contactInfo?.phone),
+        escapeCSV(v.location?.city),
+        escapeCSV(v.location?.region),
+        escapeCSV(v.tier || 'free'),
+        escapeCSV(v.listingStatus || 'unclaimed'),
+        escapeCSV(services),
+        escapeCSV(createdDate)
+      ].join(',');
+    }).join('\n');
+
+    const csv = csvHeader + csvRows;
+
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="tendorai-vendors-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+
+  } catch (error) {
+    console.error('Error exporting vendors:', error.message);
+    res.status(500).json({ success: false, message: 'Error exporting vendors.' });
+  }
+});
+
 export default router;
