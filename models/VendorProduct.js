@@ -30,6 +30,11 @@ const vendorProductSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Colour capability - can be set explicitly or derived from cpcRates.A4Colour > 0
+  isColour: {
+    type: Boolean,
+    default: true,
+  },
   features: [{ type: String }],
   minVolume: {
     type: Number,
@@ -73,6 +78,13 @@ const vendorProductSchema = new mongoose.Schema({
     level: { type: String, enum: ['Basic', 'Standard', 'Premium'] },
     responseTime: { type: String, enum: ['4hr', '8hr', 'Next day'] },
     quarterlyService: { type: Number },
+    // What's included in the service contract
+    includesToner: { type: Boolean, default: true },
+    includesPartsLabour: { type: Boolean, default: true },
+    includesDrums: { type: Boolean, default: true },
+    includesStaples: { type: Boolean, default: false },
+    // Service notes for anything non-standard
+    notes: { type: String, trim: true },
   },
   availability: {
     inStock: { type: Boolean, default: true },
@@ -170,27 +182,54 @@ vendorProductSchema.path('costs.totalMachineCost').validate(function (value) {
 
 // Static method for AI matching
 vendorProductSchema.statics.findMatches = function (requirements) {
-  const { monthlyVolume, paperSize, maxBudget, requiredFeatures, urgency } = requirements;
-  const query = {};
+  const { monthlyVolume, paperSize, maxBudget, requiredFeatures, urgency, colour, a3 } = requirements;
+  const query = { status: 'active' };
+
+  // Volume matching
   if (monthlyVolume?.total) {
     query.minVolume = { $lte: monthlyVolume.total };
     query.maxVolume = { $gte: monthlyVolume.total };
   }
+
+  // Paper size matching
   if (paperSize) {
     query['paperSizes.supported'] = paperSize;
   }
+
+  // A3 capability filter
+  if (a3 === true) {
+    query.isA3 = true;
+  }
+
+  // Colour capability filter
+  if (colour === true) {
+    query.isColour = true;
+  } else if (colour === false) {
+    // Mono only - either isColour is false or A4Colour CPC is 0
+    query.$or = [
+      { isColour: false },
+      { 'costs.cpcRates.A4Colour': 0 }
+    ];
+  }
+
+  // Budget filter
   if (maxBudget) {
     query['costs.totalMachineCost'] = { $lte: maxBudget };
   }
+
+  // Features filter
   if (requiredFeatures && requiredFeatures.length > 0) {
     query.features = { $all: requiredFeatures };
   }
-  if (urgency === 'Immediately') {
+
+  // Urgency filter
+  if (urgency === 'Immediately' || urgency === 'urgent') {
     query['availability.inStock'] = true;
     query['availability.leadTime'] = { $lte: 7 };
   }
+
   return this.find(query)
-    .populate('vendorId', 'name company performance.rating')
+    .populate('vendorId', 'name company performance.rating tier')
     .sort({ 'costs.totalMachineCost': 1 });
 };
 
