@@ -42,8 +42,9 @@ router.post('/', async (req, res) => {
     }
 
     // Check if vendor can receive quotes (paid tier or has showPricing)
-    const tier = vendor.account?.tier || vendor.tier || 'free';
-    const canReceiveQuotes = ['basic', 'managed', 'enterprise', 'standard'].includes(tier) || vendor.showPricing === true;
+    const tier = (vendor.account?.tier || vendor.tier || 'free').toLowerCase();
+    const paidTiers = ['basic', 'managed', 'enterprise', 'standard', 'visible', 'verified', 'gold', 'platinum', 'silver', 'bronze'];
+    const canReceiveQuotes = paidTiers.includes(tier) || vendor.showPricing === true;
 
     if (!canReceiveQuotes) {
       return res.status(403).json({
