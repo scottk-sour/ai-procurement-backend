@@ -15,7 +15,7 @@ const vendorAnalyticsSchema = new mongoose.Schema({
   eventType: {
     type: String,
     required: true,
-    enum: ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click'],
+    enum: ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click', 'ai_mention', 'search_impression'],
     index: true
   },
 
@@ -118,7 +118,9 @@ vendorAnalyticsSchema.statics.getVendorStats = async function(vendorId, startDat
     quoteRequests: 0,
     contacts: 0,
     websiteClicks: 0,
-    phoneClicks: 0
+    phoneClicks: 0,
+    aiMentions: 0,
+    searchImpressions: 0
   };
 
   stats.forEach(stat => {
@@ -141,6 +143,12 @@ vendorAnalyticsSchema.statics.getVendorStats = async function(vendorId, startDat
         break;
       case 'phone_click':
         result.phoneClicks = stat.count;
+        break;
+      case 'ai_mention':
+        result.aiMentions = stat.count;
+        break;
+      case 'search_impression':
+        result.searchImpressions = stat.count;
         break;
     }
   });

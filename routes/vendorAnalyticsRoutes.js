@@ -31,7 +31,7 @@ router.post('/track', async (req, res) => {
     }
 
     // Validate eventType
-    const validEventTypes = ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click'];
+    const validEventTypes = ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click', 'ai_mention', 'search_impression'];
     if (!validEventTypes.includes(eventType)) {
       return res.status(400).json({
         success: false,
@@ -113,7 +113,7 @@ router.post('/batch', async (req, res) => {
       });
     }
 
-    const validEventTypes = ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click'];
+    const validEventTypes = ['view', 'click', 'quote_request', 'contact', 'website_click', 'phone_click', 'ai_mention', 'search_impression'];
     const userAgent = req.headers['user-agent'] || '';
     const device = parseUserAgent(userAgent);
 

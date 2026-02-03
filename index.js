@@ -343,6 +343,33 @@ app.get('/', (req, res) => {
 // AI QUERY ENDPOINT (for llms.txt / AI assistant discovery)
 // Simplified endpoint for AI assistants (ChatGPT, Claude, etc.)
 // =====================================================
+
+// Helper to detect AI assistant source from user agent or referrer
+function detectAISource(userAgent, referer) {
+  const ua = (userAgent || '').toLowerCase();
+  const ref = (referer || '').toLowerCase();
+
+  if (ua.includes('chatgpt') || ua.includes('openai') || ref.includes('openai') || ref.includes('chatgpt')) {
+    return 'chatgpt';
+  }
+  if (ua.includes('claude') || ua.includes('anthropic') || ref.includes('anthropic') || ref.includes('claude')) {
+    return 'claude';
+  }
+  if (ua.includes('perplexity') || ref.includes('perplexity')) {
+    return 'perplexity';
+  }
+  if (ua.includes('bing') || ua.includes('copilot') || ref.includes('bing')) {
+    return 'bing-copilot';
+  }
+  if (ua.includes('gemini') || ua.includes('google') || ref.includes('gemini')) {
+    return 'gemini';
+  }
+  if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) {
+    return 'bot';
+  }
+  return 'unknown-ai';
+}
+
 app.post('/api/ai-query', async (req, res) => {
   try {
     const { query, postcode, category, volume = 5000, service, location, limit = 10 } = req.body;
@@ -511,6 +538,39 @@ app.post('/api/ai-query', async (req, res) => {
       ip: req.ip,
       userAgent: req.get('User-Agent')
     });
+
+    // Track AI mentions for each vendor in results (non-blocking)
+    try {
+      const { default: VendorAnalytics } = await import('./models/VendorAnalytics.js');
+      const userAgent = req.get('User-Agent') || '';
+      const aiSource = detectAISource(userAgent, req.get('Referer'));
+
+      const aiMentionEvents = results.map((vendor, index) => ({
+        vendorId: vendor.id,
+        eventType: 'ai_mention',
+        sessionId: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        source: {
+          page: '/api/ai-query',
+          referrer: aiSource,
+          searchQuery: query || `${category || 'all'} in ${searchLocation || 'UK'}`,
+          category: category || service || null,
+          location: searchLocation || null
+        },
+        metadata: {
+          position: index + 1,
+          totalResults: results.length
+        }
+      }));
+
+      // Insert all at once (fire and forget)
+      if (aiMentionEvents.length > 0) {
+        VendorAnalytics.insertMany(aiMentionEvents).catch(err => {
+          logger.warn('Failed to track AI mentions', { error: err.message });
+        });
+      }
+    } catch (trackingError) {
+      logger.warn('AI mention tracking error', { error: trackingError.message });
+    }
 
     res.json({
       success: true,
