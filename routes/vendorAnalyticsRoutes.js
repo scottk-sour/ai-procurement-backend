@@ -256,6 +256,99 @@ router.get('/geo', vendorAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/analytics/vendor/:vendorId
+ * Get comprehensive analytics for a specific vendor (public endpoint for dashboard)
+ * Returns profile views, quote requests, AI mentions with source breakdown
+ */
+router.get('/vendor/:vendorId', async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const { period = '7d' } = req.query;
+
+    // Validate vendorId
+    const mongoose = await import('mongoose');
+    if (!mongoose.default.Types.ObjectId.isValid(vendorId)) {
+      return res.status(400).json({ error: 'Invalid vendorId' });
+    }
+
+    const days = period === '30d' ? 30 : 7;
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const oid = new mongoose.default.Types.ObjectId(vendorId);
+
+    // Get event counts by type
+    const eventCounts = await VendorAnalytics.aggregate([
+      { $match: { vendorId: oid, timestamp: { $gte: startDate } } },
+      { $group: { _id: '$eventType', count: { $sum: 1 } } }
+    ]);
+
+    const counts = {};
+    eventCounts.forEach(c => { counts[c._id] = c.count; });
+
+    // Get AI mentions by source
+    const aiBySource = await VendorAnalytics.aggregate([
+      { $match: { vendorId: oid, eventType: 'ai_mention', timestamp: { $gte: startDate } } },
+      { $group: { _id: '$source.referrer', count: { $sum: 1 } } }
+    ]);
+
+    // Get daily activity
+    const dailyActivity = await VendorAnalytics.aggregate([
+      { $match: { vendorId: oid, timestamp: { $gte: startDate } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          profileViews: { $sum: { $cond: [{ $eq: ['$eventType', 'view'] }, 1, 0] } },
+          aiMentions: { $sum: { $cond: [{ $eq: ['$eventType', 'ai_mention'] }, 1, 0] } },
+          quoteRequests: { $sum: { $cond: [{ $eq: ['$eventType', 'quote_request'] }, 1, 0] } }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Get recent AI queries
+    const recentAiQueries = await VendorAnalytics.find({
+      vendorId: oid,
+      eventType: 'ai_mention'
+    })
+      .sort({ timestamp: -1 })
+      .limit(10)
+      .select('timestamp source.searchQuery source.referrer metadata.position')
+      .lean();
+
+    res.json({
+      period: `${days}d`,
+      profileViews: counts.view || 0,
+      quoteRequests: counts.quote_request || 0,
+      websiteClicks: counts.website_click || 0,
+      phoneClicks: counts.phone_click || 0,
+      aiMentions: counts.ai_mention || 0,
+      searchImpressions: counts.search_impression || 0,
+      aiMentionsBySource: {
+        chatgpt: aiBySource.find(a => a._id === 'chatgpt')?.count || 0,
+        claude: aiBySource.find(a => a._id === 'claude')?.count || 0,
+        perplexity: aiBySource.find(a => a._id === 'perplexity')?.count || 0,
+        other: aiBySource.filter(a => !['chatgpt', 'claude', 'perplexity'].includes(a._id)).reduce((s, a) => s + a.count, 0)
+      },
+      recentAiQueries: recentAiQueries.map(q => ({
+        timestamp: q.timestamp,
+        query: q.source?.searchQuery,
+        position: q.metadata?.position,
+        source: q.source?.referrer
+      })),
+      dailyActivity: dailyActivity.map(d => ({
+        date: d._id,
+        profileViews: d.profileViews,
+        aiMentions: d.aiMentions,
+        quoteRequests: d.quoteRequests
+      }))
+    });
+
+  } catch (error) {
+    console.error('Vendor analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch vendor analytics' });
+  }
+});
+
 // Helper functions
 
 function generateSessionId() {
