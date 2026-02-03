@@ -23,9 +23,37 @@ const vendorLeadSchema = new mongoose.Schema({
     type: String,
     enum: ['low', 'medium', 'high', 'enterprise', 'not-sure']
   },
+  // Specific volume for accurate product matching (pages/month)
+  specificVolume: {
+    type: Number,
+    min: 0,
+    max: 1000000
+  },
+  // Photocopier-specific requirements
+  colour: {
+    type: Boolean,
+    default: null  // null = not specified
+  },
+  a3: {
+    type: Boolean,
+    default: null  // null = not specified
+  },
   currentSetup: {
     type: String,
     enum: ['none', 'outdated', 'leased', 'owned', 'multiple']
+  },
+  // Current provider details (for savings calculation)
+  currentProvider: {
+    name: { type: String, trim: true },
+    contractEndDate: { type: Date },
+    satisfactionLevel: {
+      type: String,
+      enum: ['very-happy', 'happy', 'neutral', 'unhappy', 'very-unhappy']
+    }
+  },
+  currentMonthlyCost: {
+    type: Number,
+    min: 0
   },
   features: [{
     type: String
