@@ -61,7 +61,8 @@ const ALLOWED_ORIGINS = [
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.includes('ai-procurement-frontend') && origin.includes('vercel.app')) return true;
+  // Allow all Vercel preview deployments
+  if (origin.endsWith('.vercel.app')) return true;
   return false;
 }
 
@@ -201,7 +202,7 @@ app.use((error, req, res, next) => {
       timestamp: new Date().toISOString(),
       allowedPatterns: [
         ...ALLOWED_ORIGINS,
-        'https://ai-procurement-frontend-*.vercel.app',
+        'https://*.vercel.app',
       ],
     });
   }
@@ -300,7 +301,7 @@ app.get('/', (req, res) => {
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     corsConfig: {
       staticOrigins: ALLOWED_ORIGINS,
-      vercelPreviewPattern: 'https://ai-procurement-frontend-*.vercel.app',
+      vercelPreviewPattern: 'https://*.vercel.app',
       vercelPreviewSupport: true,
     },
     features: [
@@ -781,7 +782,7 @@ async function startServer() {
       logger.info(`🔒 Security headers enabled`);
       logger.info(`🌍 CORS enabled for:`);
       ALLOWED_ORIGINS.forEach(origin => logger.info(` - ${origin}`));
-      logger.info(` - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
+      logger.info(` - https://*.vercel.app (all Vercel previews)`);
       logger.info(`🏥 Health check: /`);
       logger.info(`📤 Vendor upload: /api/vendors/upload`);
       logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
