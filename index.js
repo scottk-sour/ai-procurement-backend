@@ -45,6 +45,27 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ========================================
+// ALLOWED ORIGINS (single source of truth)
+// ========================================
+const ALLOWED_ORIGINS = [
+  'https://www.tendorai.com',
+  'https://tendorai.com',
+  'https://app.tendorai.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'https://localhost:3000',
+  'https://ai-procurement-backend-q35u.onrender.com',
+];
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (origin.includes('ai-procurement-frontend') && origin.includes('vercel.app')) return true;
+  return false;
+}
+
+// ========================================
 // 🔒 SECURITY MIDDLEWARE
 // ========================================
 
@@ -57,7 +78,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       scriptSrc: ["'self'"],
-      connectSrc: ["'self'", "https://www.tendorai.com", "https://tendorai.com", "https://ai-procurement-backend-q35u.onrender.com"],
+      connectSrc: ["'self'", "https://www.tendorai.com", "https://tendorai.com", "https://app.tendorai.com", "https://ai-procurement-backend-q35u.onrender.com"],
     },
   },
   crossOriginEmbedderPolicy: false, // Needed for cross-origin resources
@@ -115,25 +136,8 @@ app.use(requestId);
 app.use(cors({
   origin: function (origin, callback) {
     logger.info(`🔍 CORS Check - Origin: ${origin || 'NO ORIGIN'}`);
-    if (!origin) {
-      logger.info('✅ CORS: Allowing request with no origin');
-      return callback(null, true);
-    }
-    const staticOrigins = [
-      'https://www.tendorai.com',
-      'https://tendorai.com',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'https://localhost:3000',
-      'https://ai-procurement-backend-q35u.onrender.com',
-    ];
-    const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
-    if (staticOrigins.includes(origin)) {
-      logger.info(`✅ CORS: Allowing static origin - ${origin}`);
-      callback(null, true);
-    } else if (isVercelPreview) {
-      logger.info(`✅ CORS: Allowing Vercel preview - ${origin}`);
+    if (isAllowedOrigin(origin)) {
+      logger.info(`✅ CORS: Allowing origin - ${origin || 'NO ORIGIN'}`);
       callback(null, true);
     } else {
       logger.warn(`❌ CORS BLOCKED: ${origin}`);
@@ -161,19 +165,8 @@ app.use(cors({
 app.options('*', cors({
   origin: function (origin, callback) {
     logger.info(`🔍 PREFLIGHT - Origin: ${origin || 'NO ORIGIN'}`);
-    if (!origin) return callback(null, true);
-    const staticOrigins = [
-      'https://www.tendorai.com',
-      'https://tendorai.com',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'http://localhost:3001',
-      'https://localhost:3000',
-      'https://ai-procurement-backend-q35u.onrender.com',
-    ];
-    const isVercelPreview = origin.includes('ai-procurement-frontend') && origin.includes('vercel.app');
-    if (staticOrigins.includes(origin) || isVercelPreview) {
-      logger.info(`✅ PREFLIGHT: Allowing ${origin}`);
+    if (isAllowedOrigin(origin)) {
+      logger.info(`✅ PREFLIGHT: Allowing ${origin || 'NO ORIGIN'}`);
       callback(null, true);
     } else {
       logger.warn(`❌ PREFLIGHT BLOCKED: ${origin}`);
@@ -207,12 +200,8 @@ app.use((error, req, res, next) => {
       path: req.path,
       timestamp: new Date().toISOString(),
       allowedPatterns: [
-        'https://www.tendorai.com',
-        'https://tendorai.com',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
+        ...ALLOWED_ORIGINS,
         'https://ai-procurement-frontend-*.vercel.app',
-        'https://ai-procurement-backend-q35u.onrender.com',
       ],
     });
   }
@@ -310,13 +299,7 @@ app.get('/', (req, res) => {
     environment: config.app.env,
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     corsConfig: {
-      staticOrigins: [
-        'https://www.tendorai.com',
-        'https://tendorai.com',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'https://ai-procurement-backend-q35u.onrender.com',
-      ],
+      staticOrigins: ALLOWED_ORIGINS,
       vercelPreviewPattern: 'https://ai-procurement-frontend-*.vercel.app',
       vercelPreviewSupport: true,
     },
@@ -797,11 +780,7 @@ async function startServer() {
       logger.info(`🔧 Environment: ${config.app.env}`);
       logger.info(`🔒 Security headers enabled`);
       logger.info(`🌍 CORS enabled for:`);
-      logger.info(` - https://www.tendorai.com`);
-      logger.info(` - https://tendorai.com`);
-      logger.info(` - http://localhost:3000`);
-      logger.info(` - http://127.0.0.1:3000`);
-      logger.info(` - https://ai-procurement-backend-q35u.onrender.com`);
+      ALLOWED_ORIGINS.forEach(origin => logger.info(` - ${origin}`));
       logger.info(` - https://ai-procurement-frontend-*.vercel.app (dynamic)`);
       logger.info(`🏥 Health check: /`);
       logger.info(`📤 Vendor upload: /api/vendors/upload`);
