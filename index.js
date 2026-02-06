@@ -34,6 +34,7 @@ import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
 import { suggestCopiers } from './controllers/aiController.js';
+import { filterVendorsByLocation } from './utils/locationUtils.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -516,21 +517,8 @@ app.post('/api/ai-query', async (req, res) => {
       searchQuery.services = { $in: [normalizedService] };
     }
 
-    // Location filter
+    // Location filter — applied post-query via filterVendorsByLocation
     const searchLocation = postcode || location;
-    if (searchLocation) {
-      const postcodePrefix = searchLocation.substring(0, 2).toUpperCase();
-      searchQuery.$and = searchQuery.$and || [];
-      searchQuery.$and.push({
-        $or: [
-          { 'location.coverage': { $regex: searchLocation, $options: 'i' } },
-          { 'location.city': { $regex: searchLocation, $options: 'i' } },
-          { 'location.region': { $regex: searchLocation, $options: 'i' } },
-          { 'location.postcode': { $regex: searchLocation, $options: 'i' } },
-          { postcodeAreas: { $regex: postcodePrefix, $options: 'i' } }
-        ]
-      });
-    }
 
     // Parse natural language query
     if (query && !serviceType && !searchLocation) {
@@ -561,12 +549,19 @@ app.post('/api/ai-query', async (req, res) => {
       }
     }
 
-    // Find vendors
-    const vendors = await Vendor.find(searchQuery)
+    // Find vendors — fetch more candidates since we'll filter by location post-query
+    let vendors = await Vendor.find(searchQuery)
       .select('company services businessProfile.description businessProfile.yearsInBusiness location performance tier account brands postcodeAreas contactInfo')
       .sort({ 'performance.rating': -1 })
-      .limit(Math.min(parseInt(limit) * 3, 30))
+      .limit(searchLocation ? 100 : Math.min(parseInt(limit) * 3, 30))
       .lean();
+
+    // Apply postcode-area + distance-based location filtering
+    if (searchLocation) {
+      vendors = await filterVendorsByLocation(vendors, searchLocation, { maxDistanceKm: 80 });
+      // Limit to reasonable number after filtering
+      vendors = vendors.slice(0, Math.min(parseInt(limit) * 3, 30));
+    }
 
     // Build product query — branch by service category
     const vendorIds = vendors.map(v => v._id);
@@ -996,7 +991,19 @@ app.post('/api/ai-query', async (req, res) => {
       .sort((a, b) => b.score - a.score)
       .slice(0, Math.min(parseInt(limit), 10));
 
-    // Build final results with badges for top 3
+    // Assign badges sequentially to vendors scoring above 50%
+    const badgeLabels = ['Best Match', 'Runner Up', 'Great Option'];
+    const badgeMap = new Map();
+    let badgeIndex = 0;
+    for (const r of sortedResults) {
+      if (badgeIndex >= 3) break;
+      if (r.score > 50) {
+        badgeMap.set(r.vendor._id.toString(), badgeLabels[badgeIndex]);
+        badgeIndex++;
+      }
+    }
+
+    // Build final results
     const finalResults = sortedResults.map((r, index) => {
       const v = r.vendor;
       const bestProduct = r.bestProduct;
@@ -1015,7 +1022,7 @@ app.post('/api/ai-query', async (req, res) => {
         matchScore: Math.min(Math.round(r.score), 99),
         scoreBreakdown: r.breakdown,
         rank: index + 1,
-        badge: index === 0 ? 'Best Match' : index === 1 ? 'Runner Up' : index === 2 ? 'Great Option' : null,
+        badge: badgeMap.get(v._id.toString()) || null,
         whyRecommended: generateReason(v, bestProduct, r.savings, r.breakdown),
         product: bestProduct ? (() => {
           const base = { name: `${bestProduct.manufacturer} ${bestProduct.model}`, category: bestProduct.category, serviceCategory: bestProduct.serviceCategory || 'Photocopiers' };
