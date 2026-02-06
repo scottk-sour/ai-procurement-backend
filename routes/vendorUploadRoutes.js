@@ -775,10 +775,27 @@ router.post("/upload", vendorUploadRateLimiter, csvUpload.single, async (req, re
         }
 
         try {
+            // Check tier product limit before import
+            const tier = vendor.tier || vendor.account?.tier || 'free';
+            const limit = getProductLimit(tier);
+            const currentCount = await VendorProduct.countDocuments({ vendorId });
+
             const result = await importVendorProducts(filePath, vendorId);
 
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
+            }
+
+            // Check if import exceeded tier limit
+            const postImportCount = await VendorProduct.countDocuments({ vendorId });
+            let tierWarning = null;
+            if (limit !== Infinity && postImportCount > limit) {
+                tierWarning = {
+                    message: `Your ${tier} plan allows ${limit} products. You now have ${postImportCount}. Products beyond the limit may not appear in AI recommendations.`,
+                    currentCount: postImportCount,
+                    limit,
+                    upgradeUrl: '/vendor-dashboard/settings?tab=subscription'
+                };
             }
 
             try {
@@ -812,7 +829,8 @@ router.post("/upload", vendorUploadRateLimiter, csvUpload.single, async (req, re
                     data: {
                         savedProducts: result.savedProducts,
                         warnings: result.warnings,
-                        stats: result.stats
+                        stats: result.stats,
+                        ...(tierWarning && { tierWarning })
                     }
                 });
             } else {
@@ -868,6 +886,127 @@ router.get("/products", async (req, res) => {
         });
     } catch (error) {
         console.error("Error fetching vendor products:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            errors: [error.message]
+        });
+    }
+});
+
+// Tier product limits
+const TIER_PRODUCT_LIMITS = {
+  free: 3,
+  listed: 3,
+  visible: 10,
+  basic: 10,
+  verified: Infinity,
+  managed: Infinity,
+};
+
+function getProductLimit(tier) {
+  const t = (tier || 'free').toLowerCase();
+  return TIER_PRODUCT_LIMITS[t] ?? 3;
+}
+
+// POST /api/vendors/products
+router.post("/products", async (req, res) => {
+    try {
+        const vendorId = req.vendorId;
+        if (!vendorId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
+        const vendor = await Vendor.findById(vendorId).select('tier account');
+        if (!vendor) {
+            return res.status(404).json({
+                success: false,
+                message: "Vendor not found"
+            });
+        }
+
+        // Check tier product limit
+        const tier = vendor.tier || vendor.account?.tier || 'free';
+        const limit = getProductLimit(tier);
+        const currentCount = await VendorProduct.countDocuments({ vendorId });
+
+        if (currentCount >= limit) {
+            return res.status(403).json({
+                success: false,
+                message: `You've reached the ${limit}-product limit for your plan. Upgrade to add more products.`,
+                currentCount,
+                limit,
+                upgradeUrl: '/vendor-dashboard/settings?tab=subscription'
+            });
+        }
+
+        // Validate required fields
+        const { manufacturer, model, category, speed, minVolume, maxVolume, paperSizes, costs } = req.body;
+
+        if (!manufacturer || !model || !category) {
+            return res.status(400).json({
+                success: false,
+                message: "Manufacturer, model, and category are required",
+                errors: ["Missing required fields: manufacturer, model, category"]
+            });
+        }
+
+        if (!costs || costs.cpcRates?.A4Mono === undefined || costs.machineCost === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "Cost data is required",
+                errors: ["Missing required cost fields"]
+            });
+        }
+
+        // Create the product
+        const productData = {
+            vendorId,
+            ...req.body,
+        };
+
+        const product = new VendorProduct(productData);
+        await product.save();
+
+        // Log activity
+        try {
+            await VendorActivity.createActivity({
+                vendorId,
+                category: 'products',
+                type: 'product_create',
+                description: `Added product: ${manufacturer} ${model}`,
+                metadata: {
+                    productId: product._id,
+                    manufacturer,
+                    model,
+                    source: 'web'
+                },
+                impact: {
+                    outcome: 'positive'
+                }
+            });
+        } catch (activityError) {
+            console.error('Failed to create product activity:', activityError.message);
+        }
+
+        res.status(201).json({
+            success: true,
+            message: "Product created successfully",
+            data: product,
+            remainingSlots: limit === Infinity ? null : limit - currentCount - 1
+        });
+    } catch (error) {
+        console.error("Error creating product:", error);
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: Object.values(error.errors).map(e => e.message)
+            });
+        }
         res.status(500).json({
             success: false,
             message: "Internal server error",

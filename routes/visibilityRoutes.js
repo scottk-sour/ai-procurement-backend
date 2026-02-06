@@ -77,10 +77,10 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
     const detailedBreakdown = {
       ...scoreData.breakdown,
       guidance: {
-        profile: 'Complete your company profile to help AI assistants find and recommend you to businesses.',
-        products: 'Upload your product catalog so AI can match you with relevant customer queries.',
-        trust: 'Add certifications and accreditations to boost your credibility score.',
-        optimisation: 'Enable real-time sync to ensure AI always has your latest information.'
+        profileCompleteness: 'Complete your company profile to help AI assistants find and recommend you to businesses.',
+        productData: 'Upload your product catalog so AI can match you with relevant customer queries.',
+        trustAndReviews: 'Add certifications and accreditations to boost your credibility score.',
+        subscriptionTier: 'Upgrade your plan for higher AI visibility ranking and more features.',
       }
     };
 
