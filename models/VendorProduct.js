@@ -140,8 +140,8 @@ vendorProductSchema.virtual('volumeDisplay').get(function () {
   return `${this.minVolume.toLocaleString()} - ${this.maxVolume.toLocaleString()} pages/month`;
 });
 
-// Pre-save middleware
-vendorProductSchema.pre('save', function (next) {
+// Pre-validate middleware (runs before required checks)
+vendorProductSchema.pre('validate', function (next) {
   if (this.costs && this.costs.machineCost && this.costs.installation && this.costs.profitMargin) {
     this.costs.totalMachineCost = this.costs.machineCost + this.costs.installation + this.costs.profitMargin;
   }
