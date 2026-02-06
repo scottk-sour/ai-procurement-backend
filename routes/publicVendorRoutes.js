@@ -141,6 +141,8 @@ router.get('/vendors', async (req, res) => {
         'serviceCapabilities.responseTime': 1,
         'brands': 1,
         'subscription.priorityBoost': 1,
+        'listingStatus': 1,
+        'account.loginCount': 1,
         'createdAt': 1
       })
       .lean();
@@ -217,11 +219,8 @@ router.get('/vendors', async (req, res) => {
       .filter(v => v._distance !== null && v._distance <= maxDistanceKm)
       // Sort: Primary = Tier/Priority, Secondary = Visibility Score (in _priorityScore), Tertiary = Distance
       .sort((a, b) => {
-        // First compare by priority score (tier + visibility)
         const priorityDiff = b._priorityScore - a._priorityScore;
         if (priorityDiff !== 0) return priorityDiff;
-
-        // If same priority, sort by distance (closer first)
         const distA = a._distance ?? Infinity;
         const distB = b._distance ?? Infinity;
         return distA - distB;
@@ -231,80 +230,40 @@ router.get('/vendors', async (req, res) => {
       processedVendors.sort((a, b) => b._priorityScore - a._priorityScore);
     }
 
-    const sortedVendors = processedVendors.slice(skip, skip + limitNum);
+    // Separate national vendors from local when doing a postcode search
+    let localVendors = processedVendors;
+    let nationalVendors = [];
+    if (searchCoords) {
+      nationalVendors = processedVendors.filter(v => {
+        const city = (v.location?.city || v.city || '').toLowerCase().trim();
+        return city === 'uk' || city === 'united kingdom' || city === 'nationwide' || city === '';
+      });
+      localVendors = processedVendors.filter(v => {
+        const city = (v.location?.city || v.city || '').toLowerCase().trim();
+        return city !== 'uk' && city !== 'united kingdom' && city !== 'nationwide' && city !== '';
+      });
+    }
 
-    // Format response - hide pricing flag, add showPricing boolean
-    // Support both nested schema (imported vendors) and flat schema (legacy vendors)
-    const publicVendors = sortedVendors.map(v => {
-      // Determine tier - check both flat and nested schema
-      // Normalize legacy tier names to new system
-      const rawTier = v.tier || v.account?.tier || 'free';
-      const tierMapping = {
-        'enterprise': 'verified',
-        'managed': 'verified',
-        'verified': 'verified',
-        'silver': 'verified',
-        'gold': 'verified',
-        'platinum': 'verified',
-        'basic': 'visible',
-        'visible': 'visible',
-        'standard': 'visible',
-        'bronze': 'visible',
-        'free': 'free',
-        'listed': 'free'
-      };
-      const tier = tierMapping[rawTier.toLowerCase()] || 'free';
-      const paidTiers = ['verified', 'visible'];
-      const showPricing = paidTiers.includes(tier) || v.showPricing === true;
+    const paginatedVendors = localVendors.slice(skip, skip + limitNum);
 
-      return {
-        id: v._id,
-        company: v.company,
-        name: v.name,
-        services: v.services || [],
-        location: {
-          city: v.location?.city || v.city,
-          region: v.location?.region || v.region,
-          coverage: v.location?.coverage || v.coverageAreas || [],
-          postcode: v.location?.postcode || v.postcode
-        },
-        distance: v._distance ? {
-          km: v._distance,
-          miles: Math.round(v._distance / 1.60934 * 10) / 10,
-          formatted: `${Math.round(v._distance / 1.60934)} miles`
-        } : null,
-        rating: v.performance?.rating || v.rating || 0,
-        reviewCount: v.performance?.reviewCount || v.reviewCount || 0,
-        responseTime: v.serviceCapabilities?.responseTime,
-        tier: tier,
-        description: v.businessProfile?.description || v.description,
-        accreditations: v.businessProfile?.accreditations || v.accreditations || [],
-        yearsInBusiness: v.businessProfile?.yearsInBusiness || v.yearsInBusiness,
-        yearEstablished: v.businessProfile?.yearsInBusiness || v.yearsInBusiness, // Alias for frontend
-        employeeCount: v.businessProfile?.numEmployees || v.numEmployees,
-        logoUrl: v.businessProfile?.logoUrl,
-        brands: v.brands || [],
-        productCount: v._productCount || 0,
-        phone: showPricing ? (v.contactInfo?.phone || v.phone) : undefined,
-        website: v.contactInfo?.website || v.website,
-        showPricing: showPricing,
-        // Schema.org metadata for AI consumption
-        '@context': 'https://schema.org',
-        '@type': 'LocalBusiness',
-        'areaServed': v.location?.coverage || v.coverageAreas || []
-      };
-    });
+    // Format response
+    const publicVendors = paginatedVendors.map(v => formatVendorForPublic(v));
+    const publicNationalVendors = nationalVendors.map(v => formatVendorForPublic(v));
+
+    const localTotal = searchCoords ? localVendors.length : total;
 
     res.json({
       success: true,
       data: {
         vendors: publicVendors,
+        nationalVendors: publicNationalVendors,
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: searchCoords ? processedVendors.length : total,
-          totalPages: Math.ceil((searchCoords ? processedVendors.length : total) / limitNum),
-          hasMore: skip + limitNum < (searchCoords ? processedVendors.length : total)
+          total: localTotal,
+          totalPages: Math.ceil(localTotal / limitNum),
+          hasMore: skip + limitNum < localTotal,
+          nationalCount: nationalVendors.length
         },
         filters: {
           category: category || null,
@@ -510,40 +469,33 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
         'businessProfile.description': 1,
         'businessProfile.accreditations': 1,
         'businessProfile.logoUrl': 1,
+        'contactInfo.phone': 1,
         'contactInfo.website': 1,
         'brands': 1,
-        'subscription.priorityBoost': 1
+        'subscription.priorityBoost': 1,
+        'listingStatus': 1,
+        'account.loginCount': 1
       })
       .lean();
 
-    // Sort by priority
-    const sortedVendors = vendors
+    // Sort by priority and separate national vendors
+    const allSorted = vendors
       .map(v => ({ ...v, _priorityScore: calculatePriorityScore(v) }))
-      .sort((a, b) => b._priorityScore - a._priorityScore)
-      .slice(skip, skip + limitNum);
+      .sort((a, b) => b._priorityScore - a._priorityScore);
 
-    const publicVendors = sortedVendors.map(v => {
-      const tier = v.tier || 'free';
-      const paidTiers = ['basic', 'managed', 'enterprise'];
-      const showPricing = paidTiers.includes(tier);
-
-      return {
-        id: v._id,
-        company: v.company,
-        services: v.services || [],
-        city: v.location?.city,
-        coverage: v.location?.coverage || [],
-        rating: v.performance?.rating || 0,
-        reviewCount: v.performance?.reviewCount || 0,
-        tier: tier,
-        description: v.businessProfile?.description,
-        accreditations: v.businessProfile?.accreditations || [],
-        logoUrl: v.businessProfile?.logoUrl,
-        brands: v.brands || [],
-        website: v.contactInfo?.website,
-        showPricing: showPricing
-      };
+    const nationalVendors = allSorted.filter(v => {
+      const city = (v.location?.city || '').toLowerCase().trim();
+      return city === 'uk' || city === 'united kingdom' || city === 'nationwide' || city === '';
     });
+    const localVendors = allSorted.filter(v => {
+      const city = (v.location?.city || '').toLowerCase().trim();
+      return city !== 'uk' && city !== 'united kingdom' && city !== 'nationwide' && city !== '';
+    });
+
+    const paginatedVendors = localVendors.slice(skip, skip + limitNum);
+
+    const publicVendors = paginatedVendors.map(v => formatVendorForPublic(v));
+    const publicNationalVendors = nationalVendors.map(v => formatVendorForPublic(v));
 
     // Page metadata for SEO
     const pageTitle = `${capitalize(categoryNorm)} Suppliers in ${capitalize(locationNorm)}`;
@@ -553,12 +505,14 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
       success: true,
       data: {
         vendors: publicVendors,
+        nationalVendors: publicNationalVendors,
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: total,
-          totalPages: Math.ceil(total / limitNum),
-          hasMore: skip + limitNum < total
+          total: localVendors.length,
+          totalPages: Math.ceil(localVendors.length / limitNum),
+          hasMore: skip + limitNum < localVendors.length,
+          nationalCount: nationalVendors.length
         },
         meta: {
           category: categoryNorm,
@@ -732,13 +686,75 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// Helper: check if a vendor has been claimed (signed up / logged in)
+function isVendorClaimed(vendor) {
+  const ls = (vendor.listingStatus || 'unclaimed').toLowerCase();
+  if (ls === 'claimed' || ls === 'verified') return true;
+  if (vendor.contactInfo?.phone || vendor.phone) return true;
+  const rawTier = (vendor.tier || 'free').toLowerCase();
+  if (!['free', 'listed'].includes(rawTier)) return true;
+  if ((vendor.performance?.rating || vendor.rating || 0) > 0) return true;
+  if ((vendor.account?.loginCount || 0) > 0) return true;
+  return false;
+}
+
+// Helper: format a vendor document for public API response
+function formatVendorForPublic(v) {
+  const rawTier = v.tier || v.account?.tier || 'free';
+  const tierMapping = {
+    'enterprise': 'verified', 'managed': 'verified', 'verified': 'verified',
+    'silver': 'verified', 'gold': 'verified', 'platinum': 'verified',
+    'basic': 'visible', 'visible': 'visible', 'standard': 'visible', 'bronze': 'visible',
+    'free': 'free', 'listed': 'free'
+  };
+  const tier = tierMapping[rawTier.toLowerCase()] || 'free';
+  const paidTiers = ['verified', 'visible'];
+  const showPricing = paidTiers.includes(tier) || v.showPricing === true;
+
+  return {
+    id: v._id,
+    company: v.company,
+    name: v.name,
+    services: v.services || [],
+    location: {
+      city: v.location?.city || v.city,
+      region: v.location?.region || v.region,
+      coverage: v.location?.coverage || v.coverageAreas || [],
+      postcode: v.location?.postcode || v.postcode
+    },
+    distance: v._distance ? {
+      km: v._distance,
+      miles: Math.round(v._distance / 1.60934 * 10) / 10,
+      formatted: `${Math.round(v._distance / 1.60934)} miles`
+    } : null,
+    rating: v.performance?.rating || v.rating || 0,
+    reviewCount: v.performance?.reviewCount || v.reviewCount || 0,
+    responseTime: v.serviceCapabilities?.responseTime,
+    tier: tier,
+    description: v.businessProfile?.description || v.description,
+    accreditations: v.businessProfile?.accreditations || v.accreditations || [],
+    yearsInBusiness: v.businessProfile?.yearsInBusiness || v.yearsInBusiness,
+    yearEstablished: v.businessProfile?.yearsInBusiness || v.yearsInBusiness,
+    employeeCount: v.businessProfile?.numEmployees || v.numEmployees,
+    logoUrl: v.businessProfile?.logoUrl,
+    brands: v.brands || [],
+    productCount: v._productCount || 0,
+    phone: showPricing ? (v.contactInfo?.phone || v.phone) : undefined,
+    website: v.contactInfo?.website || v.website,
+    showPricing: showPricing,
+    accountClaimed: isVendorClaimed(v),
+    // Schema.org metadata for AI consumption
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    'areaServed': v.location?.coverage || v.coverageAreas || []
+  };
+}
+
 // Helper function to calculate priority score
-// Sort order: Primary = Tier, Secondary = Visibility Score, Tertiary = Distance (handled separately)
+// Sort order: Primary = Tier, Secondary = Claimed bonus, Tertiary = Visibility Score
 function calculatePriorityScore(vendor) {
-  // Tier score (Primary) - 0-100
   const tierScore = TIER_PRIORITY[vendor.tier] || TIER_PRIORITY[vendor.account?.tier] || 0;
 
-  // Visibility score (Secondary) - estimate from profile completeness (0-70)
   let visibilityScore = 0;
 
   // Profile fields (25 pts max)
@@ -750,30 +766,29 @@ function calculatePriorityScore(vendor) {
   if (vendor.businessProfile?.description?.length > 20 || vendor.description?.length > 20) visibilityScore += 4;
   if (vendor.location?.postcode || vendor.postcode) visibilityScore += 3;
 
-  // Product data (25 pts max - estimated)
+  // Product data (25 pts max)
   if (vendor.hasProducts) visibilityScore += 15;
 
   // Trust signals (20 pts max)
-  const certs = vendor.businessProfile?.certifications?.length || 0;
-  const accreds = vendor.businessProfile?.accreditations?.length || vendor.accreditations?.length || 0;
-  const brands = vendor.brands?.length || 0;
-  const coverage = vendor.location?.coverage?.length || vendor.coverageAreas?.length || 0;
-  if (certs > 0) visibilityScore += 5;
-  if (accreds > 0) visibilityScore += 5;
-  if (brands > 0) visibilityScore += 5;
-  if (coverage > 0) visibilityScore += 5;
+  if ((vendor.businessProfile?.certifications?.length || 0) > 0) visibilityScore += 5;
+  if ((vendor.businessProfile?.accreditations?.length || vendor.accreditations?.length || 0) > 0) visibilityScore += 5;
+  if ((vendor.brands?.length || 0) > 0) visibilityScore += 5;
+  if ((vendor.location?.coverage?.length || vendor.coverageAreas?.length || 0) > 0) visibilityScore += 5;
 
-  // Boost from subscription
   const boostScore = vendor.subscription?.priorityBoost || 0;
 
-  // Combined score: Tier dominates, then visibility score
-  // Tier: 0-100, Visibility: 0-70, Boost: 0-20
-  return (tierScore * 1000) + (visibilityScore * 10) + boostScore;
+  // Claimed bonus: push claimed free-tier vendors above unclaimed ones
+  let claimedBonus = 0;
+  if (tierScore === 0 && isVendorClaimed(vendor)) {
+    claimedBonus = 500;
+  }
+
+  return (tierScore * 1000) + claimedBonus + (visibilityScore * 10) + boostScore;
 }
 
 // Helper function to capitalize
 function capitalize(str) {
-  return str.split(' ').map(word => 
+  return str.split(' ').map(word =>
     word.charAt(0).toUpperCase() + word.slice(1)
   ).join(' ');
 }

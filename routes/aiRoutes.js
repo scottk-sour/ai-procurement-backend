@@ -509,6 +509,12 @@ router.post('/suppliers',
             { postcodeAreas: { $regex: location, $options: 'i' } }
           ]
         });
+        // Exclude national-only vendors from location-specific searches
+        if (location.toLowerCase() !== 'uk') {
+          query.$and.push({
+            'location.city': { $not: { $regex: /^(uk|united kingdom|nationwide)$/i } }
+          });
+        }
       }
 
       // Find vendors (prioritize paid tiers)
@@ -717,6 +723,12 @@ router.get('/suppliers',
             { postcodeAreas: { $regex: location, $options: 'i' } }
           ]
         });
+        // Exclude national-only vendors from location-specific searches
+        if (location.toLowerCase() !== 'uk') {
+          queryFilter.$and.push({
+            'location.city': { $not: { $regex: /^(uk|united kingdom|nationwide)$/i } }
+          });
+        }
       }
 
       const vendors = await Vendor.find(queryFilter)
