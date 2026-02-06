@@ -1,8 +1,10 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
+import { sendPasswordResetEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -60,14 +62,29 @@ router.post(
   '/vendor-register',
   validateRequestBody(['name', 'email', 'password']),
   async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, company, services } = req.body;
     try {
       if (await Vendor.findOne({ email })) {
         return res.status(400).json({ message: 'Vendor already exists' });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const newVendor = new Vendor({ name, email, password: hashedPassword, role: 'vendor', status: 'active' });
+
+      const newVendor = new Vendor({
+        name,
+        email,
+        password, // Will be hashed by pre-save hook
+        company: company || name,
+        services: services || ['Photocopiers'],
+        role: 'vendor',
+        'account.status': 'active',
+        tier: 'free'
+      });
       await newVendor.save();
+
+      // Send welcome email (non-blocking)
+      sendVendorWelcomeEmail(email, { vendorName: name }).catch(err => {
+        console.error('Failed to send welcome email:', err.message);
+      });
+
       res.status(201).json({ message: 'Vendor registered successfully' });
     } catch (error) {
       console.error('Vendor registration error:', error.message);
@@ -184,6 +201,137 @@ router.get('/verify', async (req, res) => {
       message: 'Invalid or expired token',
       error: error.message,
     });
+  }
+});
+
+// ======= Vendor Forgot Password =======
+router.post('/vendor-forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  try {
+    const vendor = await Vendor.findOne({ email: email.toLowerCase() });
+
+    // Always return success to prevent email enumeration attacks
+    if (!vendor) {
+      return res.status(200).json({
+        message: 'If an account exists with this email, you will receive password reset instructions.'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = vendor.createPasswordResetToken();
+    await vendor.save({ validateBeforeSave: false });
+
+    // Send reset email
+    try {
+      await sendPasswordResetEmail(vendor.email, {
+        vendorName: vendor.name || vendor.company,
+        resetToken
+      });
+    } catch (emailError) {
+      // If email fails, clear the reset token
+      vendor.passwordResetToken = undefined;
+      vendor.passwordResetExpires = undefined;
+      await vendor.save({ validateBeforeSave: false });
+
+      console.error('Password reset email failed:', emailError);
+      return res.status(500).json({
+        message: 'There was an error sending the email. Please try again later.'
+      });
+    }
+
+    res.status(200).json({
+      message: 'If an account exists with this email, you will receive password reset instructions.'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'An error occurred. Please try again later.' });
+  }
+});
+
+// ======= Vendor Reset Password =======
+router.post('/vendor-reset-password', async (req, res) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Token and new password are required' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    // Find vendor by hashed token
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const vendor = await Vendor.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() }
+    }).select('+passwordResetToken +passwordResetExpires');
+
+    if (!vendor) {
+      return res.status(400).json({
+        message: 'Password reset token is invalid or has expired'
+      });
+    }
+
+    // Update password (will be hashed by pre-save hook)
+    vendor.password = password;
+    vendor.passwordResetToken = undefined;
+    vendor.passwordResetExpires = undefined;
+    await vendor.save();
+
+    // Generate new JWT for immediate login
+    const jwtToken = jwt.sign(
+      { vendorId: vendor._id, role: 'vendor', name: vendor.name },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.status(200).json({
+      message: 'Password reset successful',
+      token: jwtToken,
+      vendorId: vendor._id,
+      name: vendor.name,
+      email: vendor.email
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'An error occurred. Please try again later.' });
+  }
+});
+
+// ======= Verify Reset Token (check if valid before showing form) =======
+router.get('/verify-reset-token/:token', async (req, res) => {
+  const { token } = req.params;
+
+  try {
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const vendor = await Vendor.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() }
+    }).select('email');
+
+    if (!vendor) {
+      return res.status(400).json({
+        valid: false,
+        message: 'Password reset token is invalid or has expired'
+      });
+    }
+
+    res.json({
+      valid: true,
+      email: vendor.email.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Mask email
+    });
+  } catch (error) {
+    console.error('Verify reset token error:', error);
+    res.status(500).json({ valid: false, message: 'An error occurred' });
   }
 });
 

@@ -248,6 +248,17 @@ const vendorSchema = new mongoose.Schema({
   importSource: {
     type: String,
     trim: true
+  },
+
+  // Password Reset
+  passwordResetToken: {
+    type: String,
+    select: false
+  },
+
+  passwordResetExpires: {
+    type: Date,
+    select: false
   }
 
 }, { 
@@ -326,6 +337,36 @@ vendorSchema.methods.updateLastLogin = function() {
 
 vendorSchema.methods.isActive = function() {
   return this.account.status === 'active' && this.account.verificationStatus === 'verified';
+};
+
+// Generate password reset token
+vendorSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+
+  // Store hashed version in database
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  // Token expires in 1 hour
+  this.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+
+  // Return unhashed token to send via email
+  return resetToken;
+};
+
+// Verify password reset token
+vendorSchema.statics.findByResetToken = async function(token) {
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(token)
+    .digest('hex');
+
+  return this.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() }
+  }).select('+passwordResetToken +passwordResetExpires');
 };
 
 // Static Methods

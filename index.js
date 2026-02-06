@@ -29,6 +29,7 @@ import sitemapRoutes from './routes/sitemap.js';
 import visibilityRoutes from './routes/visibilityRoutes.js';
 import vendorLeadRoutes from './routes/vendorLeadRoutes.js';
 import stripeRoutes from './routes/stripeRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -267,6 +268,7 @@ app.use('/api/vendor-leads', vendorLeadRoutes);
 app.use('/api/analytics', vendorAnalyticsRoutes);
 app.use('/api/visibility', visibilityRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
@@ -310,7 +312,7 @@ app.get('/', (req, res) => {
       'Multi-role authentication',
       'Real-time dashboard',
       'File upload support',
-      'Notification system',
+      'Email notification system',
       'Dynamic CORS for Vercel deployments',
       'Vendor product upload system',
       'AI copier suggestions with real vendor quotes',
@@ -319,6 +321,8 @@ app.get('/', (req, res) => {
       'Rate limiting protection',
       'NoSQL injection prevention',
       'XSS attack prevention',
+      'Review and rating system',
+      'Password reset flow',
     ],
   });
 });
