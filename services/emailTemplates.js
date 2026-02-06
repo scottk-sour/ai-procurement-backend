@@ -251,6 +251,83 @@ export const leadNotificationTemplate = ({ vendorName, customerInfo, service, re
   </div>
 `);
 
+// =====================================================
+// REVIEW REQUEST EMAIL (sent to customer after quote)
+// =====================================================
+
+export const reviewRequestTemplate = ({ customerName, vendorName, category, reviewUrl }) => wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>How was your experience?</h1>
+      <p>Share your feedback with ${vendorName}</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${customerName},</h2>
+      <p>You recently requested a ${category.toLowerCase()} quote from <strong>${vendorName}</strong> through TendorAI.</p>
+      <p>We'd love to hear how it went. Your review helps other businesses find great suppliers — and it only takes 30 seconds.</p>
+
+      <p style="text-align: center; margin: 32px 0;">
+        <a href="${reviewUrl}" class="button">Leave a Review →</a>
+      </p>
+
+      <div class="info-box">
+        <p style="margin: 0; font-size: 14px;">
+          <strong>Your review will display a "Verified Quote" badge</strong> because it's linked to a real quote request you made through TendorAI.
+        </p>
+      </div>
+
+      <p style="color: #6b7280; font-size: 13px;">
+        This link is unique to your quote request and expires in 30 days.<br>
+        Can't click the button? Copy this link: <a href="${reviewUrl}" style="color: #7c3aed; word-break: break-all;">${reviewUrl}</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p>You received this email because you requested a quote on <a href="https://tendorai.com">TendorAI</a></p>
+      <p>The UK's B2B procurement comparison platform</p>
+    </div>
+  </div>
+`);
+
+// =====================================================
+// VERIFIED REVIEW NOTIFICATION (to vendor)
+// =====================================================
+
+export const verifiedReviewNotificationTemplate = ({ vendorName, reviewerName, reviewerCompany, rating, title, content, dashboardUrl }) => {
+  const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+
+  return wrapTemplate(`
+  <div class="container">
+    <div class="header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+      <h1>New Verified Review!</h1>
+      <p>A customer you quoted has left feedback</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${vendorName},</h2>
+      <p>Great news! A customer you quoted through TendorAI has left a <strong>verified review</strong>:</p>
+
+      <div class="info-box" style="background: #ecfdf5; border: 1px solid #10b981;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+          <span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">✓ Verified Quote</span>
+        </div>
+        <p style="margin-bottom: 10px;"><span class="rating-stars">${stars}</span> <strong>${rating}/5</strong></p>
+        <h3 style="margin: 10px 0 5px; text-transform: none; font-size: 16px;">"${title}"</h3>
+        <p style="color: #4b5563; margin-bottom: 10px;">${content}</p>
+        <p style="margin: 0; color: #6b7280; font-size: 13px;">— ${reviewerName}${reviewerCompany ? `, ${reviewerCompany}` : ''}</p>
+      </div>
+
+      <p>This review has been automatically published on your profile because it comes from a verified quote request.</p>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}/reviews" class="button" style="background: #059669;">View & Respond →</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a> - Building trust through verified reviews</p>
+    </div>
+  </div>
+`);
+};
+
 // Export all templates
 export default {
   passwordResetTemplate,
@@ -258,5 +335,7 @@ export default {
   quoteRequestTemplate,
   reviewNotificationTemplate,
   reviewResponseTemplate,
-  leadNotificationTemplate
+  leadNotificationTemplate,
+  reviewRequestTemplate,
+  verifiedReviewNotificationTemplate
 };

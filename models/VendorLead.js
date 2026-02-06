@@ -143,6 +143,26 @@ const vendorLeadSchema = new mongoose.Schema({
   quoteValue: {
     amount: Number,
     currency: { type: String, default: 'GBP' }
+  },
+
+  // Review token fields (for verified reviews)
+  reviewToken: {
+    type: String,
+    index: true
+  },
+  reviewTokenExpires: {
+    type: Date
+  },
+  reviewRequested: {
+    type: Boolean,
+    default: false
+  },
+  reviewRequestedAt: {
+    type: Date
+  },
+  reviewSubmitted: {
+    type: Boolean,
+    default: false
   }
 
 }, {

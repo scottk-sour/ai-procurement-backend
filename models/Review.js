@@ -102,6 +102,21 @@ const reviewSchema = new mongoose.Schema({
   quoteId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Quote'
+  },
+
+  // Verified review fields (tied to VendorLead quote requests)
+  quoteRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'VendorLead',
+    index: true
+  },
+  isVerified: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  reviewToken: {
+    type: String
   }
 
 }, {

@@ -2,7 +2,14 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Review from '../models/Review.js';
 import Vendor from '../models/Vendor.js';
-import { sendReviewNotification, sendReviewResponseNotification } from '../services/emailService.js';
+import VendorLead from '../models/VendorLead.js';
+import { generateReviewToken } from '../services/reviewTokenService.js';
+import {
+  sendReviewNotification,
+  sendReviewResponseNotification,
+  sendReviewRequestEmail,
+  sendVerifiedReviewNotification
+} from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -43,11 +50,11 @@ router.get('/vendor/:vendorId', async (req, res) => {
         sortOptions = { createdAt: -1 };
     }
 
-    // Fetch approved reviews
+    // Fetch approved reviews (verified reviews first, then by sort option)
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const reviews = await Review.find({ vendor: vendorId, status: 'approved' })
-      .select('reviewer.name reviewer.company rating title content service detailedRatings wouldRecommend vendorResponse helpfulVotes createdAt')
-      .sort(sortOptions)
+      .select('reviewer.name reviewer.company rating title content service detailedRatings wouldRecommend vendorResponse helpfulVotes isVerified createdAt')
+      .sort({ isVerified: -1, ...sortOptions }) // Verified reviews first
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
@@ -225,6 +232,231 @@ router.post('/:reviewId/helpful', async (req, res) => {
 });
 
 // =====================================================
+// VERIFIED REVIEW ROUTES (token-based)
+// =====================================================
+
+// GET /api/reviews/verify-token/:token - Validate review token and get customer info
+router.get('/verify-token/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const lead = await VendorLead.findOne({
+      reviewToken: token,
+      reviewTokenExpires: { $gt: Date.now() }
+    }).populate('vendor', 'company name');
+
+    if (!lead) {
+      return res.status(400).json({
+        valid: false,
+        message: 'Invalid or expired review link. Please request a new one from the supplier.'
+      });
+    }
+
+    if (lead.reviewSubmitted) {
+      return res.status(400).json({
+        valid: false,
+        message: 'A review has already been submitted for this quote request.'
+      });
+    }
+
+    res.json({
+      valid: true,
+      customerName: lead.customer?.contactName || '',
+      customerCompany: lead.customer?.companyName || '',
+      vendorName: lead.vendor?.company || lead.vendor?.name || 'this supplier',
+      vendorId: lead.vendor?._id || lead.vendor,
+      category: lead.service || ''
+    });
+  } catch (error) {
+    console.error('Error validating review token:', error);
+    res.status(500).json({ valid: false, message: 'Error validating token' });
+  }
+});
+
+// POST /api/reviews/verified - Submit a verified review (from tokenised link)
+router.post('/verified', async (req, res) => {
+  try {
+    const { token, rating, title, content } = req.body;
+
+    // Validate required fields
+    if (!token || !rating || !title || !content) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['token', 'rating', 'title', 'content']
+      });
+    }
+
+    if (rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+
+    if (title.length > 100) {
+      return res.status(400).json({ error: 'Title must be under 100 characters' });
+    }
+
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Review content must be under 1000 characters' });
+    }
+
+    // Find lead by review token
+    const lead = await VendorLead.findOne({
+      reviewToken: token,
+      reviewTokenExpires: { $gt: Date.now() }
+    });
+
+    if (!lead) {
+      return res.status(400).json({
+        error: 'Invalid or expired review link',
+        message: 'This review link is no longer valid. Please request a new one from the supplier.'
+      });
+    }
+
+    if (lead.reviewSubmitted) {
+      return res.status(400).json({
+        error: 'Review already submitted',
+        message: 'A review has already been submitted for this quote request.'
+      });
+    }
+
+    // Create verified review (auto-approved)
+    const review = new Review({
+      vendor: lead.vendor,
+      quoteRequestId: lead._id,
+      reviewer: {
+        name: lead.customer?.contactName || 'Anonymous',
+        company: lead.customer?.companyName || '',
+        email: lead.customer?.email || '',
+        isVerified: true
+      },
+      rating: parseInt(rating),
+      title: title.trim(),
+      content: content.trim(),
+      service: lead.service || 'General',
+      isVerified: true,
+      reviewToken: token,
+      status: 'approved', // Auto-approve verified reviews
+      source: 'email-request'
+    });
+
+    await review.save();
+
+    // Mark lead as reviewed
+    lead.reviewSubmitted = true;
+    await lead.save();
+
+    // Notify vendor (non-blocking)
+    const vendor = await Vendor.findById(lead.vendor).select('company name email');
+    if (vendor?.email) {
+      sendVerifiedReviewNotification(vendor.email, {
+        vendorName: vendor.name || vendor.company,
+        reviewerName: review.reviewer.name,
+        reviewerCompany: review.reviewer.company,
+        rating: review.rating,
+        title: review.title,
+        content: review.content
+      }).catch(err => console.error('Failed to send verified review notification:', err));
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Thank you! Your verified review has been published.',
+      review: {
+        id: review._id,
+        rating: review.rating,
+        isVerified: true
+      }
+    });
+  } catch (error) {
+    console.error('Error submitting verified review:', error);
+    res.status(500).json({ error: 'Failed to submit review', message: error.message });
+  }
+});
+
+// POST /api/reviews/request-review - Vendor requests a review from customer
+router.post('/request-review', async (req, res) => {
+  try {
+    // Get vendor ID from auth token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const jwt = await import('jsonwebtoken');
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
+
+    if (!decoded.vendorId) {
+      return res.status(403).json({ error: 'Vendor access required' });
+    }
+
+    const { leadId } = req.body;
+    if (!leadId) {
+      return res.status(400).json({ error: 'Lead ID is required' });
+    }
+
+    // Find the lead
+    const lead = await VendorLead.findById(leadId);
+    if (!lead) {
+      return res.status(404).json({ error: 'Quote request not found' });
+    }
+
+    // Verify this vendor owns this lead
+    if (lead.vendor.toString() !== decoded.vendorId.toString()) {
+      return res.status(403).json({ error: 'Not authorised to request review for this quote' });
+    }
+
+    // Check if review already requested
+    if (lead.reviewRequested) {
+      return res.status(400).json({
+        error: 'Review already requested',
+        message: 'A review request has already been sent for this quote.'
+      });
+    }
+
+    // Check if customer email exists
+    const customerEmail = lead.customer?.email;
+    if (!customerEmail) {
+      return res.status(400).json({
+        error: 'No customer email',
+        message: 'This quote request does not have a customer email address.'
+      });
+    }
+
+    // Generate token
+    const reviewToken = generateReviewToken();
+
+    lead.reviewToken = reviewToken;
+    lead.reviewTokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    lead.reviewRequested = true;
+    lead.reviewRequestedAt = new Date();
+    await lead.save();
+
+    // Get vendor details for the email
+    const vendor = await Vendor.findById(decoded.vendorId).select('company name');
+
+    // Send review request email
+    await sendReviewRequestEmail(customerEmail, {
+      customerName: lead.customer?.contactName || 'there',
+      vendorName: vendor?.company || vendor?.name || 'the supplier',
+      category: lead.service || 'office equipment',
+      reviewToken
+    });
+
+    res.json({
+      success: true,
+      message: 'Review request sent to customer',
+      sentTo: customerEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3') // Mask email
+    });
+  } catch (error) {
+    console.error('Error requesting review:', error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    res.status(500).json({ error: 'Failed to send review request', message: error.message });
+  }
+});
+
+// =====================================================
 // VENDOR ROUTES (require vendor auth)
 // =====================================================
 
@@ -256,7 +488,7 @@ router.get('/my-reviews', async (req, res) => {
     // Fetch reviews
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const reviews = await Review.find(query)
-      .select('reviewer rating title content service status vendorResponse helpfulVotes createdAt moderatedAt')
+      .select('reviewer rating title content service status vendorResponse helpfulVotes isVerified createdAt moderatedAt')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))

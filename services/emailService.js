@@ -6,7 +6,9 @@ import {
   quoteRequestTemplate,
   reviewNotificationTemplate,
   reviewResponseTemplate,
-  leadNotificationTemplate
+  leadNotificationTemplate,
+  reviewRequestTemplate,
+  verifiedReviewNotificationTemplate
 } from './emailTemplates.js';
 
 dotenv.config();
@@ -178,13 +180,59 @@ export const sendLeadNotification = async (vendorEmail, leadDetails) => {
   });
 };
 
+// =====================================================
+// REVIEW REQUEST (sent to customer to request review)
+// =====================================================
+
+export const sendReviewRequestEmail = async (customerEmail, { customerName, vendorName, category, reviewToken }) => {
+  const reviewUrl = `https://tendorai.com/review?token=${reviewToken}`;
+
+  return sendEmail({
+    to: customerEmail,
+    subject: `How was your experience with ${vendorName}? | TendorAI`,
+    html: reviewRequestTemplate({
+      customerName: customerName || 'there',
+      vendorName,
+      category: category || 'office equipment',
+      reviewUrl
+    }),
+    text: `Hi ${customerName || 'there'}, we'd love to hear how your ${category || 'quote'} experience went with ${vendorName}. Leave a review: ${reviewUrl}`
+  });
+};
+
+// =====================================================
+// VERIFIED REVIEW NOTIFICATION (to vendor)
+// =====================================================
+
+export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails) => {
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+
+  return sendEmail({
+    to: vendorEmail,
+    subject: `New ${reviewDetails.rating}-Star Verified Review | TendorAI`,
+    html: verifiedReviewNotificationTemplate({
+      vendorName: reviewDetails.vendorName || 'Vendor',
+      reviewerName: reviewDetails.reviewerName,
+      reviewerCompany: reviewDetails.reviewerCompany,
+      rating: reviewDetails.rating,
+      title: reviewDetails.title,
+      content: reviewDetails.content,
+      dashboardUrl
+    }),
+    text: `You received a ${reviewDetails.rating}-star verified review from ${reviewDetails.reviewerName}. "${reviewDetails.title}" - View in your dashboard: ${dashboardUrl}/reviews`
+  });
+};
+
 // Default export for compatibility
 export default {
+  sendEmail,
   sendPasswordResetEmail,
   sendVendorWelcomeEmail,
   sendQuoteRequestEmail,
   sendQuoteNotification,
   sendReviewNotification,
   sendReviewResponseNotification,
-  sendLeadNotification
+  sendLeadNotification,
+  sendReviewRequestEmail,
+  sendVerifiedReviewNotification
 };
