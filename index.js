@@ -568,35 +568,65 @@ app.post('/api/ai-query', async (req, res) => {
       .limit(Math.min(parseInt(limit) * 3, 30))
       .lean();
 
-    // Build product query using new schema fields
+    // Build product query — branch by service category
     const vendorIds = vendors.map(v => v._id);
     const productQuery = {
       vendorId: { $in: vendorIds },
       status: 'active',
-      minVolume: { $lte: actualVolume },
-      maxVolume: { $gte: actualVolume }
     };
 
-    // Apply colour filter
-    if (colour === true) {
-      productQuery.isColour = true;
-    } else if (colour === false) {
-      productQuery.$or = [{ isColour: false }, { 'costs.cpcRates.A4Colour': 0 }];
-    }
+    if (normalizedService === 'Telecoms') {
+      productQuery.serviceCategory = 'Telecoms';
+      if (numberOfUsers) {
+        productQuery['telecomsPricing.minUsers'] = { $lte: numberOfUsers };
+        productQuery['telecomsPricing.maxUsers'] = { $gte: numberOfUsers };
+      }
+      if (systemType) {
+        productQuery['telecomsPricing.systemType'] = systemType;
+      }
+      if (features && features.length > 0) {
+        productQuery['telecomsPricing.features'] = { $all: features };
+      }
+    } else if (normalizedService === 'CCTV') {
+      productQuery.serviceCategory = 'CCTV';
+      if (numberOfCameras) {
+        productQuery['cctvPricing.minCameras'] = { $lte: numberOfCameras };
+        productQuery['cctvPricing.maxCameras'] = { $gte: numberOfCameras };
+      }
+      if (features && features.length > 0) {
+        productQuery['cctvPricing.features'] = { $all: features };
+      }
+    } else if (normalizedService === 'IT') {
+      productQuery.serviceCategory = 'IT';
+      if (numberOfUsers) {
+        productQuery['itPricing.minUsers'] = { $lte: numberOfUsers };
+        productQuery['itPricing.maxUsers'] = { $gte: numberOfUsers };
+      }
+      if (requirements.serviceType) {
+        productQuery['itPricing.serviceType'] = requirements.serviceType;
+      }
+    } else {
+      // Photocopiers (default)
+      productQuery.serviceCategory = { $in: ['Photocopiers', undefined] };
+      productQuery.minVolume = { $lte: actualVolume };
+      productQuery.maxVolume = { $gte: actualVolume };
 
-    // Apply A3 filter
-    if (a3 === true) {
-      productQuery.isA3 = true;
-    }
-
-    // Apply features filter
-    if (features && features.length > 0) {
-      productQuery.features = { $all: features };
+      if (colour === true) {
+        productQuery.isColour = true;
+      } else if (colour === false) {
+        productQuery.$or = [{ isColour: false }, { 'costs.cpcRates.A4Colour': 0 }];
+      }
+      if (a3 === true) {
+        productQuery.isA3 = true;
+      }
+      if (features && features.length > 0) {
+        productQuery.features = { $all: features };
+      }
     }
 
     // Find matching products
     const vendorProducts = await VendorProduct.find(productQuery)
-      .select('vendorId manufacturer model description category speed isColour isA3 features costs leaseRates service availability minVolume maxVolume')
+      .select('vendorId manufacturer model description category serviceCategory speed isColour isA3 features costs leaseRates service availability minVolume maxVolume telecomsPricing cctvPricing itPricing')
       .sort({ 'costs.totalMachineCost': 1 })
       .lean();
 
@@ -622,6 +652,51 @@ app.post('/api/ai-query', async (req, res) => {
       return { total: Math.round(cpcCost + monthlyLease + monthlyService), cpc: Math.round(cpcCost), lease: Math.round(monthlyLease), service: Math.round(monthlyService) };
     };
 
+    // Helper: Calculate telecoms monthly cost
+    const calculateTelecomsMonthlyCost = (product, numUsers) => {
+      const tp = product.telecomsPricing;
+      if (!tp?.perUserMonthly) return null;
+      const users = numUsers || tp.minUsers || 10;
+      const userCost = Math.round(tp.perUserMonthly * users);
+      const term = tp.contractTermMonths || 36;
+      const handsets = tp.handsetCost ? Math.round((tp.handsetCost * users) / term) : 0;
+      const broadband = (!tp.broadbandIncluded && tp.broadbandMonthlyCost) ? Math.round(tp.broadbandMonthlyCost) : 0;
+      const setup = tp.setupFee ? Math.round(tp.setupFee / term) : 0;
+      const total = userCost + handsets + broadband + setup;
+      return { total, perUser: userCost, handsets, broadband, setup };
+    };
+
+    // Helper: Calculate CCTV monthly cost
+    const calculateCctvMonthlyCost = (product, numCameras) => {
+      const cp = product.cctvPricing;
+      if (!cp?.perCameraCost) return null;
+      const cameras = numCameras || cp.minCameras || 4;
+      const term = cp.contractTermMonths || 36;
+      const equipmentTotal = (cp.perCameraCost * cameras) + (cp.nvrCost || 0);
+      const installTotal = cp.installationFlat || ((cp.installationPerCamera || 0) * cameras);
+      const capitalAmortised = Math.round((equipmentTotal + installTotal) / term);
+      const monitoring = cp.monthlyMonitoring || 0;
+      const storage = cp.cloudStorageMonthly || ((cp.cloudStoragePerCamera || 0) * cameras);
+      const maintenance = cp.maintenanceAnnual ? Math.round(cp.maintenanceAnnual / 12) : 0;
+      const total = capitalAmortised + monitoring + Math.round(storage) + maintenance;
+      return { total, equipment: capitalAmortised, monitoring: Math.round(monitoring), storage: Math.round(storage), maintenance };
+    };
+
+    // Helper: Calculate IT monthly cost
+    const calculateItMonthlyCost = (product, numUsers) => {
+      const ip = product.itPricing;
+      if (!ip?.perUserMonthly && !ip?.projectDayRate) return null;
+      const users = numUsers || ip.minUsers || 10;
+      const term = ip.contractTermMonths || 12;
+      const userCost = ip.perUserMonthly ? Math.round(ip.perUserMonthly * users) : 0;
+      const m365 = (!ip.m365LicenceIncluded && ip.m365CostPerUser) ? Math.round(ip.m365CostPerUser * users) : 0;
+      const cybersecurity = ip.cybersecurityAddon ? Math.round(ip.cybersecurityAddon * users) : 0;
+      const server = ip.serverManagementMonthly || 0;
+      const setup = ip.setupFee ? Math.round(ip.setupFee / term) : 0;
+      const total = userCost + m365 + cybersecurity + Math.round(server) + setup;
+      return { total, perUser: userCost, m365, cybersecurity, server: Math.round(server), setup };
+    };
+
     // Helper: Calculate savings
     const calculateSavings = (newMonthlyCost, currentCost) => {
       if (!newMonthlyCost || !currentCost) return null;
@@ -645,7 +720,89 @@ app.post('/api/ai-query', async (req, res) => {
       // =====================================================
       // PRODUCT FIT (max 50 points) — MOST IMPORTANT
       // =====================================================
-      if (product) {
+      if (product && product.serviceCategory === 'Telecoms') {
+        const tp = product.telecomsPricing;
+        if (tp) {
+          // User range match (max 15)
+          if (tp.minUsers && tp.maxUsers && numberOfUsers) {
+            const mid = (tp.minUsers + tp.maxUsers) / 2;
+            const range = tp.maxUsers - tp.minUsers;
+            const diff = Math.abs(numberOfUsers - mid);
+            if (diff < range * 0.25) breakdown.productFit += 15;
+            else if (diff < range * 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else breakdown.productFit += 5;
+          // System type match (max 10)
+          if (systemType && tp.systemType === systemType) breakdown.productFit += 10;
+          else if (!systemType) breakdown.productFit += 5;
+          // Features match (max 15)
+          if (reqFeatures && reqFeatures.length > 0 && tp.features?.length > 0) {
+            const matched = reqFeatures.filter(f => tp.features.some(pf => pf.toLowerCase().includes(f.toLowerCase())));
+            const ratio = matched.length / reqFeatures.length;
+            if (ratio === 1) breakdown.productFit += 15;
+            else if (ratio >= 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else if (tp.features?.length > 0) breakdown.productFit += 8;
+          // Pricing completeness (max 10)
+          if (tp.perUserMonthly && tp.contractTermMonths) breakdown.productFit += 10;
+          else if (tp.perUserMonthly) breakdown.productFit += 5;
+        }
+      } else if (product && product.serviceCategory === 'CCTV') {
+        const cp = product.cctvPricing;
+        if (cp) {
+          // Camera range match (max 15)
+          if (cp.minCameras && cp.maxCameras && numberOfCameras) {
+            const mid = (cp.minCameras + cp.maxCameras) / 2;
+            const range = cp.maxCameras - cp.minCameras;
+            const diff = Math.abs(numberOfCameras - mid);
+            if (diff < range * 0.25) breakdown.productFit += 15;
+            else if (diff < range * 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else breakdown.productFit += 5;
+          // Resolution match (max 10)
+          if (requirements.resolution && cp.resolution === requirements.resolution) breakdown.productFit += 10;
+          else if (!requirements.resolution) breakdown.productFit += 5;
+          // Features match (max 15)
+          if (reqFeatures && reqFeatures.length > 0 && cp.features?.length > 0) {
+            const matched = reqFeatures.filter(f => cp.features.some(pf => pf.toLowerCase().includes(f.toLowerCase())));
+            const ratio = matched.length / reqFeatures.length;
+            if (ratio === 1) breakdown.productFit += 15;
+            else if (ratio >= 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else if (cp.features?.length > 0) breakdown.productFit += 8;
+          // Pricing completeness (max 10)
+          if (cp.perCameraCost && cp.contractTermMonths) breakdown.productFit += 10;
+          else if (cp.perCameraCost) breakdown.productFit += 5;
+        }
+      } else if (product && product.serviceCategory === 'IT') {
+        const ip = product.itPricing;
+        if (ip) {
+          // User range match (max 15)
+          if (ip.minUsers && ip.maxUsers && numberOfUsers) {
+            const mid = (ip.minUsers + ip.maxUsers) / 2;
+            const range = ip.maxUsers - ip.minUsers;
+            const diff = Math.abs(numberOfUsers - mid);
+            if (diff < range * 0.25) breakdown.productFit += 15;
+            else if (diff < range * 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else breakdown.productFit += 5;
+          // Service type match (max 10)
+          if (requirements.serviceType && ip.serviceType === requirements.serviceType) breakdown.productFit += 10;
+          else if (!requirements.serviceType) breakdown.productFit += 5;
+          // Required services overlap (max 15)
+          if (requirements.requirements && requirements.requirements.length > 0 && ip.includes?.length > 0) {
+            const matched = requirements.requirements.filter(r => ip.includes.some(i => i.toLowerCase().includes(r.toLowerCase())));
+            const ratio = matched.length / requirements.requirements.length;
+            if (ratio === 1) breakdown.productFit += 15;
+            else if (ratio >= 0.5) breakdown.productFit += 10;
+            else breakdown.productFit += 5;
+          } else if (ip.includes?.length > 0) breakdown.productFit += 8;
+          // Pricing completeness (max 10)
+          if (ip.perUserMonthly && ip.contractTermMonths) breakdown.productFit += 10;
+          else if (ip.perUserMonthly || ip.projectDayRate) breakdown.productFit += 5;
+        }
+      } else if (product) {
+        // Photocopiers (original scoring)
         // Volume match (max 15)
         if (product.minVolume && product.maxVolume) {
           const midPoint = (product.minVolume + product.maxVolume) / 2;
@@ -666,7 +823,6 @@ app.post('/api/ai-query', async (req, res) => {
           else if (matchRatio >= 0.75) breakdown.productFit += 10;
           else if (matchRatio >= 0.5) breakdown.productFit += 5;
         } else if (!reqFeatures || reqFeatures.length === 0) {
-          // No features required - give partial credit for having features
           if (product.features?.length > 3) breakdown.productFit += 8;
           else if (product.features?.length > 0) breakdown.productFit += 5;
         }
@@ -676,16 +832,16 @@ app.post('/api/ai-query', async (req, res) => {
         if (reqColour !== undefined) {
           if (reqColour === true && product.isColour) colourA3Score += 5;
           else if (reqColour === false && !product.isColour) colourA3Score += 5;
-          else if (reqColour === true && !product.isColour) colourA3Score -= 2; // Penalty for mismatch
+          else if (reqColour === true && !product.isColour) colourA3Score -= 2;
         } else {
-          colourA3Score += 2; // No requirement - partial credit
+          colourA3Score += 2;
         }
         if (reqA3 !== undefined) {
           if (reqA3 === true && product.isA3) colourA3Score += 5;
           else if (reqA3 === false && !product.isA3) colourA3Score += 5;
-          else if (reqA3 === true && !product.isA3) colourA3Score -= 2; // Penalty for mismatch
+          else if (reqA3 === true && !product.isA3) colourA3Score -= 2;
         } else {
-          colourA3Score += 2; // No requirement - partial credit
+          colourA3Score += 2;
         }
         breakdown.productFit += Math.max(0, Math.min(10, colourA3Score));
 
@@ -797,7 +953,13 @@ app.post('/api/ai-query', async (req, res) => {
       const vid = v._id.toString();
       const products = productsByVendor[vid] || [];
       const bestProduct = products[0];
-      const pricing = bestProduct ? calculateMonthlyCost(bestProduct, actualVolume, colourRatio) : null;
+      let pricing = null;
+      if (bestProduct) {
+        if (normalizedService === 'Telecoms') pricing = calculateTelecomsMonthlyCost(bestProduct, numberOfUsers);
+        else if (normalizedService === 'CCTV') pricing = calculateCctvMonthlyCost(bestProduct, numberOfCameras);
+        else if (normalizedService === 'IT') pricing = calculateItMonthlyCost(bestProduct, numberOfUsers);
+        else pricing = calculateMonthlyCost(bestProduct, actualVolume, colourRatio);
+      }
       const savings = pricing ? calculateSavings(pricing.total, currentMonthlyCost) : null;
       const { score, breakdown } = scoreMatch(v, bestProduct, actualVolume, colour, a3, features, null);
 
@@ -855,21 +1017,28 @@ app.post('/api/ai-query', async (req, res) => {
         rank: index + 1,
         badge: index === 0 ? 'Best Match' : index === 1 ? 'Runner Up' : index === 2 ? 'Great Option' : null,
         whyRecommended: generateReason(v, bestProduct, r.savings, r.breakdown),
-        product: bestProduct ? {
-          name: `${bestProduct.manufacturer} ${bestProduct.model}`,
-          category: bestProduct.category,
-          speed: bestProduct.speed,
-          isColour: bestProduct.isColour,
-          isA3: bestProduct.isA3,
-          features: bestProduct.features?.slice(0, 5)
-        } : null,
-        pricing: r.pricing ? {
-          estimatedMonthly: `£${r.pricing.total}`,
-          breakdown: { lease: `£${r.pricing.lease}`, cpc: `£${r.pricing.cpc}`, service: `£${r.pricing.service}` },
-          cpcMono: bestProduct?.costs?.cpcRates?.A4Mono ? `${bestProduct.costs.cpcRates.A4Mono}p` : null,
-          cpcColour: bestProduct?.costs?.cpcRates?.A4Colour ? `${bestProduct.costs.cpcRates.A4Colour}p` : null,
-          disclaimer: 'Estimate based on your volume. Request quote for final pricing.'
-        } : null,
+        product: bestProduct ? (() => {
+          const base = { name: `${bestProduct.manufacturer} ${bestProduct.model}`, category: bestProduct.category, serviceCategory: bestProduct.serviceCategory || 'Photocopiers' };
+          if (bestProduct.serviceCategory === 'Telecoms') {
+            return { ...base, systemType: bestProduct.telecomsPricing?.systemType, perUserMonthly: bestProduct.telecomsPricing?.perUserMonthly, features: bestProduct.telecomsPricing?.features?.slice(0, 5) };
+          } else if (bestProduct.serviceCategory === 'CCTV') {
+            return { ...base, resolution: bestProduct.cctvPricing?.resolution, perCameraCost: bestProduct.cctvPricing?.perCameraCost, features: bestProduct.cctvPricing?.features?.slice(0, 5) };
+          } else if (bestProduct.serviceCategory === 'IT') {
+            return { ...base, serviceType: bestProduct.itPricing?.serviceType, perUserMonthly: bestProduct.itPricing?.perUserMonthly, responseTimeSLA: bestProduct.itPricing?.responseTimeSLA, features: bestProduct.itPricing?.includes?.slice(0, 5) };
+          }
+          return { ...base, speed: bestProduct.speed, isColour: bestProduct.isColour, isA3: bestProduct.isA3, features: bestProduct.features?.slice(0, 5) };
+        })() : null,
+        pricing: r.pricing ? (() => {
+          const base = { estimatedMonthly: `£${r.pricing.total}`, disclaimer: 'Estimate based on your requirements. Request quote for final pricing.' };
+          if (normalizedService === 'Telecoms') {
+            return { ...base, breakdown: { 'Per user': `£${r.pricing.perUser}`, 'Handsets': `£${r.pricing.handsets}`, 'Broadband': `£${r.pricing.broadband}` } };
+          } else if (normalizedService === 'CCTV') {
+            return { ...base, breakdown: { 'Equipment': `£${r.pricing.equipment}`, 'Monitoring': `£${r.pricing.monitoring}`, 'Storage': `£${r.pricing.storage}` } };
+          } else if (normalizedService === 'IT') {
+            return { ...base, breakdown: { 'Per user': `£${r.pricing.perUser}`, 'M365': `£${r.pricing.m365}`, 'Cybersecurity': `£${r.pricing.cybersecurity}` } };
+          }
+          return { ...base, breakdown: { lease: `£${r.pricing.lease}`, cpc: `£${r.pricing.cpc}`, service: `£${r.pricing.service}` }, cpcMono: bestProduct?.costs?.cpcRates?.A4Mono ? `${bestProduct.costs.cpcRates.A4Mono}p` : null, cpcColour: bestProduct?.costs?.cpcRates?.A4Colour ? `${bestProduct.costs.cpcRates.A4Colour}p` : null };
+        })() : null,
         savings: r.savings,
         service: bestProduct?.service ? {
           includesToner: bestProduct.service.includesToner,
@@ -1041,6 +1210,20 @@ async function startServer() {
       }
     } catch (migrationError) {
       logger.error('❌ Migration script failed:', migrationError);
+    }
+
+    // Product serviceCategory migration — backfill existing products
+    try {
+      const { default: VendorProduct } = await import('./models/VendorProduct.js');
+      const result = await VendorProduct.updateMany(
+        { serviceCategory: { $exists: false } },
+        { $set: { serviceCategory: 'Photocopiers' } }
+      );
+      if (result.modifiedCount > 0) {
+        logger.info(`📦 Backfilled serviceCategory on ${result.modifiedCount} products`);
+      }
+    } catch (productMigrationError) {
+      logger.error('❌ Product migration failed:', productMigrationError);
     }
     
     const server = app.listen(config.app.port, () => {

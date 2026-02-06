@@ -872,12 +872,19 @@ router.get("/products", async (req, res) => {
         }
 
         // Query with $or to match both ObjectId and string vendorId (handles legacy data)
-        const products = await VendorProduct.find({
+        const query = {
             $or: [
                 { vendorId: vendorId },
                 { vendorId: vendorId.toString() }
             ]
-        }).lean();
+        };
+
+        // Optional serviceCategory filter
+        if (req.query.serviceCategory) {
+            query.serviceCategory = req.query.serviceCategory;
+        }
+
+        const products = await VendorProduct.find(query).lean();
 
         res.status(200).json({
             success: true,
@@ -944,7 +951,7 @@ router.post("/products", async (req, res) => {
         }
 
         // Validate required fields
-        const { manufacturer, model, category, speed, minVolume, maxVolume, paperSizes, costs } = req.body;
+        const { manufacturer, model, category, serviceCategory = 'Photocopiers' } = req.body;
 
         if (!manufacturer || !model || !category) {
             return res.status(400).json({
@@ -954,12 +961,39 @@ router.post("/products", async (req, res) => {
             });
         }
 
-        if (!costs || costs.cpcRates?.A4Mono === undefined || costs.machineCost === undefined) {
-            return res.status(400).json({
-                success: false,
-                message: "Cost data is required",
-                errors: ["Missing required cost fields"]
-            });
+        // Category-specific validation
+        if (serviceCategory === 'Photocopiers') {
+            if (!req.body.costs || req.body.costs.cpcRates?.A4Mono === undefined || req.body.costs.machineCost === undefined) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Cost data required for copier products",
+                    errors: ["Missing required cost fields for copier products"]
+                });
+            }
+        } else if (serviceCategory === 'Telecoms') {
+            if (!req.body.telecomsPricing?.perUserMonthly) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Per-user monthly cost required for telecoms products",
+                    errors: ["Missing telecomsPricing.perUserMonthly"]
+                });
+            }
+        } else if (serviceCategory === 'CCTV') {
+            if (!req.body.cctvPricing?.perCameraCost) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Per-camera cost required for CCTV products",
+                    errors: ["Missing cctvPricing.perCameraCost"]
+                });
+            }
+        } else if (serviceCategory === 'IT') {
+            if (!req.body.itPricing?.perUserMonthly && !req.body.itPricing?.projectDayRate) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Per-user monthly cost or day rate required for IT products",
+                    errors: ["Missing itPricing.perUserMonthly or itPricing.projectDayRate"]
+                });
+            }
         }
 
         // Create the product
