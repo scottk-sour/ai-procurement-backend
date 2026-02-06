@@ -46,7 +46,7 @@ const SUBSCRIPTION_PLANS = {
     features: [
       'Full company profile',
       'Upload product catalog',
-      'AI Visibility Score up to 80',
+      'AI Visibility Score up to 85',
       'Appear in AI recommendations',
       'Receive customer enquiries',
       'Email notifications',
