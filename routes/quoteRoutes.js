@@ -4,7 +4,7 @@ import QuoteRequest from '../models/QuoteRequest.js';
 import Quote from '../models/Quote.js';
 import Order from '../models/Order.js';
 import AIEngineAdapter from '../services/aiEngineAdapter.js';
-import notificationService from '../services/notificationService.js';
+import emailService from '../services/emailService.js';
 import userAuth from '../middleware/userAuth.js';
 import logger from '../services/logger.js';
 import { validate } from '../middleware/validate.js';
@@ -562,7 +562,7 @@ router.post('/contact', userAuth, async (req, res) => {
     await quote.save();
 
     try {
-      await notificationService.sendVendorContactRequest?.({
+      await emailService.sendVendorContactRequest?.({
         vendorId: quote.vendor._id,
         vendorName: quote.vendor.name || vendorName,
         quoteId: quote._id,
@@ -770,7 +770,7 @@ router.post('/accept', userAuth, async (req, res) => {
     }
 
     try {
-      await notificationService.sendQuoteAcceptedNotification?.({
+      await emailService.sendQuoteAcceptedNotification?.({
         vendorId: quote.vendor._id,
         vendorName: quote.vendor.name || vendorName,
         quoteId: quote._id,
@@ -885,7 +885,7 @@ router.post('/decline', userAuth, async (req, res) => {
     await quote.save();
 
     try {
-      await notificationService.sendQuoteDeclinedNotification?.({
+      await emailService.sendQuoteDeclinedNotification?.({
         vendorId: quote.vendor._id,
         vendorName: quote.vendor.name,
         quoteId: quote._id,

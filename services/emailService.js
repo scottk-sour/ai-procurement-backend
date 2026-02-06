@@ -223,6 +223,29 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
   });
 };
 
+// =====================================================
+// QUOTE NOTIFICATION STUBS (for quoteRoutes.js compatibility)
+// These are called with optional chaining, so they won't crash if they fail
+// =====================================================
+
+export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, customerName, customerMessage, customerEmail }) => {
+  console.log(`📧 Vendor contact request: ${customerName} -> ${vendorName}`);
+  // TODO: Implement actual email sending
+  return { success: true, simulated: true };
+};
+
+export const sendQuoteAcceptedNotification = async ({ vendorEmail, vendorName, customerName, quoteDetails }) => {
+  console.log(`📧 Quote accepted notification: ${customerName} accepted quote from ${vendorName}`);
+  // TODO: Implement actual email sending
+  return { success: true, simulated: true };
+};
+
+export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, customerName, reason }) => {
+  console.log(`📧 Quote declined notification: ${customerName} declined quote from ${vendorName}`);
+  // TODO: Implement actual email sending
+  return { success: true, simulated: true };
+};
+
 // Default export for compatibility
 export default {
   sendEmail,
@@ -234,5 +257,8 @@ export default {
   sendReviewResponseNotification,
   sendLeadNotification,
   sendReviewRequestEmail,
-  sendVerifiedReviewNotification
+  sendVerifiedReviewNotification,
+  sendVendorContactRequest,
+  sendQuoteAcceptedNotification,
+  sendQuoteDeclinedNotification
 };
