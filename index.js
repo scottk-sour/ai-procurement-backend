@@ -1019,7 +1019,6 @@ app.post('/api/ai-query', async (req, res) => {
         reviewCount: v.performance?.reviewCount || 0,
         brands: v.brands || [],
         tier: v.tier || v.account?.tier || 'free',
-        _debug: { isNational: v._isNational, distance: v._distance, postcodeAreas: v.postcodeAreas, vendorPostcode: v.location?.postcode },
         matchScore: Math.min(Math.round(r.score), 99),
         scoreBreakdown: r.breakdown,
         rank: index + 1,
