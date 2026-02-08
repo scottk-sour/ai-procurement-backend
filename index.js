@@ -1403,14 +1403,20 @@ async function startServer() {
       logger.info(`🎉 TendorAI Backend is ready!`);
     });
     
-    const shutdown = () => {
+    let shuttingDown = false;
+    const shutdown = async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       logger.info('\n🛑 Shutting down gracefully...');
-      server.close(() => {
-        mongoose.connection.close(false, () => {
+      server.close(async () => {
+        try {
+          await mongoose.connection.close();
           logger.info('✅ MongoDB connection closed');
           logger.info('✅ Server shutdown complete');
-          process.exit(0);
-        });
+        } catch (err) {
+          logger.error('Error closing MongoDB:', err);
+        }
+        process.exit(0);
       });
     };
     
