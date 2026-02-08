@@ -2,6 +2,7 @@
 // Public API for submitting quote requests to vendors (no auth required)
 
 import express from 'express';
+import mongoose from 'mongoose';
 import VendorLead from '../models/VendorLead.js';
 import Vendor from '../models/Vendor.js';
 import vendorAuth from '../middleware/vendorAuth.js';
@@ -116,7 +117,7 @@ router.post('/', async (req, res) => {
  */
 router.get('/vendor/me', vendorAuth, async (req, res) => {
   try {
-    const vendorId = req.vendorId;
+    const vendorId = new mongoose.Types.ObjectId(req.vendorId);
     const { status, page = 1, limit = 20 } = req.query;
 
     const query = { vendor: vendorId };
@@ -169,8 +170,8 @@ router.get('/vendor/me', vendorAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Get vendor leads (me) error:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch leads' });
+    console.error('Get vendor leads (me) error:', error.message, error.stack);
+    res.status(500).json({ success: false, error: 'Failed to fetch leads', details: error.message });
   }
 });
 
