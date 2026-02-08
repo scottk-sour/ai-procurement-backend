@@ -4,6 +4,7 @@
 import express from 'express';
 import VendorLead from '../models/VendorLead.js';
 import Vendor from '../models/Vendor.js';
+import vendorAuth from '../middleware/vendorAuth.js';
 
 const router = express.Router();
 
@@ -110,16 +111,82 @@ router.post('/', async (req, res) => {
 });
 
 /**
- * GET /api/vendor-leads/vendor/:vendorId
- * Get leads for a vendor (requires vendor auth - added later)
+ * GET /api/vendor-leads/vendor/me
+ * Get leads for the authenticated vendor (uses JWT to resolve vendorId)
  */
-router.get('/vendor/:vendorId', async (req, res) => {
+router.get('/vendor/me', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const { status, page = 1, limit = 20 } = req.query;
+
+    const query = { vendor: vendorId };
+    if (status) {
+      query.status = status;
+    }
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [leads, total] = await Promise.all([
+      VendorLead.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      VendorLead.countDocuments(query)
+    ]);
+
+    const statusCounts = await VendorLead.aggregate([
+      { $match: { vendor: vendorId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    const counts = statusCounts.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      data: {
+        leads,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          totalPages: Math.ceil(total / limitNum)
+        },
+        counts: {
+          pending: counts.pending || 0,
+          viewed: counts.viewed || 0,
+          contacted: counts.contacted || 0,
+          quoted: counts.quoted || 0,
+          won: counts.won || 0,
+          lost: counts.lost || 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get vendor leads (me) error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch leads' });
+  }
+});
+
+/**
+ * GET /api/vendor-leads/vendor/:vendorId
+ * Get leads for a vendor by ID (kept for backward compatibility)
+ */
+router.get('/vendor/:vendorId', vendorAuth, async (req, res) => {
   try {
     const { vendorId } = req.params;
     const { status, page = 1, limit = 20 } = req.query;
 
-    // TODO: Add vendor authentication middleware
-    // For now, this is a basic implementation
+    // Ensure vendor can only access their own leads
+    if (req.vendorId?.toString() !== vendorId) {
+      return res.status(403).json({ success: false, error: 'Not authorised to view these leads' });
+    }
 
     const query = { vendor: vendorId };
     if (status) {
@@ -181,7 +248,7 @@ router.get('/vendor/:vendorId', async (req, res) => {
  * PATCH /api/vendor-leads/:leadId/status
  * Update lead status (requires vendor auth)
  */
-router.patch('/:leadId/status', async (req, res) => {
+router.patch('/:leadId/status', vendorAuth, async (req, res) => {
   try {
     const { leadId } = req.params;
     const { status, note, quoteValue } = req.body;
