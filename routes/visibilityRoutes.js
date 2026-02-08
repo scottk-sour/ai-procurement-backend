@@ -9,6 +9,9 @@ import vendorAuth from '../middleware/vendorAuth.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
+import VendorPost from '../models/VendorPost.js';
+import AiMention from '../models/AiMention.js';
+import VendorLead from '../models/VendorLead.js';
 
 const router = express.Router();
 
@@ -16,14 +19,66 @@ const router = express.Router();
  * Helper to find products by vendorId (handles both ObjectId and string)
  */
 async function findVendorProducts(vendorId) {
-  // Query with $or to match both ObjectId and string vendorId
-  // This handles legacy products that might have string vendorId
   return VendorProduct.find({
     $or: [
       { vendorId: vendorId },
       { vendorId: vendorId.toString() }
     ]
   });
+}
+
+/**
+ * Fetch activity data for the visibility score calculation
+ */
+async function getVendorActivity(vendorId) {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const vendorObjectId = new mongoose.Types.ObjectId(vendorId);
+
+  const [publishedPostCount, aiMentionCount, leadResponseData] = await Promise.all([
+    // Count published posts
+    VendorPost.countDocuments({ vendor: vendorObjectId, status: 'published' }).catch(() => 0),
+
+    // Count AI mentions in last 30 days
+    AiMention.countDocuments({
+      'vendorsReturned.vendorId': vendorObjectId,
+      timestamp: { $gte: thirtyDaysAgo }
+    }).catch(() => 0),
+
+    // Average lead response time (time between lead creation and first status change from 'pending')
+    VendorLead.aggregate([
+      {
+        $match: {
+          vendor: vendorObjectId,
+          viewedAt: { $exists: true, $ne: null },
+          createdAt: { $gte: thirtyDaysAgo }
+        }
+      },
+      {
+        $project: {
+          responseHours: {
+            $divide: [
+              { $subtract: ['$viewedAt', '$createdAt'] },
+              1000 * 60 * 60 // ms to hours
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgHours: { $avg: '$responseHours' }
+        }
+      }
+    ]).catch(() => [])
+  ]);
+
+  return {
+    publishedPostCount,
+    aiMentionCount,
+    avgLeadResponseHours: leadResponseData[0]?.avgHours ?? null
+  };
 }
 
 /**
@@ -40,8 +95,12 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await findVendorProducts(vendor._id);
-    const scoreData = calculateVisibilityScore(vendor, products);
+    const [products, activity] = await Promise.all([
+      findVendorProducts(vendor._id),
+      getVendorActivity(vendor._id)
+    ]);
+
+    const scoreData = calculateVisibilityScore(vendor, products, activity);
 
     res.json({
       success: true,
@@ -70,17 +129,19 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await findVendorProducts(vendor._id);
-    const scoreData = calculateVisibilityScore(vendor, products);
+    const [products, activity] = await Promise.all([
+      findVendorProducts(vendor._id),
+      getVendorActivity(vendor._id)
+    ]);
 
-    // Add more detailed guidance for each section
+    const scoreData = calculateVisibilityScore(vendor, products, activity);
+
     const detailedBreakdown = {
       ...scoreData.breakdown,
       guidance: {
-        profileCompleteness: 'Complete your company profile to help AI assistants find and recommend you to businesses.',
-        productData: 'Upload your product catalog so AI can match you with relevant customer queries.',
-        trustAndReviews: 'Add certifications and accreditations to boost your credibility score.',
-        subscriptionTier: 'Upgrade your plan for higher AI visibility ranking and more features.',
+        baseTier: 'Your subscription tier sets your base visibility ranking.',
+        profileCompleteness: 'Complete your profile so AI assistants can find and recommend you.',
+        activity: 'Stay active with products, posts, and fast responses to boost your score.',
       }
     };
 
@@ -116,10 +177,13 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const products = await findVendorProducts(vendor._id);
-    const scoreData = calculateVisibilityScore(vendor, products);
+    const [products, activity] = await Promise.all([
+      findVendorProducts(vendor._id),
+      getVendorActivity(vendor._id)
+    ]);
 
-    // Enhance recommendations with action URLs
+    const scoreData = calculateVisibilityScore(vendor, products, activity);
+
     const enhancedRecommendations = scoreData.recommendations.map(rec => ({
       ...rec,
       actionUrl: getActionUrl(rec.action),
@@ -149,7 +213,7 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
 function getActionUrl(action) {
   const actionLower = action.toLowerCase();
 
-  if (actionLower.includes('upgrade')) {
+  if (actionLower.includes('upgrade') || actionLower.includes('subscription')) {
     return '/vendor-dashboard/upgrade';
   }
   if (actionLower.includes('product') || actionLower.includes('catalog')) {
@@ -160,6 +224,12 @@ function getActionUrl(action) {
   }
   if (actionLower.includes('coverage') || actionLower.includes('location')) {
     return '/vendor-dashboard?tab=profile&section=coverage';
+  }
+  if (actionLower.includes('post') || actionLower.includes('blog')) {
+    return '/vendor-dashboard/posts';
+  }
+  if (actionLower.includes('quote') || actionLower.includes('lead')) {
+    return '/vendor-dashboard/quotes';
   }
 
   return '/vendor-dashboard?tab=profile';
