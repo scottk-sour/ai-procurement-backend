@@ -30,6 +30,7 @@ import visibilityRoutes from './routes/visibilityRoutes.js';
 import vendorLeadRoutes from './routes/vendorLeadRoutes.js';
 import stripeRoutes from './routes/stripeRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import vendorPostRoutes from './routes/vendorPostRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -114,6 +115,20 @@ const quoteLimiter = rateLimit({
     error: 'Quote request limit exceeded',
     message: 'You have exceeded the 10 quote requests per hour limit. Please try again later.',
     retryAfter: '1 hour',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiting for AI query endpoint (10 requests per minute per IP)
+const aiQueryLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: {
+    success: false,
+    error: 'AI query rate limit exceeded',
+    message: 'You have exceeded 10 AI queries per minute. Please try again shortly.',
+    retryAfter: '1 minute',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -271,6 +286,8 @@ app.use('/api/analytics', vendorAnalyticsRoutes);
 app.use('/api/visibility', visibilityRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/vendors', vendorPostRoutes);
+app.use('/api/posts', vendorPostRoutes);
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
@@ -360,7 +377,7 @@ function detectAISource(userAgent, referer) {
   return 'unknown-ai';
 }
 
-app.post('/api/ai-query', async (req, res) => {
+app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
   try {
     const {
       query,
@@ -377,6 +394,23 @@ app.post('/api/ai-query', async (req, res) => {
       currentSituation = {},
       contact = {}
     } = req.body;
+
+    // 3A: Input validation
+    if (!query && !category && !service) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please specify what you are looking for',
+        hint: 'Provide a "query" (free text), "category" (Photocopiers/Telecoms/CCTV/IT), or "service".',
+      });
+    }
+
+    // Track warnings to include in response
+    const warnings = [];
+
+    // Volume of 0 should not silently become 5000
+    if (volume === 0 || requirements?.specificVolume === 0) {
+      warnings.push('Volume of 0 is unlikely — did you mean to specify a monthly volume?');
+    }
 
     // Import models dynamically to avoid circular dependencies
     const { default: Vendor } = await import('./models/Vendor.js');
@@ -593,9 +627,20 @@ app.post('/api/ai-query', async (req, res) => {
 
     // Apply postcode-area + distance-based location filtering
     if (searchLocation) {
+      const vendorCountBefore = vendors.length;
       vendors = await filterVendorsByLocation(vendors, searchLocation, { maxDistanceKm: 80 });
-      // Limit to reasonable number after filtering
-      vendors = vendors.slice(0, Math.min(parseInt(limit) * 3, 30));
+      // If postcode filtering removed everyone, the postcode might be invalid — show national results with warning
+      if (vendors.length === 0 && vendorCountBefore > 0) {
+        warnings.push('Postcode not recognised, showing national results');
+        // Re-fetch without location filter
+        vendors = await Vendor.find(searchQuery)
+          .select('company services businessProfile.description businessProfile.yearsInBusiness location performance tier account brands postcodeAreas contactInfo')
+          .sort({ 'performance.rating': -1 })
+          .limit(Math.min(parseInt(limit) * 3, 30))
+          .lean();
+      } else {
+        vendors = vendors.slice(0, Math.min(parseInt(limit) * 3, 30));
+      }
     }
 
     // Build product query — branch by service category
@@ -962,32 +1007,63 @@ app.post('/api/ai-query', async (req, res) => {
     const generateReason = (vendor, product, savings, scoreBreakdown) => {
       const reasons = [];
 
-      // Product-based reasons first
+      // Product-based reasons — personalised with user's actual requirements
       if (product) {
-        if (scoreBreakdown.productFit >= 40) reasons.push('Excellent product match for your requirements');
-        else if (scoreBreakdown.productFit >= 30) reasons.push('Good product match for your needs');
+        if (normalizedService === 'Photocopiers' && product.speed) {
+          const colourLabel = product.isColour ? 'Colour' : 'Mono';
+          const sizeLabel = product.isA3 ? 'A3' : 'A4';
+          if (colour && a3) {
+            reasons.push(`${colourLabel} ${product.speed}ppm ${sizeLabel} device matches your A3 colour requirement`);
+          } else if (actualVolume && scoreBreakdown.productFit >= 30) {
+            reasons.push(`Matches your ${actualVolume.toLocaleString()} pages/month requirement at ${product.speed}ppm`);
+          } else if (scoreBreakdown.productFit >= 30) {
+            reasons.push(`Good product match — ${colourLabel} ${sizeLabel} at ${product.speed}ppm`);
+          }
+        } else if (normalizedService === 'Telecoms' && product.telecomsPricing) {
+          if (numberOfUsers) {
+            reasons.push(`Supports ${product.telecomsPricing.minUsers}-${product.telecomsPricing.maxUsers} users (you need ${numberOfUsers})`);
+          } else if (scoreBreakdown.productFit >= 30) {
+            reasons.push(`Good ${product.telecomsPricing.systemType || 'telecoms'} match`);
+          }
+        } else if (normalizedService === 'CCTV' && product.cctvPricing) {
+          if (numberOfCameras) {
+            reasons.push(`${product.cctvPricing.resolution || 'HD'} system supports ${product.cctvPricing.minCameras}-${product.cctvPricing.maxCameras} cameras (you need ${numberOfCameras})`);
+          } else if (scoreBreakdown.productFit >= 30) {
+            reasons.push(`Good ${product.cctvPricing.resolution || 'CCTV'} system match`);
+          }
+        } else if (normalizedService === 'IT' && product.itPricing) {
+          if (numberOfUsers) {
+            reasons.push(`${product.itPricing.serviceType} IT for ${product.itPricing.minUsers}-${product.itPricing.maxUsers} users (you need ${numberOfUsers})`);
+          } else if (scoreBreakdown.productFit >= 30) {
+            reasons.push(`Good ${product.itPricing.serviceType || 'IT'} match`);
+          }
+        } else if (scoreBreakdown.productFit >= 40) {
+          reasons.push('Excellent product match for your requirements');
+        } else if (scoreBreakdown.productFit >= 30) {
+          reasons.push('Good product match for your needs');
+        }
 
         if (product.service?.includesToner && product.service?.includesPartsLabour) {
           reasons.push('All-inclusive service (toner, parts & labour)');
         }
-        if (product.features?.length > 4) reasons.push('Feature-rich machine');
       }
 
-      // Savings
+      // Savings — personalised
       if (savings?.annual > 500) reasons.push(`Could save you ${savings.formatted}/year`);
       else if (savings?.annual > 100) reasons.push(`Potential savings of ${savings.formatted}/year`);
 
-      // Vendor-based reasons
-      const rating = vendor.performance?.rating;
-      if (rating >= 4.5) reasons.push(`Highly rated (${rating}★)`);
-      else if (rating >= 4.0) reasons.push(`Well rated (${rating}★)`);
-
-      // Location-based reasons
+      // Location — personalised with distance and postcode
       if (vendor._distance !== null && vendor._distance !== undefined) {
-        if (vendor._distance <= 15) reasons.push('Located nearby');
-        else if (vendor._distance <= 30) reasons.push('Local supplier');
+        const miles = Math.round(vendor._distance * 0.621371);
+        if (vendor._distance <= 15) reasons.push(`Located ${miles} miles from ${searchLocation || 'you'}`);
+        else if (vendor._distance <= 30) reasons.push(`Local supplier — ${miles} miles from ${searchLocation || 'you'}`);
       }
       if (vendor._isNational && reasons.length < 3) reasons.push('National coverage');
+
+      // Vendor quality
+      const rating = vendor.performance?.rating;
+      if (rating >= 4.5) reasons.push(`Highly rated (${rating}★)`);
+      else if (rating >= 4.0 && reasons.length < 3) reasons.push(`Well rated (${rating}★)`);
 
       const tier = vendor.tier || vendor.account?.tier || 'free';
       if (tier === 'verified' && reasons.length < 3) reasons.push('Verified supplier');
@@ -1146,6 +1222,32 @@ app.post('/api/ai-query', async (req, res) => {
       logger.warn('AI mention tracking error', { error: trackingError.message });
     }
 
+    // Log to aiMentions collection (non-blocking) — populates vendor dashboard AI mention counter
+    try {
+      const { default: AiMention } = await import('./models/AiMention.js');
+      const userAgentStr = req.get('User-Agent') || '';
+      const parsedSource = detectAISource(userAgentStr, req.get('Referer'));
+
+      AiMention.create({
+        timestamp: new Date(),
+        query: query || '',
+        category: normalizedService || category || '',
+        postcode: searchLocation || postcode || '',
+        vendorsReturned: finalResults.map((v, i) => ({
+          vendorId: v.id,
+          companyName: v.company,
+          tier: v.tier,
+          position: i + 1,
+        })),
+        source: parsedSource,
+        nluUsed: !!nluResult,
+      }).catch(err => {
+        logger.warn('Failed to log AI mention', { error: err.message });
+      });
+    } catch (mentionError) {
+      logger.warn('AiMention tracking error', { error: mentionError.message });
+    }
+
     // Create leads if contact details provided (non-blocking)
     if (contact?.email && contact?.companyName) {
       try {
@@ -1213,6 +1315,7 @@ app.post('/api/ai-query', async (req, res) => {
         ? 'Prices are estimates based on your requirements. Request formal quotes for final pricing.'
         : 'Request quotes from these suppliers for personalised pricing.',
       compareUrl: `https://tendorai.com/compare?ids=${finalResults.map(r => r.id).join(',')}`,
+      ...(warnings.length > 0 && { warnings }),
       metadata: {
         monthlyVolume: actualVolume,
         colourRatio,

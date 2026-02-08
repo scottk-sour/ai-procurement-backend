@@ -250,6 +250,12 @@ const vendorSchema = new mongoose.Schema({
     trim: true
   },
 
+  // Demo vendor flag — for filtering/displaying demo profiles
+  isDemoVendor: {
+    type: Boolean,
+    default: false
+  },
+
   // Password Reset
   passwordResetToken: {
     type: String,

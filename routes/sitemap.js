@@ -3,6 +3,7 @@
 
 import express from 'express';
 import Vendor from '../models/Vendor.js';
+import VendorPost from '../models/VendorPost.js';
 
 const router = express.Router();
 
@@ -133,6 +134,28 @@ router.get('/sitemap.xml', async (req, res) => {
     } catch (dbError) {
       console.error('Sitemap DB query error:', dbError);
       // Continue with static pages only
+    }
+
+    // Add vendor blog posts to sitemap
+    try {
+      const posts = await VendorPost.find({ status: 'published' })
+        .select('slug updatedAt')
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean();
+
+      posts.forEach(post => {
+        if (post.slug) {
+          urls.push({
+            loc: `${BASE_URL}/posts/${post.slug}`,
+            lastmod: post.updatedAt ? post.updatedAt.toISOString().split('T')[0] : now,
+            changefreq: 'monthly',
+            priority: '0.6'
+          });
+        }
+      });
+    } catch (postError) {
+      console.error('Sitemap posts query error:', postError);
     }
 
     // Generate XML
