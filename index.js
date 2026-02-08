@@ -522,6 +522,10 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
       nluResult = await parseQueryWithNLU(query, normalizedService);
     }
 
+    // Track which fields were set by NLU (not explicit params) — NLU values are used for
+    // scoring but NOT for hard MongoDB product filters since NLU text may not match exact DB values
+    const nluFields = new Set();
+
     // Merge NLU results — explicit params always win
     if (nluResult) {
       if (nluResult.postcode && !postcode && !location) {
@@ -533,12 +537,12 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
         // City names will be caught by the city-to-postcode mapping below
       }
       if (nluResult.volume && !specificVolume && !reqVolume) actualVolume = nluResult.volume;
-      if (nluResult.colour !== undefined && colour === undefined) { requirements.colour = nluResult.colour; colour = nluResult.colour; }
-      if (nluResult.a3 !== undefined && a3 === undefined) { requirements.a3 = nluResult.a3; a3 = nluResult.a3; }
-      if (nluResult.features && (!features || features.length === 0)) { requirements.features = nluResult.features; features = nluResult.features; }
+      if (nluResult.colour !== undefined && colour === undefined) { requirements.colour = nluResult.colour; colour = nluResult.colour; nluFields.add('colour'); }
+      if (nluResult.a3 !== undefined && a3 === undefined) { requirements.a3 = nluResult.a3; a3 = nluResult.a3; nluFields.add('a3'); }
+      if (nluResult.features && (!features || features.length === 0)) { requirements.features = nluResult.features; features = nluResult.features; nluFields.add('features'); }
       if (nluResult.numberOfUsers && !numberOfUsers) { requirements.numberOfUsers = nluResult.numberOfUsers; numberOfUsers = nluResult.numberOfUsers; }
       if (nluResult.numberOfCameras && !numberOfCameras) { requirements.numberOfCameras = nluResult.numberOfCameras; numberOfCameras = nluResult.numberOfCameras; }
-      if (nluResult.systemType && !systemType) { requirements.systemType = nluResult.systemType; systemType = nluResult.systemType; }
+      if (nluResult.systemType && !systemType) { requirements.systemType = nluResult.systemType; systemType = nluResult.systemType; nluFields.add('systemType'); }
       if (nluResult.budget && !budget) requirements.budget = nluResult.budget;
       if (nluResult.category && !normalizedService) {
         normalizedService = serviceMap[nluResult.category.toLowerCase()] || nluResult.category;
@@ -656,10 +660,11 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
         productQuery['telecomsPricing.minUsers'] = { $lte: numberOfUsers };
         productQuery['telecomsPricing.maxUsers'] = { $gte: numberOfUsers };
       }
-      if (systemType) {
+      // Only hard-filter on systemType/features if explicitly provided (not NLU-guessed)
+      if (systemType && !nluFields.has('systemType')) {
         productQuery['telecomsPricing.systemType'] = systemType;
       }
-      if (features && features.length > 0) {
+      if (features && features.length > 0 && !nluFields.has('features')) {
         productQuery['telecomsPricing.features'] = { $all: features };
       }
     } else if (normalizedService === 'CCTV') {
@@ -668,7 +673,8 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
         productQuery['cctvPricing.minCameras'] = { $lte: numberOfCameras };
         productQuery['cctvPricing.maxCameras'] = { $gte: numberOfCameras };
       }
-      if (features && features.length > 0) {
+      // Only hard-filter on features if explicitly provided (not NLU-guessed)
+      if (features && features.length > 0 && !nluFields.has('features')) {
         productQuery['cctvPricing.features'] = { $all: features };
       }
     } else if (normalizedService === 'IT') {
@@ -694,7 +700,8 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
       if (a3 === true) {
         productQuery.isA3 = true;
       }
-      if (features && features.length > 0) {
+      // Only hard-filter on features if explicitly provided (not NLU-guessed)
+      if (features && features.length > 0 && !nluFields.has('features')) {
         productQuery.features = { $all: features };
       }
     }

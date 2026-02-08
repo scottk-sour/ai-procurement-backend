@@ -5,7 +5,7 @@ import Vendor from '../models/Vendor.js';
 
 dotenv.config();
 
-const DEMO_VENDOR_ID = '697e212e7df418c53adbfafc';
+const DEMO_VENDOR_ID = '6988bd0387bfe1c3b14f0cf8';
 
 const demoProducts = [
   // =====================================================
