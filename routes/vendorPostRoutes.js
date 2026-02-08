@@ -84,32 +84,7 @@ router.post('/:vendorId/posts', vendorAuth, async (req, res) => {
   }
 });
 
-// GET /api/vendors/:vendorId/posts — list vendor's posts (public)
-router.get('/:vendorId/posts', async (req, res) => {
-  try {
-    const { vendorId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const [posts, total] = await Promise.all([
-      VendorPost.find({ vendor: vendorId, status: 'published' })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .populate('vendor', 'company tier')
-        .lean(),
-      VendorPost.countDocuments({ vendor: vendorId, status: 'published' }),
-    ]);
-
-    res.json({
-      success: true,
-      posts,
-      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// GET vendor posts moved to publicVendorRoutes.js → /api/public/vendors/:vendorId/posts
 
 // DELETE /api/vendors/:vendorId/posts/:postId — delete own post
 router.delete('/:vendorId/posts/:postId', vendorAuth, async (req, res) => {

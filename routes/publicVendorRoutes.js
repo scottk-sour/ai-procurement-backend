@@ -5,6 +5,7 @@
 import express from 'express';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
+import VendorPost from '../models/VendorPost.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
@@ -683,6 +684,36 @@ router.get('/stats', async (req, res) => {
       success: false,
       message: 'Failed to fetch stats'
     });
+  }
+});
+
+/**
+ * GET /api/public/vendors/:vendorId/posts
+ * List a vendor's published posts (public, no auth)
+ */
+router.get('/vendors/:vendorId/posts', async (req, res) => {
+  try {
+    const { vendorId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [posts, total] = await Promise.all([
+      VendorPost.find({ vendor: vendorId, status: 'published' })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('vendor', 'company tier')
+        .lean(),
+      VendorPost.countDocuments({ vendor: vendorId, status: 'published' }),
+    ]);
+
+    res.json({
+      success: true,
+      posts,
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
