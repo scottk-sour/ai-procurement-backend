@@ -276,16 +276,37 @@ export async function filterVendorsByLocation(vendors, searchPostcode, options =
     // 2. Distance-based check (if we have coordinates for both)
     let distanceMatch = false;
     let distance = null;
-    if (searchCoords && vendor.location?.latitude && vendor.location?.longitude) {
+    const vendorLat = vendor.location?.coordinates?.latitude || vendor.location?.latitude;
+    const vendorLon = vendor.location?.coordinates?.longitude || vendor.location?.longitude;
+    if (searchCoords && vendorLat && vendorLon) {
       distance = calculateDistance(
         searchCoords.lat, searchCoords.lon,
-        vendor.location.latitude, vendor.location.longitude
+        vendorLat, vendorLon
       );
       distanceMatch = distance <= maxDistanceKm;
     }
 
-    // Include if either area match or distance match
-    if (areaMatch || distanceMatch) {
+    // 3. Coverage text match — check if vendor's coverage or city mentions a nearby area
+    let coverageMatch = false;
+    if (!areaMatch && !distanceMatch && nearbyAreas.length > 0) {
+      const coverageText = [
+        vendor.location?.city || '',
+        ...(vendor.location?.coverage || []),
+      ].join(' ').toLowerCase();
+      // Map postcode areas to city names for text matching
+      const areaCities = {
+        NP: 'newport', CF: 'cardiff', SA: 'swansea', BS: 'bristol',
+        BA: 'bath', GL: 'gloucester', EX: 'exeter', B: 'birmingham',
+        M: 'manchester', L: 'liverpool', LS: 'leeds', S: 'sheffield',
+      };
+      coverageMatch = nearbyAreas.some(area => {
+        const city = areaCities[area];
+        return city && coverageText.includes(city);
+      });
+    }
+
+    // Include if area match, distance match, or coverage text match
+    if (areaMatch || distanceMatch || coverageMatch) {
       filtered.push({ ...vendor, _isNational: false, _distance: distance });
     }
   }

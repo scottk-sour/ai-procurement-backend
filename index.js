@@ -35,6 +35,7 @@ import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
 import { suggestCopiers } from './controllers/aiController.js';
 import { filterVendorsByLocation } from './utils/locationUtils.js';
+import { parseQueryWithNLU } from './utils/nluParser.js';
 
 // __dirname fix for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -382,8 +383,8 @@ app.post('/api/ai-query', async (req, res) => {
     const { default: VendorProduct } = await import('./models/VendorProduct.js');
     const { default: VendorLead } = await import('./models/VendorLead.js');
 
-    // Extract requirements
-    const {
+    // Extract requirements (use let — NLU may update these later)
+    let {
       specificVolume,
       monthlyVolume: reqVolume,
       colour,
@@ -418,7 +419,7 @@ app.post('/api/ai-query', async (req, res) => {
       'it': 'IT', 'it support': 'IT', 'it-services': 'IT',
       'security': 'Security', 'software': 'Software'
     };
-    const normalizedService = serviceType ? (serviceMap[serviceType.toLowerCase()] || serviceType) : null;
+    let normalizedService = serviceType ? (serviceMap[serviceType.toLowerCase()] || serviceType) : null;
 
     // =====================================================
     // CATEGORY-SPECIFIC FOLLOW-UP QUESTIONS
@@ -469,7 +470,85 @@ app.post('/api/ai-query', async (req, res) => {
       { field: 'contractEnd', question: 'When does your current IT contract end?', options: ['Already ended', 'Within 3 months', '3-6 months', '6-12 months', 'Over 12 months', 'No contract'], impact: 'low', help: 'Helps suppliers know your timeline.' },
     ];
 
-    // Select questions based on category
+    // Build vendor search query
+    const searchQuery = {
+      $or: [{ 'account.status': 'active' }, { status: 'active' }]
+    };
+
+    if (normalizedService) {
+      searchQuery.services = { $in: [normalizedService] };
+    }
+
+    // Location filter — applied post-query via filterVendorsByLocation
+    let searchLocation = postcode || location;
+
+    // NLU: parse free-text query (non-blocking, 3s timeout)
+    let nluResult = null;
+    if (query && query.trim().length >= 3) {
+      nluResult = await parseQueryWithNLU(query, normalizedService);
+    }
+
+    // Merge NLU results — explicit params always win
+    if (nluResult) {
+      if (nluResult.postcode && !postcode && !location) {
+        // Only use NLU postcode if it looks like a UK postcode/outcode (not a city name)
+        const pcCandidate = nluResult.postcode.replace(/\s+/g, '').toUpperCase();
+        if (/^[A-Z]{1,2}\d/.test(pcCandidate)) {
+          searchLocation = nluResult.postcode;
+        }
+        // City names will be caught by the city-to-postcode mapping below
+      }
+      if (nluResult.volume && !specificVolume && !reqVolume) actualVolume = nluResult.volume;
+      if (nluResult.colour !== undefined && colour === undefined) { requirements.colour = nluResult.colour; colour = nluResult.colour; }
+      if (nluResult.a3 !== undefined && a3 === undefined) { requirements.a3 = nluResult.a3; a3 = nluResult.a3; }
+      if (nluResult.features && (!features || features.length === 0)) { requirements.features = nluResult.features; features = nluResult.features; }
+      if (nluResult.numberOfUsers && !numberOfUsers) { requirements.numberOfUsers = nluResult.numberOfUsers; numberOfUsers = nluResult.numberOfUsers; }
+      if (nluResult.numberOfCameras && !numberOfCameras) { requirements.numberOfCameras = nluResult.numberOfCameras; numberOfCameras = nluResult.numberOfCameras; }
+      if (nluResult.systemType && !systemType) { requirements.systemType = nluResult.systemType; systemType = nluResult.systemType; }
+      if (nluResult.budget && !budget) requirements.budget = nluResult.budget;
+      if (nluResult.category && !normalizedService) {
+        normalizedService = serviceMap[nluResult.category.toLowerCase()] || nluResult.category;
+        if (normalizedService) {
+          searchQuery.services = { $in: [normalizedService] };
+        }
+      }
+    }
+
+    // Keyword fallback for category — only if NLU didn't detect one
+    if (query && !normalizedService) {
+      const queryLower = query.toLowerCase();
+      if (queryLower.includes('copier') || queryLower.includes('printer') || queryLower.includes('print')) {
+        normalizedService = 'Photocopiers';
+      } else if (queryLower.includes('phone') || queryLower.includes('telecom') || queryLower.includes('voip')) {
+        normalizedService = 'Telecoms';
+      } else if (queryLower.includes('cctv') || queryLower.includes('camera') || queryLower.includes('surveillance')) {
+        normalizedService = 'CCTV';
+      } else if (queryLower.includes('it support') || queryLower.includes('managed it') || queryLower.includes('it services')) {
+        normalizedService = 'IT';
+      }
+      if (normalizedService) {
+        searchQuery.services = { $in: [normalizedService] };
+      }
+    }
+
+    // City-name → postcode mapping from free text — uses filterVendorsByLocation instead of rigid $and
+    if (query && !searchLocation) {
+      const queryLower = query.toLowerCase();
+      const cityToPostcode = {
+        'cardiff': 'CF10', 'newport': 'NP20', 'swansea': 'SA1', 'bristol': 'BS1',
+        'bath': 'BA1', 'gloucester': 'GL1', 'exeter': 'EX1', 'birmingham': 'B1',
+        'manchester': 'M1', 'london': 'EC1', 'leeds': 'LS1', 'sheffield': 'S1',
+        'liverpool': 'L1', 'wales': 'CF10', 'south west': 'BS1', 'midlands': 'B1',
+      };
+      for (const [city, postcode] of Object.entries(cityToPostcode)) {
+        if (queryLower.includes(city)) {
+          searchLocation = postcode;
+          break;
+        }
+      }
+    }
+
+    // Select questions based on category (after NLU + keyword fallback so category is resolved)
     const categoryQuestionsMap = {
       'Photocopiers': photocopierQuestions,
       'Telecoms': telecomsQuestions,
@@ -481,7 +560,6 @@ app.post('/api/ai-query', async (req, res) => {
     // Filter out already-answered questions
     const getProvidedFields = () => {
       const provided = new Set();
-      // Check direct params
       if (volume && volume !== 5000) provided.add('volume');
       if (colour !== undefined) provided.add('colour');
       if (a3 !== undefined) provided.add('a3');
@@ -491,13 +569,11 @@ app.post('/api/ai-query', async (req, res) => {
       if (numberOfCameras) provided.add('numberOfCameras');
       if (systemType) provided.add('systemType');
       if (inputColourRatio) provided.add('colourRatio');
-      // Check requirements object
       Object.keys(requirements).forEach(key => {
         if (requirements[key] !== undefined && requirements[key] !== null && requirements[key] !== '') {
           provided.add(key);
         }
       });
-      // Check currentSituation
       Object.keys(currentSituation).forEach(key => {
         if (currentSituation[key] !== undefined && currentSituation[key] !== null) {
           provided.add(key);
@@ -507,47 +583,6 @@ app.post('/api/ai-query', async (req, res) => {
     };
     const providedFields = getProvidedFields();
     const unansweredQuestions = categoryQuestions.filter(q => !providedFields.has(q.field));
-
-    // Build vendor search query
-    const searchQuery = {
-      $or: [{ 'account.status': 'active' }, { status: 'active' }]
-    };
-
-    if (normalizedService) {
-      searchQuery.services = { $in: [normalizedService] };
-    }
-
-    // Location filter — applied post-query via filterVendorsByLocation
-    const searchLocation = postcode || location;
-
-    // Parse natural language query
-    if (query && !serviceType && !searchLocation) {
-      const queryLower = query.toLowerCase();
-      if (queryLower.includes('copier') || queryLower.includes('printer') || queryLower.includes('print')) {
-        searchQuery.services = { $in: ['Photocopiers'] };
-      } else if (queryLower.includes('phone') || queryLower.includes('telecom') || queryLower.includes('voip')) {
-        searchQuery.services = { $in: ['Telecoms'] };
-      } else if (queryLower.includes('cctv') || queryLower.includes('camera') || queryLower.includes('surveillance')) {
-        searchQuery.services = { $in: ['CCTV'] };
-      } else if (queryLower.includes('it support') || queryLower.includes('managed it') || queryLower.includes('it services')) {
-        searchQuery.services = { $in: ['IT'] };
-      }
-
-      const locationPatterns = ['cardiff', 'newport', 'swansea', 'bristol', 'bath', 'gloucester', 'exeter',
-        'birmingham', 'manchester', 'london', 'leeds', 'sheffield', 'liverpool', 'wales', 'south west', 'midlands'];
-      for (const loc of locationPatterns) {
-        if (queryLower.includes(loc)) {
-          searchQuery.$and = searchQuery.$and || [];
-          searchQuery.$and.push({
-            $or: [
-              { 'location.city': { $regex: loc, $options: 'i' } },
-              { 'location.region': { $regex: loc, $options: 'i' } }
-            ]
-          });
-          break;
-        }
-      }
-    }
 
     // Find vendors — fetch more candidates since we'll filter by location post-query
     let vendors = await Vendor.find(searchQuery)
@@ -710,7 +745,7 @@ app.post('/api/ai-query', async (req, res) => {
     // =====================================================
     const scoreMatch = (vendor, product, vol, reqColour, reqA3, reqFeatures, allPricing) => {
       let score = 0;
-      const breakdown = { productFit: 0, vendorQuality: 0, tierBonus: 0, costEfficiency: 0 };
+      const breakdown = { productFit: 0, vendorQuality: 0, tierBonus: 0, costEfficiency: 0, locationProximity: 0 };
 
       // =====================================================
       // PRODUCT FIT (max 50 points) — MOST IMPORTANT
@@ -908,7 +943,18 @@ app.post('/api/ai-query', async (req, res) => {
       // =====================================================
       // This is set later after we have all pricing data
 
-      score = breakdown.productFit + breakdown.vendorQuality + breakdown.tierBonus;
+      // LOCATION PROXIMITY (modifier: -3 to +5 points)
+      if (vendor._distance !== undefined && vendor._distance !== null) {
+        if (vendor._distance <= 15) breakdown.locationProximity = 5;       // Very local
+        else if (vendor._distance <= 30) breakdown.locationProximity = 3;  // Local
+        else if (vendor._distance <= 50) breakdown.locationProximity = 1;  // Regional
+        else if (vendor._distance <= 80) breakdown.locationProximity = 0;  // Edge of range
+        else breakdown.locationProximity = -3;                              // Far
+      } else if (vendor._isNational) {
+        breakdown.locationProximity = -2;  // National vendors slightly penalised vs local
+      }
+
+      score = breakdown.productFit + breakdown.vendorQuality + breakdown.tierBonus + breakdown.locationProximity;
       return { score, breakdown };
     };
 
@@ -935,6 +981,13 @@ app.post('/api/ai-query', async (req, res) => {
       const rating = vendor.performance?.rating;
       if (rating >= 4.5) reasons.push(`Highly rated (${rating}★)`);
       else if (rating >= 4.0) reasons.push(`Well rated (${rating}★)`);
+
+      // Location-based reasons
+      if (vendor._distance !== null && vendor._distance !== undefined) {
+        if (vendor._distance <= 15) reasons.push('Located nearby');
+        else if (vendor._distance <= 30) reasons.push('Local supplier');
+      }
+      if (vendor._isNational && reasons.length < 3) reasons.push('National coverage');
 
       const tier = vendor.tier || vendor.account?.tier || 'free';
       if (tier === 'verified' && reasons.length < 3) reasons.push('Verified supplier');
