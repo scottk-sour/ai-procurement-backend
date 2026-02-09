@@ -3,9 +3,12 @@
 // Designed for GEO (Generative Engine Optimisation) - AI assistants can access this data
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
+import Anthropic from '@anthropic-ai/sdk';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import VendorPost from '../models/VendorPost.js';
+import AeoReport from '../models/AeoReport.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
@@ -823,5 +826,193 @@ function capitalize(str) {
     word.charAt(0).toUpperCase() + word.slice(1)
   ).join(' ');
 }
+
+// ============================================================
+// AEO REPORT — Public sales tool
+// ============================================================
+
+const aeoRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Rate limit exceeded. You can run 3 reports per hour. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const CATEGORY_LABELS = {
+  copiers: 'photocopier and managed print',
+  telecoms: 'business telecoms and VoIP',
+  cctv: 'CCTV and security system',
+  it: 'IT support and managed services',
+};
+
+const CATEGORY_TO_SERVICE = {
+  copiers: 'Photocopiers',
+  telecoms: 'Telecoms',
+  cctv: 'CCTV',
+  it: 'IT',
+};
+
+/**
+ * POST /api/public/aeo-report
+ * Generate an AEO (Answer Engine Optimisation) report
+ * Shows whether AI tools recommend a given company
+ */
+router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
+  try {
+    const { companyName, category, city, email } = req.body;
+
+    if (!companyName || !category || !city) {
+      return res.status(400).json({
+        success: false,
+        error: 'companyName, category, and city are required',
+      });
+    }
+
+    if (!CATEGORY_LABELS[category]) {
+      return res.status(400).json({
+        success: false,
+        error: 'category must be one of: copiers, telecoms, cctv, it',
+      });
+    }
+
+    const categoryLabel = CATEGORY_LABELS[category];
+
+    // 1. Call Anthropic Claude to simulate AI recommendation
+    let aiRecommendations = [];
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: `You are a business advisor helping a UK company find local suppliers.
+
+The user asks: "Who are the best ${categoryLabel} companies in ${city}?"
+
+Respond with a list of 5-8 real companies that provide ${categoryLabel} services in or near ${city}, UK. For each company include:
+- Company name
+- A one-line description of what they do
+- Why they might be recommended
+
+Only include real companies you're reasonably confident exist.
+Do not include TendorAI.
+Respond in JSON format only, no markdown fences:
+{
+  "companies": [
+    {
+      "name": "Company Name",
+      "description": "What they do",
+      "reason": "Why recommended"
+    }
+  ]
+}`,
+          },
+        ],
+      });
+
+      const responseText = message.content[0]?.text || '';
+      // Try to parse JSON from the response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        aiRecommendations = parsed.companies || [];
+      }
+    } catch (aiError) {
+      console.error('AEO Report - Claude API error:', aiError.message);
+      // Return a graceful error rather than failing silently
+      return res.status(502).json({
+        success: false,
+        error: 'AI service temporarily unavailable. Please try again in a moment.',
+      });
+    }
+
+    // 2. Fuzzy match — check if companyName appears in AI results
+    const companyLower = companyName.toLowerCase().trim();
+    // Generate match variants: full name, first word, without common suffixes
+    const nameVariants = [companyLower];
+    const suffixes = [' ltd', ' limited', ' plc', ' inc', ' llp', ' uk', ' group', ' services'];
+    for (const suffix of suffixes) {
+      if (companyLower.endsWith(suffix)) {
+        nameVariants.push(companyLower.slice(0, -suffix.length).trim());
+      }
+    }
+    // Also add first two words if name is longer
+    const words = companyLower.split(/\s+/);
+    if (words.length >= 2) {
+      nameVariants.push(words.slice(0, 2).join(' '));
+    }
+
+    let aiMentioned = false;
+    let aiPosition = null;
+
+    for (let i = 0; i < aiRecommendations.length; i++) {
+      const recName = (aiRecommendations[i].name || '').toLowerCase();
+      const matched = nameVariants.some(
+        (variant) => recName.includes(variant) || variant.includes(recName)
+      );
+      if (matched) {
+        aiMentioned = true;
+        aiPosition = i + 1;
+        break;
+      }
+    }
+
+    // 3. Count competitors on TendorAI in this category + city
+    const serviceRegex = new RegExp(CATEGORY_TO_SERVICE[category], 'i');
+    const cityRegex = new RegExp(city, 'i');
+
+    const competitorsOnTendorAI = await Vendor.countDocuments({
+      'account.status': 'active',
+      services: serviceRegex,
+      $or: [
+        { 'location.city': cityRegex },
+        { 'location.coverage': cityRegex },
+      ],
+    });
+
+    // 4. Save report for lead generation
+    const report = {
+      companyName,
+      category,
+      city,
+      email: email || undefined,
+      aiMentioned,
+      aiPosition,
+      aiRecommendations,
+      competitorsOnTendorAI,
+      ipAddress: req.ip,
+      createdAt: new Date(),
+    };
+
+    // Save async — don't block the response
+    AeoReport.create(report).catch((err) =>
+      console.error('Failed to save AEO report:', err.message)
+    );
+
+    // 5. Return results
+    res.json({
+      success: true,
+      companyName,
+      category,
+      city,
+      aiMentioned,
+      aiPosition,
+      aiRecommendations,
+      competitorsOnTendorAI,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('AEO Report error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate AEO report. Please try again.',
+    });
+  }
+});
 
 export default router;
