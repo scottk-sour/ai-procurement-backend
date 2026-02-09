@@ -4,7 +4,6 @@
 
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import Anthropic from '@anthropic-ai/sdk';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import VendorPost from '../models/VendorPost.js';
@@ -882,6 +881,10 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     // 1. Call Anthropic Claude to simulate AI recommendation
     let aiRecommendations = [];
     try {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        throw new Error('ANTHROPIC_API_KEY not configured');
+      }
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
       const message = await anthropic.messages.create({
