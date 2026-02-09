@@ -550,8 +550,8 @@ async function importVendors(filePath, options = {}) {
       results.inserted++; // Count as insert for dry-run
     } else {
       try {
-        // Generate password for new vendors
-        const tempPassword = generatePassword();
+        // Default password for new vendors (they can change on first login)
+        const tempPassword = 'TendorAI2026!';
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(tempPassword, salt);
         setOnInsertData.password = hashedPassword;
