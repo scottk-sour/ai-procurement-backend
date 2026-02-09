@@ -21,6 +21,7 @@
     "lint:fix": "echo \"Lint fix will be configured in Week 3\"",
     "format": "echo \"Formatting will be configured in Week 3\"",
     "format:check": "echo \"Format check will be configured in Week 3\"",
+    "scan:mentions": "node scripts/weeklyAIMentionScan.js",
     "clean": "rm -rf node_modules package-lock.json && npm install",
     "build": "echo \"No build step required for Node.js\""
   },
