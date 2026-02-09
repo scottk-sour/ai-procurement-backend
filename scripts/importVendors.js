@@ -117,22 +117,30 @@ function parseArray(str) {
  * Normalize service names to valid enum values
  */
 function normalizeServices(servicesStr) {
-  if (!servicesStr) return ['Photocopiers']; // Default
+  if (!servicesStr) return null; // Return null so deriveServicesFromCategory can take over
 
   const services = parseArray(servicesStr);
   const normalized = new Set();
 
   for (const service of services) {
-    const lower = service.toLowerCase();
+    const lower = service.toLowerCase().trim();
+    // Exact match first
     const mapped = SERVICE_MAP[lower];
     if (mapped && VALID_SERVICES.includes(mapped)) {
       normalized.add(mapped);
     } else if (VALID_SERVICES.includes(service)) {
       normalized.add(service);
+    } else {
+      // Substring/keyword matching for free-text descriptions
+      if (lower.includes('copier') || lower.includes('printer') || lower.includes('mfp') || lower.includes('print') || lower.includes('toner')) normalized.add('Photocopiers');
+      if (lower.includes('cctv') || lower.includes('camera') || lower.includes('surveillance') || lower.includes('alarm')) normalized.add('CCTV');
+      if (lower.includes('voip') || lower.includes('telecom') || lower.includes('phone') || lower.includes('broadband') || lower.includes('sip') || lower.includes('3cx') || lower.includes('mobile')) normalized.add('Telecoms');
+      if (lower.includes('managed it') || lower.includes('it support') || lower.includes('cybersecurity') || lower.includes('cyber') || lower.includes('cloud') || lower.includes('disaster recovery') || lower.includes('m365') || lower.includes('microsoft 365')) normalized.add('IT');
+      if (lower.includes('security') && !lower.includes('cctv') && !lower.includes('cyber')) normalized.add('Security');
     }
   }
 
-  return normalized.size > 0 ? Array.from(normalized) : ['Photocopiers'];
+  return normalized.size > 0 ? Array.from(normalized) : null;
 }
 
 /**
