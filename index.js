@@ -33,6 +33,7 @@ import reviewRoutes from './routes/reviewRoutes.js';
 import vendorPostRoutes from './routes/vendorPostRoutes.js';
 import aiMentionRoutes from './routes/aiMentionRoutes.js';
 import aiSearchTestRoutes from './routes/aiSearchTestRoutes.js';
+import geoAuditRoutes from './routes/geoAuditRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -293,6 +294,7 @@ app.use('/api/vendors', vendorPostRoutes);
 app.use('/api/posts', vendorPostRoutes);
 app.use('/api/ai-mentions', aiMentionRoutes);
 app.use('/api/ai-search-test', aiSearchTestRoutes);
+app.use('/api/geo-audit', geoAuditRoutes);
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes

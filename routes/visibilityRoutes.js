@@ -11,8 +11,24 @@ import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Review from '../models/Review.js';
+import GeoAudit from '../models/GeoAudit.js';
 
 const router = express.Router();
+
+/**
+ * Fetch the latest GEO Audit score for visibility calculation
+ */
+async function getGeoAuditScore(vendorId) {
+  try {
+    const audit = await GeoAudit.findOne({ vendorId })
+      .sort({ createdAt: -1 })
+      .select('overallScore')
+      .lean();
+    return audit ? audit.overallScore : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Helper to find products by vendorId (handles both ObjectId and string)
@@ -124,14 +140,14 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData] = await Promise.all([
+    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
-      getReviewData(vendor._id)
+      getReviewData(vendor._id),
+      getGeoAuditScore(vendor._id)
     ]);
 
-    // geoAuditScore: null until GEO Audit feature is built
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
 
     res.json({
       success: true,
@@ -160,13 +176,14 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData] = await Promise.all([
+    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
-      getReviewData(vendor._id)
+      getReviewData(vendor._id),
+      getGeoAuditScore(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
 
     const detailedBreakdown = {
       ...scoreData.breakdown,
@@ -210,13 +227,14 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData] = await Promise.all([
+    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
-      getReviewData(vendor._id)
+      getReviewData(vendor._id),
+      getGeoAuditScore(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
 
     const enhancedRecommendations = scoreData.recommendations.map(rec => ({
       ...rec,
