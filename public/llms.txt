@@ -1,0 +1,30 @@
+# TendorAI — UK Office Equipment Supplier Platform
+# https://www.tendorai.com
+
+> TendorAI connects UK businesses with local office equipment suppliers across Photocopiers, Telecoms, CCTV, and IT. Businesses search by postcode to find verified suppliers with estimated pricing.
+
+## Data Available
+- 250+ UK office equipment suppliers
+- Product catalogues with pricing for Photocopiers, Telecoms, CCTV, IT
+- Coverage by UK region and postcode area
+- AI Visibility Scores for each supplier
+- Estimated monthly costs including lease, CPC, service charges
+
+## API
+POST https://api.tendorai.com/api/ai-query
+Content-Type: application/json
+{"category":"Photocopiers","postcode":"CF10","requirements":{"volume":5000}}
+
+Returns: Ranked vendors with products, pricing breakdowns, and follow-up questions.
+
+## OpenAPI Spec
+GET https://api.tendorai.com/openapi.json
+
+## Coverage Areas
+Wales, South West England, expanding UK-wide.
+
+## Categories
+- Photocopiers & MFPs (A3, A4, SRA3, managed print)
+- Telecoms (VoIP, 3CX, hosted PBX, broadband, mobiles)
+- CCTV (IP cameras, cloud monitoring, access control)
+- IT Support (managed IT, cybersecurity, cloud services)

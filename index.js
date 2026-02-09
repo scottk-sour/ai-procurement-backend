@@ -62,6 +62,7 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3001',
   'https://localhost:3000',
   'https://ai-procurement-backend-q35u.onrender.com',
+  'https://api.tendorai.com',
 ];
 
 function isAllowedOrigin(origin) {
@@ -85,7 +86,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       scriptSrc: ["'self'"],
-      connectSrc: ["'self'", "https://www.tendorai.com", "https://tendorai.com", "https://app.tendorai.com", "https://ai-procurement-backend-q35u.onrender.com"],
+      connectSrc: ["'self'", "https://www.tendorai.com", "https://tendorai.com", "https://app.tendorai.com", "https://ai-procurement-backend-q35u.onrender.com", "https://api.tendorai.com"],
     },
   },
   crossOriginEmbedderPolicy: false, // Needed for cross-origin resources
