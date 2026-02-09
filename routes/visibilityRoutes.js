@@ -10,6 +10,7 @@ import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import Review from '../models/Review.js';
 
 const router = express.Router();
 
@@ -89,6 +90,27 @@ async function getMentionData(vendorId) {
 }
 
 /**
+ * Fetch review stats for visibility score
+ */
+async function getReviewData(vendorId) {
+  try {
+    const stats = await Review.aggregate([
+      { $match: { vendor: new mongoose.Types.ObjectId(vendorId), status: 'approved' } },
+      {
+        $group: {
+          _id: null,
+          reviewCount: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+        },
+      },
+    ]);
+    return stats[0] || { reviewCount: 0, averageRating: 0 };
+  } catch {
+    return { reviewCount: 0, averageRating: 0 };
+  }
+}
+
+/**
  * GET /api/visibility/score
  * Get the authenticated vendor's AI visibility score
  */
@@ -102,13 +124,14 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData] = await Promise.all([
+    const [products, mentionData, reviewData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getMentionData(vendor._id)
+      getMentionData(vendor._id),
+      getReviewData(vendor._id)
     ]);
 
     // geoAuditScore: null until GEO Audit feature is built
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
 
     res.json({
       success: true,
@@ -137,12 +160,13 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData] = await Promise.all([
+    const [products, mentionData, reviewData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getMentionData(vendor._id)
+      getMentionData(vendor._id),
+      getReviewData(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
 
     const detailedBreakdown = {
       ...scoreData.breakdown,
@@ -186,12 +210,13 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData] = await Promise.all([
+    const [products, mentionData, reviewData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getMentionData(vendor._id)
+      getMentionData(vendor._id),
+      getReviewData(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewData);
 
     const enhancedRecommendations = scoreData.recommendations.map(rec => ({
       ...rec,

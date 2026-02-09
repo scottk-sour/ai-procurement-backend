@@ -12,7 +12,7 @@
  * with the features that actually drive AI visibility.
  */
 
-export function calculateVisibilityScore(vendor, products = [], mentionData = {}, geoAuditScore = null) {
+export function calculateVisibilityScore(vendor, products = [], mentionData = {}, geoAuditScore = null, reviewData = {}) {
   const breakdown = {
     profile: { earned: 0, max: 30, label: 'Profile Completeness', items: [] },
     products: { earned: 0, max: 20, label: 'Product Data', items: [] },
@@ -196,13 +196,45 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   }
 
   // ============================================
-  // TOTAL
+  // REVIEW BONUS (max 5 pts, added to mentions)
   // ============================================
-  const totalScore =
+  const { reviewCount = 0, averageRating = 0 } = reviewData || {};
+
+  const hasOneReview = reviewCount >= 1;
+  const hasThreeReviews = reviewCount >= 3;
+  const hasHighRating = averageRating >= 4.0 && reviewCount > 0;
+
+  const reviewChecks = [
+    { name: 'Has at least 1 verified review', points: 2, completed: hasOneReview },
+    { name: 'Has 3+ reviews', points: 2, completed: hasThreeReviews },
+    { name: 'Average rating 4.0+', points: 1, completed: hasHighRating },
+  ];
+
+  reviewChecks.forEach((check) => {
+    breakdown.mentions.items.push(check);
+    if (check.completed) breakdown.mentions.earned += check.points;
+  });
+
+  // Update mentions max to include review bonus
+  breakdown.mentions.max = 30; // 25 base + 5 review bonus
+
+  if (reviewCount === 0) {
+    tips.push({
+      message: 'Get verified reviews to earn up to 5 bonus points',
+      impact: 'medium', points: 5, priority: 10,
+      category: 'mentions', action: 'Request Reviews from Customers',
+    });
+  }
+
+  // ============================================
+  // TOTAL (capped at 100)
+  // ============================================
+  const rawTotal =
     breakdown.profile.earned +
     breakdown.products.earned +
     breakdown.geo.earned +
     breakdown.mentions.earned;
+  const totalScore = Math.min(rawTotal, 100);
 
   // Sort tips by points desc, take top 3
   tips.sort((a, b) => b.points - a.points);

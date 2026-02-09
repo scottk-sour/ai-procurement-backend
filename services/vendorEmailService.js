@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import Review from '../models/Review.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import { sendEmail } from './emailService.js';
 
@@ -106,7 +107,13 @@ export async function generateWeeklyEmail(vendorId) {
     isActive: { $ne: false },
   }).lean();
 
-  const mentions = await getWeeklyMentionData(vendorId);
+  const [mentions, reviewStats] = await Promise.all([
+    getWeeklyMentionData(vendorId),
+    Review.aggregate([
+      { $match: { vendor: new mongoose.Types.ObjectId(vendorId), status: 'approved' } },
+      { $group: { _id: null, reviewCount: { $sum: 1 }, averageRating: { $avg: '$rating' } } },
+    ]).then(r => r[0] || { reviewCount: 0, averageRating: 0 }).catch(() => ({ reviewCount: 0, averageRating: 0 })),
+  ]);
 
   // Calculate visibility score
   const mentionData = {
@@ -115,7 +122,7 @@ export async function generateWeeklyEmail(vendorId) {
     totalMentions30d: mentions.totalMentions30d,
     avgPosition: null,
   };
-  const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
+  const scoreData = calculateVisibilityScore(vendor, products, mentionData, null, reviewStats);
 
   const vendorName = vendor.company || vendor.name || 'there';
   const tier = (vendor.tier || 'free').toLowerCase();
