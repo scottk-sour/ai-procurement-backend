@@ -265,9 +265,14 @@ const vendorSchema = new mongoose.Schema({
   passwordResetExpires: {
     type: Date,
     select: false
+  },
+
+  emailUnsubscribed: {
+    type: Boolean,
+    default: false
   }
 
-}, { 
+}, {
   timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }

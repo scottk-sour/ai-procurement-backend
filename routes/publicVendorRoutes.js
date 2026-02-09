@@ -3,6 +3,7 @@
 // Designed for GEO (Generative Engine Optimisation) - AI assistants can access this data
 
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
@@ -1017,5 +1018,54 @@ Respond in JSON format only, no markdown fences:
     });
   }
 });
+
+/**
+ * GET /api/public/unsubscribe
+ * One-click email unsubscribe (no login required, accessed from email link)
+ */
+router.get('/unsubscribe', async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).send(unsubscribePage('Invalid unsubscribe link.', false));
+    }
+
+    const JWT_SECRET = process.env.JWT_SECRET || process.env.VENDOR_JWT_SECRET || 'tendorai-secret';
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    if (decoded.purpose !== 'unsubscribe' || !decoded.vendorId) {
+      return res.status(400).send(unsubscribePage('Invalid unsubscribe link.', false));
+    }
+
+    await Vendor.updateOne(
+      { _id: decoded.vendorId },
+      { $set: { emailUnsubscribed: true } }
+    );
+
+    res.send(unsubscribePage("You've been unsubscribed from TendorAI weekly emails.", true));
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    res.status(400).send(unsubscribePage('This unsubscribe link is invalid or has expired.', false));
+  }
+});
+
+function unsubscribePage(message, success) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${success ? 'Unsubscribed' : 'Error'} — TendorAI</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f3f4f6;}
+.card{background:white;padding:40px;border-radius:12px;text-align:center;max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}
+.icon{font-size:48px;margin-bottom:16px;}
+h1{margin:0 0 8px;font-size:20px;color:#1f2937;}
+p{color:#6b7280;font-size:14px;margin:0;}
+a{color:#7c3aed;text-decoration:none;margin-top:16px;display:inline-block;font-size:14px;}</style>
+</head><body><div class="card">
+<div class="icon">${success ? '&#9989;' : '&#9888;'}</div>
+<h1>${success ? 'Unsubscribed' : 'Something went wrong'}</h1>
+<p>${message}</p>
+${success ? '<a href="https://www.tendorai.com">Go to TendorAI</a>' : ''}
+</div></body></html>`;
+}
 
 export default router;

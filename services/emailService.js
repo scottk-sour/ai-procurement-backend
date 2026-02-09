@@ -37,7 +37,7 @@ const getTransporter = () => {
 };
 
 // Helper to send email
-const sendEmail = async ({ to, subject, html, text }) => {
+export const sendEmail = async ({ to, subject, html, text }) => {
   const transport = getTransporter();
 
   const mailOptions = {
