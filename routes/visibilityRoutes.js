@@ -9,9 +9,7 @@ import vendorAuth from '../middleware/vendorAuth.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
-import VendorPost from '../models/VendorPost.js';
-import AiMention from '../models/AiMention.js';
-import VendorLead from '../models/VendorLead.js';
+import AIMentionScan from '../models/AIMentionScan.js';
 
 const router = express.Router();
 
@@ -28,57 +26,66 @@ async function findVendorProducts(vendorId) {
 }
 
 /**
- * Fetch activity data for the visibility score calculation
+ * Fetch AI mention data for visibility score calculation
  */
-async function getVendorActivity(vendorId) {
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+async function getMentionData(vendorId) {
+  const now = new Date();
 
-  const vendorObjectId = new mongoose.Types.ObjectId(vendorId);
+  const thisWeekStart = new Date(now);
+  thisWeekStart.setDate(now.getDate() - now.getDay());
+  thisWeekStart.setHours(0, 0, 0, 0);
 
-  const [publishedPostCount, aiMentionCount, leadResponseData] = await Promise.all([
-    // Count published posts
-    VendorPost.countDocuments({ vendor: vendorObjectId, status: 'published' }).catch(() => 0),
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
 
-    // Count AI mentions in last 30 days
-    AiMention.countDocuments({
-      'vendorsReturned.vendorId': vendorObjectId,
-      timestamp: { $gte: thirtyDaysAgo }
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(now.getDate() - 30);
+
+  const [mentionsThisWeek, mentionsLastWeek, totalMentions30d, positionAgg] = await Promise.all([
+    AIMentionScan.countDocuments({
+      vendorId, mentioned: true,
+      scanDate: { $gte: thisWeekStart },
     }).catch(() => 0),
 
-    // Average lead response time (time between lead creation and first status change from 'pending')
-    VendorLead.aggregate([
+    AIMentionScan.countDocuments({
+      vendorId, mentioned: true,
+      scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
+    }).catch(() => 0),
+
+    AIMentionScan.countDocuments({
+      vendorId, mentioned: true,
+      scanDate: { $gte: thirtyDaysAgo },
+    }).catch(() => 0),
+
+    AIMentionScan.aggregate([
       {
         $match: {
-          vendor: vendorObjectId,
-          viewedAt: { $exists: true, $ne: null },
-          createdAt: { $gte: thirtyDaysAgo }
-        }
-      },
-      {
-        $project: {
-          responseHours: {
-            $divide: [
-              { $subtract: ['$viewedAt', '$createdAt'] },
-              1000 * 60 * 60 // ms to hours
-            ]
-          }
-        }
+          vendorId: new mongoose.Types.ObjectId(vendorId),
+          mentioned: true,
+          scanDate: { $gte: thirtyDaysAgo },
+        },
       },
       {
         $group: {
           _id: null,
-          avgHours: { $avg: '$responseHours' }
-        }
-      }
-    ]).catch(() => [])
+          positions: { $push: '$position' },
+        },
+      },
+    ]).catch(() => []),
   ]);
 
-  return {
-    publishedPostCount,
-    aiMentionCount,
-    avgLeadResponseHours: leadResponseData[0]?.avgHours ?? null
-  };
+  // Calculate average position from position strings
+  let avgPosition = null;
+  if (positionAgg.length > 0) {
+    const positions = positionAgg[0].positions;
+    const firstCount = positions.filter(p => p === 'first').length;
+    const top3Count = positions.filter(p => p === 'top3').length;
+    if (firstCount > positions.length / 2) avgPosition = 'first';
+    else if ((firstCount + top3Count) > positions.length / 2) avgPosition = 'top3';
+    else avgPosition = 'mentioned';
+  }
+
+  return { mentionsThisWeek, mentionsLastWeek, totalMentions30d, avgPosition };
 }
 
 /**
@@ -95,12 +102,13 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, activity] = await Promise.all([
+    const [products, mentionData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getVendorActivity(vendor._id)
+      getMentionData(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, activity);
+    // geoAuditScore: null until GEO Audit feature is built
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
 
     res.json({
       success: true,
@@ -129,19 +137,20 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, activity] = await Promise.all([
+    const [products, mentionData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getVendorActivity(vendor._id)
+      getMentionData(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, activity);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
 
     const detailedBreakdown = {
       ...scoreData.breakdown,
       guidance: {
-        baseTier: 'Your subscription tier sets your base visibility ranking.',
-        profileCompleteness: 'Complete your profile so AI assistants can find and recommend you.',
-        activity: 'Stay active with products, posts, and fast responses to boost your score.',
+        profile: 'Complete your profile so AI assistants can find and recommend you.',
+        products: 'Add products with pricing to show up in buyer queries.',
+        geo: 'Run a GEO Audit to see how AI-ready your website is.',
+        mentions: 'Track how often AI tools mention your business.',
       }
     };
 
@@ -177,12 +186,12 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, activity] = await Promise.all([
+    const [products, mentionData] = await Promise.all([
       findVendorProducts(vendor._id),
-      getVendorActivity(vendor._id)
+      getMentionData(vendor._id)
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, activity);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, null);
 
     const enhancedRecommendations = scoreData.recommendations.map(rec => ({
       ...rec,
@@ -211,6 +220,7 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
  * Helper to map recommendation actions to URLs
  */
 function getActionUrl(action) {
+  if (!action) return '/vendor-dashboard?tab=profile';
   const actionLower = action.toLowerCase();
 
   if (actionLower.includes('upgrade') || actionLower.includes('subscription')) {
@@ -219,17 +229,17 @@ function getActionUrl(action) {
   if (actionLower.includes('product') || actionLower.includes('catalog')) {
     return '/vendor-dashboard?tab=products';
   }
-  if (actionLower.includes('certification') || actionLower.includes('accreditation')) {
-    return '/vendor-dashboard?tab=profile&section=certifications';
+  if (actionLower.includes('geo') || actionLower.includes('audit')) {
+    return '/vendor-dashboard/geo-audit';
+  }
+  if (actionLower.includes('profile') || actionLower.includes('settings')) {
+    return '/vendor-dashboard?tab=profile';
   }
   if (actionLower.includes('coverage') || actionLower.includes('location')) {
     return '/vendor-dashboard?tab=profile&section=coverage';
   }
   if (actionLower.includes('post') || actionLower.includes('blog')) {
     return '/vendor-dashboard/posts';
-  }
-  if (actionLower.includes('quote') || actionLower.includes('lead')) {
-    return '/vendor-dashboard/quotes';
   }
 
   return '/vendor-dashboard?tab=profile';
