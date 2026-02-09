@@ -15,6 +15,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 5000 })
  */
 export async function parseQueryWithNLU(query, category) {
   if (!query || query.trim().length < 3) return null;
+  if (!process.env.OPENAI_API_KEY) return null;
 
   const prompt = `Extract procurement requirements from this query. Return JSON only.
 Category: ${category || 'unknown'}
