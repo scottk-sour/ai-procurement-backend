@@ -894,15 +894,15 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         messages: [
           {
             role: 'user',
-            content: `I'm a business in ${city} looking for a ${categoryLabel} supplier. I want a local or regional company, not a national brand like BT, Vodafone, Canon, Konica Minolta, Xerox, or similar large corporations.
+            content: `Who are the best ${categoryLabel} companies near ${city}, UK?
 
-Who would you recommend in the ${city} area? List 5-8 local or regional companies with brief descriptions of why you'd recommend them.
+I want to know which companies a business in ${city} would find if they asked an AI assistant for ${categoryLabel} supplier recommendations. Include a mix of:
+- Well-known national/major providers that serve the ${city} area
+- Any regional or local companies you are CERTAIN actually exist near ${city}
 
-Important rules:
-- Only include independent, local, or regional businesses based in or serving the ${city} area
-- Do NOT include national/multinational corporations or their subsidiaries
-- Only include real companies you're reasonably confident exist
-- Do not include TendorAI
+CRITICAL: Every company you list MUST be a real company that you are highly confident exists. Do NOT invent or fabricate company names. If you are not sure a company exists, do not include it. It is better to list 3-4 real companies than 8 made-up ones.
+
+List up to 8 companies. Do not include TendorAI.
 
 Respond in JSON format only, no markdown fences:
 {
