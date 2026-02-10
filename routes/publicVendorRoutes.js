@@ -888,14 +888,13 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-      const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        tools: [{ type: 'web_search_20250305' }],
-        messages: [
-          {
-            role: 'user',
-            content: `Search the web for "${categoryLabel} companies in ${city} UK" and "${categoryLabel} suppliers near ${city}".
+      const searchTools = [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 3,
+      }];
+
+      const userPrompt = `Search the web for "${categoryLabel} companies in ${city} UK" and "${categoryLabel} suppliers near ${city}".
 
 Based on the search results, list 5-8 real ${categoryLabel} companies that serve the ${city} area. Prioritise local and regional businesses over large national corporations. Include a mix but favour independents and local companies.
 
@@ -910,16 +909,33 @@ Respond in JSON format only, no markdown fences:
       "reason": "Why recommended"
     }
   ]
-}`,
-          },
-        ],
-      });
+}`;
 
-      // Extract text from response (web search returns multiple content blocks)
-      const textBlocks = message.content.filter(block => block.type === 'text');
+      // Web search may return pause_turn — loop until we get the final response
+      let messages = [{ role: 'user', content: userPrompt }];
+      let finalContent = [];
+      for (let turn = 0; turn < 5; turn++) {
+        const resp = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          tools: searchTools,
+          messages,
+        });
+        finalContent = resp.content;
+        if (resp.stop_reason === 'end_turn') break;
+        // pause_turn — append assistant response and continue
+        messages = [
+          ...messages,
+          { role: 'assistant', content: resp.content },
+          { role: 'user', content: 'Continue.' },
+        ];
+      }
+
+      // Extract text from final response (web search returns multiple content blocks)
+      const textBlocks = finalContent.filter(block => block.type === 'text');
       const responseText = textBlocks.map(block => block.text).join('');
       // Try to parse JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*?\"companies\"\s*:\s*\[[\s\S]*?\]\s*\}/);
+      const jsonMatch = responseText.match(/\{[\s\S]*?"companies"\s*:\s*\[[\s\S]*?\]\s*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         aiRecommendations = parsed.companies || [];
