@@ -851,24 +851,21 @@ const CATEGORY_LABELS = {
 const CATEGORY_SEARCH_HINTS = {
   copiers: {
     queries: [
-      'photocopier dealer lease Ricoh Konica Minolta South Wales',
-      'managed print services MFP copier supplier Wales UK',
+      'Ricoh dealer South Wales copier leasing',
+      'Konica Minolta dealer Wales office copier supplier',
     ],
-    clarification: `CRITICAL FILTERING RULES — read carefully before selecting companies:
+    clarification: `CRITICAL — read BEFORE selecting companies:
 
-A copier dealer is a company that SELLS, LEASES, INSTALLS and SERVICES office photocopiers and multifunction printers (MFPs). They carry brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera, Toshiba. Their services include copier leasing, managed print services (remotely monitoring and maintaining a fleet of office copiers), toner supply, and maintenance/repair contracts.
+I am looking for COPIER DEALERS only. A copier dealer is a company that:
+- Sells or leases Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera or Toshiba photocopiers
+- Offers copier leasing contracts and managed print services (monitoring office copier fleets)
+- Provides toner, maintenance and repair for office MFPs
 
-You MUST EXCLUDE all of these — they are NOT copier dealers:
-- Print shops, commercial printers, litho printers, digital printers
-- Large format / wide format printing companies
-- Signage, vehicle wrapping, clothing printing companies
-- Graphic design or marketing agencies
-- Stationery shops or office supply retailers
-- Any business that prints documents/materials FOR customers
+REJECT any company that is a print shop, commercial printer, litho printer, signage maker, graphic designer, wide format printer, or vehicle wrapper. These are NOT copier dealers even if they own a photocopier.
 
-A simple test: does the company sell or lease photocopier HARDWARE? If not, exclude it.
+The simple test: does the company's website show copier HARDWARE for sale or lease (e.g. Ricoh MP C3004, Konica Minolta bizhub)? If the website shows printing SERVICES (business cards, flyers, banners), it is a print shop — exclude it.
 
-If fewer than 5 genuine copier dealers serve the {city} area, that is fine — return however many real copier dealers you find. Do NOT pad the list with print shops.`,
+It is OK to return only 2-3 companies if that is all you find. Do NOT fill the list with print shops.`,
   },
   telecoms: {
     queries: [
