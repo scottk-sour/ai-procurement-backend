@@ -851,11 +851,17 @@ const CATEGORY_LABELS = {
 const CATEGORY_SEARCH_HINTS = {
   copiers: {
     queries: [
-      'photocopier dealer {city} UK',
-      'managed print services office copiers {city}',
+      'Ricoh Konica Minolta photocopier supplier {city}',
+      'office copier lease MFP dealer near {city} UK',
     ],
-    clarification: `IMPORTANT: We are looking for companies that sell, lease, or service office photocopiers and multifunction printers (MFPs) — brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera. These are copier dealers and managed print service providers.
-Do NOT include: printing companies, print shops, litho printers, digital printing studios, signage companies, or graphic design studios. "Managed print" means managing a fleet of office copiers/MFPs, NOT running a commercial print shop.`,
+    clarification: `IMPORTANT: We are looking for copier dealers — companies that sell, lease, install and service office photocopiers and multifunction printers (MFPs). They typically sell brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera, Toshiba. They offer copier leasing, managed print services (managing a fleet of office machines), toner supply, and maintenance contracts.
+
+EXCLUDE these types of businesses entirely — they are NOT copier dealers:
+- Print shops / commercial printers (litho, digital printing, large format)
+- Signage and vehicle wrapping companies
+- Graphic design studios
+- Stationery / office supply shops
+- Any company whose main business is printing FOR customers rather than selling/leasing copier hardware TO customers`,
   },
   telecoms: {
     queries: [
