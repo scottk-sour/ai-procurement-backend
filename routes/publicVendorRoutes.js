@@ -851,17 +851,24 @@ const CATEGORY_LABELS = {
 const CATEGORY_SEARCH_HINTS = {
   copiers: {
     queries: [
-      'Ricoh Konica Minolta photocopier supplier {city}',
-      'office copier lease MFP dealer near {city} UK',
+      'photocopier dealer lease Ricoh Konica Minolta South Wales',
+      'managed print services MFP copier supplier Wales UK',
     ],
-    clarification: `IMPORTANT: We are looking for copier dealers — companies that sell, lease, install and service office photocopiers and multifunction printers (MFPs). They typically sell brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera, Toshiba. They offer copier leasing, managed print services (managing a fleet of office machines), toner supply, and maintenance contracts.
+    clarification: `CRITICAL FILTERING RULES — read carefully before selecting companies:
 
-EXCLUDE these types of businesses entirely — they are NOT copier dealers:
-- Print shops / commercial printers (litho, digital printing, large format)
-- Signage and vehicle wrapping companies
-- Graphic design studios
-- Stationery / office supply shops
-- Any company whose main business is printing FOR customers rather than selling/leasing copier hardware TO customers`,
+A copier dealer is a company that SELLS, LEASES, INSTALLS and SERVICES office photocopiers and multifunction printers (MFPs). They carry brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera, Toshiba. Their services include copier leasing, managed print services (remotely monitoring and maintaining a fleet of office copiers), toner supply, and maintenance/repair contracts.
+
+You MUST EXCLUDE all of these — they are NOT copier dealers:
+- Print shops, commercial printers, litho printers, digital printers
+- Large format / wide format printing companies
+- Signage, vehicle wrapping, clothing printing companies
+- Graphic design or marketing agencies
+- Stationery shops or office supply retailers
+- Any business that prints documents/materials FOR customers
+
+A simple test: does the company sell or lease photocopier HARDWARE? If not, exclude it.
+
+If fewer than 5 genuine copier dealers serve the ${city} area, that is fine — return however many real copier dealers you find. Do NOT pad the list with print shops.`,
   },
   telecoms: {
     queries: [
