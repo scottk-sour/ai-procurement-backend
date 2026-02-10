@@ -847,6 +847,39 @@ const CATEGORY_LABELS = {
   it: 'IT support and managed services',
 };
 
+// Category-specific search queries and clarifications for AEO report
+const CATEGORY_SEARCH_HINTS = {
+  copiers: {
+    queries: [
+      'photocopier dealer {city} UK',
+      'managed print services office copiers {city}',
+    ],
+    clarification: `IMPORTANT: We are looking for companies that sell, lease, or service office photocopiers and multifunction printers (MFPs) — brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera. These are copier dealers and managed print service providers.
+Do NOT include: printing companies, print shops, litho printers, digital printing studios, signage companies, or graphic design studios. "Managed print" means managing a fleet of office copiers/MFPs, NOT running a commercial print shop.`,
+  },
+  telecoms: {
+    queries: [
+      'business telecoms provider {city} UK',
+      'VoIP phone systems supplier {city}',
+    ],
+    clarification: '',
+  },
+  cctv: {
+    queries: [
+      'CCTV installer {city} UK',
+      'security systems company {city}',
+    ],
+    clarification: '',
+  },
+  it: {
+    queries: [
+      'IT support company {city} UK',
+      'managed IT services provider {city}',
+    ],
+    clarification: '',
+  },
+};
+
 const CATEGORY_TO_SERVICE = {
   copiers: 'Photocopiers',
   telecoms: 'Telecoms',
@@ -894,9 +927,16 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         max_uses: 3,
       }];
 
-      const userPrompt = `Search the web for "${categoryLabel} companies in ${city} UK" and "${categoryLabel} suppliers near ${city}".
+      const hints = CATEGORY_SEARCH_HINTS[category] || {};
+      const searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
+        .map(q => q.replace(/\{city\}/g, city));
+      const clarification = hints.clarification || '';
+
+      const userPrompt = `Search the web for ${searchQueries.map(q => `"${q}"`).join(' and ')}.
 
 Based on the search results, list 5-8 real ${categoryLabel} companies that serve the ${city} area. Prioritise local and regional businesses over large national corporations. Include a mix but favour independents and local companies.
+
+${clarification}
 
 Every company MUST be real and verified from your search results. Do not include TendorAI.
 
