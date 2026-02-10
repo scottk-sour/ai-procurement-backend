@@ -868,7 +868,7 @@ You MUST EXCLUDE all of these — they are NOT copier dealers:
 
 A simple test: does the company sell or lease photocopier HARDWARE? If not, exclude it.
 
-If fewer than 5 genuine copier dealers serve the ${city} area, that is fine — return however many real copier dealers you find. Do NOT pad the list with print shops.`,
+If fewer than 5 genuine copier dealers serve the {city} area, that is fine — return however many real copier dealers you find. Do NOT pad the list with print shops.`,
   },
   telecoms: {
     queries: [
@@ -943,7 +943,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       const hints = CATEGORY_SEARCH_HINTS[category] || {};
       const searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
         .map(q => q.replace(/\{city\}/g, city));
-      const clarification = hints.clarification || '';
+      const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
 
       const userPrompt = `Search the web for ${searchQueries.map(q => `"${q}"`).join(' and ')}.
 
