@@ -417,8 +417,14 @@ async function importVendors(filePath, options = {}) {
   // Row 1: Headers
   // Row 2+: Data
   // FREE TIER: 0-14, PAID TIER: 15-23
-  const COL = {
-    CATEGORY: 0,           // Both, Copiers, Telecoms, etc.
+  // Auto-detect column layout from headers
+  const headers = rawData[1] || [];
+  const headerStr = headers.map(h => (h || '').toString().toLowerCase()).join('|');
+  const hasAddressCol = headerStr.includes('address');
+
+  const COL = hasAddressCol ? {
+    // 24-column layout (Master spreadsheet with Address column)
+    CATEGORY: 0,
     COMPANY_NAME: 1,
     EMAIL: 2,
     PHONE: 3,
@@ -428,7 +434,7 @@ async function importVendors(filePath, options = {}) {
     POSTCODE: 7,
     REGION: 8,
     COVERAGE: 9,
-    POSTCODE_AREAS: 10,    // Pre-parsed postcode areas (BS, CF, LD, etc.)
+    POSTCODE_AREAS: 10,
     SERVICES: 11,
     BRANDS: 12,
     YEARS_IN_BUSINESS: 13,
@@ -442,7 +448,35 @@ async function importVendors(filePath, options = {}) {
     PAYMENT_TERMS: 21,
     MIN_CONTRACT_VALUE: 22,
     DESCRIPTION: 23
+  } : {
+    // 16-column layout (Clean spreadsheet without Address column)
+    CATEGORY: 0,
+    COMPANY_NAME: 1,
+    EMAIL: 2,
+    PHONE: 3,
+    WEBSITE: 4,
+    ADDRESS: -1,           // Not present
+    CITY: 5,
+    POSTCODE: 6,
+    REGION: 7,
+    COVERAGE: 8,
+    POSTCODE_AREAS: 9,
+    SERVICES: 10,
+    BRANDS: 11,
+    YEARS_IN_BUSINESS: 12,
+    QUALITY_RATING: -1,    // Not present
+    COMPANY_SIZE: -1,
+    NUM_EMPLOYEES: -1,
+    CERTIFICATIONS: 13,
+    ACCREDITATIONS: 14,
+    RESPONSE_TIME: -1,
+    SUPPORT_HOURS: -1,
+    PAYMENT_TERMS: -1,
+    MIN_CONTRACT_VALUE: -1,
+    DESCRIPTION: 15
   };
+
+  console.log(`✓ Column layout: ${hasAddressCol ? '24-column (Master)' : '16-column (Clean)'}`);
 
   const results = {
     total: 0,
@@ -474,6 +508,9 @@ async function importVendors(filePath, options = {}) {
     // Get category from spreadsheet (Both, Copiers, Telecoms, etc.)
     const category = (row[COL.CATEGORY] || '').toString().trim();
 
+    // Helper to safely get column value (-1 means column not present)
+    const col = (idx) => idx >= 0 ? (row[idx] || '') : '';
+
     // Build vendor update document (fields to set/update)
     const updateData = {
       // Core fields
@@ -484,49 +521,49 @@ async function importVendors(filePath, options = {}) {
       category: category,
 
       // Services - normalize from spreadsheet or derive from category
-      services: normalizeServices(row[COL.SERVICES]) || deriveServicesFromCategory(category),
+      services: normalizeServices(col(COL.SERVICES)) || deriveServicesFromCategory(category),
 
       // Brands
-      brands: parseArray(row[COL.BRANDS]),
+      brands: parseArray(col(COL.BRANDS)),
 
       // Location
       location: {
-        address: (row[COL.ADDRESS] || '').toString().trim(),
-        city: (row[COL.CITY] || '').toString().trim(),
-        postcode: (row[COL.POSTCODE] || '').toString().trim().toUpperCase(),
-        region: (row[COL.REGION] || '').toString().trim(),
-        coverage: parseArray(row[COL.COVERAGE])
+        address: col(COL.ADDRESS).toString().trim(),
+        city: col(COL.CITY).toString().trim(),
+        postcode: col(COL.POSTCODE).toString().trim().toUpperCase(),
+        region: col(COL.REGION).toString().trim(),
+        coverage: parseArray(col(COL.COVERAGE))
       },
 
       // Postcode areas for matching - use pre-parsed column or extract from postcode
-      postcodeAreas: parsePostcodeAreas(row[COL.POSTCODE_AREAS]) || extractPostcodeAreas(row[COL.POSTCODE]),
+      postcodeAreas: parsePostcodeAreas(col(COL.POSTCODE_AREAS)) || extractPostcodeAreas(col(COL.POSTCODE)),
 
       // Contact info
       contactInfo: {
-        phone: cleanPhone(row[COL.PHONE]),
-        website: cleanWebsite(row[COL.WEBSITE])
+        phone: cleanPhone(col(COL.PHONE)),
+        website: cleanWebsite(col(COL.WEBSITE))
       },
 
       // Business profile
       businessProfile: {
-        yearsInBusiness: parseYearsInBusiness(row[COL.YEARS_IN_BUSINESS]),
-        companySize: mapCompanySize(row[COL.COMPANY_SIZE]),
-        numEmployees: parseNumber(row[COL.NUM_EMPLOYEES]),
-        certifications: parseArray(row[COL.CERTIFICATIONS]),
-        accreditations: parseArray(row[COL.ACCREDITATIONS]),
-        description: (row[COL.DESCRIPTION] || '').toString().trim()
+        yearsInBusiness: parseYearsInBusiness(col(COL.YEARS_IN_BUSINESS)),
+        companySize: mapCompanySize(col(COL.COMPANY_SIZE)),
+        numEmployees: parseNumber(col(COL.NUM_EMPLOYEES)),
+        certifications: parseArray(col(COL.CERTIFICATIONS)),
+        accreditations: parseArray(col(COL.ACCREDITATIONS)),
+        description: col(COL.DESCRIPTION).toString().trim()
       },
 
       // Service capabilities
       serviceCapabilities: {
-        responseTime: mapResponseTime(row[COL.RESPONSE_TIME]),
-        supportHours: mapSupportHours(row[COL.SUPPORT_HOURS])
+        responseTime: mapResponseTime(col(COL.RESPONSE_TIME)),
+        supportHours: mapSupportHours(col(COL.SUPPORT_HOURS))
       },
 
       // Commercial - payment terms must be valid enum or default to 'Net 30'
       commercial: {
-        paymentTerms: mapPaymentTerms(row[COL.PAYMENT_TERMS]),
-        minimumOrderValue: parseNumber(row[COL.MIN_CONTRACT_VALUE])
+        paymentTerms: mapPaymentTerms(col(COL.PAYMENT_TERMS)),
+        minimumOrderValue: parseNumber(col(COL.MIN_CONTRACT_VALUE))
       },
 
       // Import tracking - always update
