@@ -890,19 +890,16 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
       const message = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 4096,
+        tools: [{ type: 'web_search_20250305' }],
         messages: [
           {
             role: 'user',
-            content: `Who are the best ${categoryLabel} companies near ${city}, UK?
+            content: `Search the web for "${categoryLabel} companies in ${city} UK" and "${categoryLabel} suppliers near ${city}".
 
-I want to know which companies a business in ${city} would find if they asked an AI assistant for ${categoryLabel} supplier recommendations. Include a mix of:
-- Well-known national/major providers that serve the ${city} area
-- Any regional or local companies you are CERTAIN actually exist near ${city}
+Based on the search results, list 5-8 real ${categoryLabel} companies that serve the ${city} area. Prioritise local and regional businesses over large national corporations. Include a mix but favour independents and local companies.
 
-CRITICAL: Every company you list MUST be a real company that you are highly confident exists. Do NOT invent or fabricate company names. If you are not sure a company exists, do not include it. It is better to list 3-4 real companies than 8 made-up ones.
-
-List up to 8 companies. Do not include TendorAI.
+Every company MUST be real and verified from your search results. Do not include TendorAI.
 
 Respond in JSON format only, no markdown fences:
 {
@@ -918,9 +915,11 @@ Respond in JSON format only, no markdown fences:
         ],
       });
 
-      const responseText = message.content[0]?.text || '';
+      // Extract text from response (web search returns multiple content blocks)
+      const textBlocks = message.content.filter(block => block.type === 'text');
+      const responseText = textBlocks.map(block => block.text).join('');
       // Try to parse JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonMatch = responseText.match(/\{[\s\S]*?\"companies\"\s*:\s*\[[\s\S]*?\]\s*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         aiRecommendations = parsed.companies || [];
