@@ -143,23 +143,50 @@ router.get('/competitors', vendorAuth, async (req, res) => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const competitorAgg = await AIMentionScan.aggregate([
-        {
-          $match: {
-            vendorId: new mongoose.Types.ObjectId(vendorId),
-            scanDate: { $gte: thirtyDaysAgo },
+      const [competitorAgg, topCompetitorCounts] = await Promise.all([
+        AIMentionScan.aggregate([
+          {
+            $match: {
+              vendorId: new mongoose.Types.ObjectId(vendorId),
+              scanDate: { $gte: thirtyDaysAgo },
+            },
           },
-        },
-        { $unwind: '$competitorsMentioned' },
-        { $group: { _id: '$competitorsMentioned' } },
-        { $count: 'total' },
+          { $unwind: '$competitorsMentioned' },
+          { $group: { _id: '$competitorsMentioned' } },
+          { $count: 'total' },
+        ]),
+        // Get top 3 competitor mention counts (without names)
+        AIMentionScan.aggregate([
+          {
+            $match: {
+              vendorId: new mongoose.Types.ObjectId(vendorId),
+              scanDate: { $gte: thirtyDaysAgo },
+            },
+          },
+          { $unwind: '$competitorsMentioned' },
+          {
+            $group: {
+              _id: '$competitorsMentioned',
+              mentionCount: { $sum: 1 },
+            },
+          },
+          { $sort: { mentionCount: -1 } },
+          { $limit: 3 },
+          { $project: { mentionCount: 1, _id: 0 } },
+        ]),
       ]);
+
+      const category = vendor.services?.[0] || '';
+      const location = vendor.location?.city || '';
 
       return res.json({
         success: true,
         data: {
           locked: true,
           competitorCount: competitorAgg[0]?.total || 0,
+          topCounts: topCompetitorCounts.map((c) => c.mentionCount),
+          category,
+          location,
           message: "Upgrade to see who's outranking you in AI search",
         },
       });
@@ -238,6 +265,49 @@ router.get('/competitors', vendorAuth, async (req, res) => {
   } catch (error) {
     console.error('AI mentions competitors error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch competitor data' });
+  }
+});
+
+/**
+ * GET /api/ai-mentions/lead-teaser
+ * Returns count of searches in vendor's category+location (last 30 days)
+ * Used to show free-tier vendors how many buyers are searching in their space
+ */
+router.get('/lead-teaser', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const vendor = await Vendor.findById(vendorId).select('services location').lean();
+
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    const category = vendor.services?.[0] || '';
+    const location = vendor.location?.city || '';
+
+    if (!category || !location) {
+      return res.json({
+        success: true,
+        data: { searchCount: 0, category, location },
+      });
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const searchCount = await AIMentionScan.countDocuments({
+      category,
+      location: { $regex: new RegExp(location, 'i') },
+      scanDate: { $gte: thirtyDaysAgo },
+    });
+
+    res.json({
+      success: true,
+      data: { searchCount, category, location },
+    });
+  } catch (error) {
+    console.error('Lead teaser error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch lead teaser data' });
   }
 });
 
