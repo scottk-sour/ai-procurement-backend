@@ -3,7 +3,7 @@
  * Usage: node scripts/generate-location-content.js
  *
  * Generates 300-500 words of unique content per category/location combination.
- * Uses OpenAI GPT-4o-mini for cost-effective generation.
+ * Uses Anthropic Claude Haiku 4.5 for cost-effective generation.
  * Stores results in MongoDB LocationContent collection.
  *
  * Rate limited: 1 second between API calls to avoid throttling.
@@ -11,18 +11,18 @@
 
 import 'dotenv/config';
 import mongoose from 'mongoose';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
 // --- Configuration ---
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-if (!MONGODB_URI || !OPENAI_API_KEY) {
-  console.error('Missing MONGODB_URI or OPENAI_API_KEY env vars');
+if (!MONGODB_URI || !ANTHROPIC_API_KEY) {
+  console.error('Missing MONGODB_URI or ANTHROPIC_API_KEY env vars');
   process.exit(1);
 }
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 // --- LocationContent schema (inline for script independence) ---
 const locationContentSchema = new mongoose.Schema({
@@ -32,7 +32,7 @@ const locationContentSchema = new mongoose.Schema({
   content: { type: String, required: true },
   wordCount: { type: Number },
   generatedAt: { type: Date, default: Date.now },
-  model: { type: String, default: 'gpt-4o-mini' },
+  model: { type: String, default: 'claude-haiku-4-5-20251001' },
 }, { timestamps: true });
 
 locationContentSchema.index({ category: 1, location: 1 }, { unique: true });
@@ -138,17 +138,18 @@ async function main() {
     try {
       const prompt = buildPrompt(category, location);
 
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+      const response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        system: 'You are a UK business content writer specialising in office equipment procurement. Write factual, helpful content. Use UK English.',
         messages: [
-          { role: 'system', content: 'You are a UK business content writer specialising in office equipment procurement. Write factual, helpful content. Use UK English.' },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.8,
-        max_tokens: 800,
       });
 
-      const content = response.choices[0]?.message?.content?.trim();
+      const content = response.content[0]?.type === 'text'
+        ? response.content[0].text.trim()
+        : '';
       if (!content || content.length < 100) {
         console.warn(`Skipping ${category.slug}/${location} — response too short`);
         failed++;
@@ -167,7 +168,7 @@ async function main() {
           content,
           wordCount,
           generatedAt: new Date(),
-          model: 'gpt-4o-mini',
+          model: 'claude-haiku-4-5-20251001',
         },
         { upsert: true, new: true }
       );
