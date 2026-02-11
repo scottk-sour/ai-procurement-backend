@@ -179,12 +179,47 @@ router.get('/competitors', vendorAuth, async (req, res) => {
       const category = vendor.services?.[0] || '';
       const location = vendor.location?.city || '';
 
+      // Calculate vendor's actual rank in their category+location
+      let vendorRank = null;
+      let vendorMentionCount = 0;
+      if (category && location) {
+        const allVendorMentions = await AIMentionScan.aggregate([
+          {
+            $match: {
+              category,
+              location: { $regex: new RegExp(location, 'i') },
+              mentioned: true,
+              scanDate: { $gte: thirtyDaysAgo },
+            },
+          },
+          {
+            $group: {
+              _id: '$vendorId',
+              mentionCount: { $sum: 1 },
+            },
+          },
+          { $sort: { mentionCount: -1 } },
+        ]);
+
+        const vendorIdStr = vendorId.toString();
+        const vendorEntry = allVendorMentions.find(
+          (v) => v._id.toString() === vendorIdStr
+        );
+        vendorMentionCount = vendorEntry?.mentionCount || 0;
+        const rank = allVendorMentions.findIndex(
+          (v) => v._id.toString() === vendorIdStr
+        );
+        vendorRank = rank >= 0 ? rank + 1 : allVendorMentions.length + 1;
+      }
+
       return res.json({
         success: true,
         data: {
           locked: true,
           competitorCount: competitorAgg[0]?.total || 0,
           topCounts: topCompetitorCounts.map((c) => c.mentionCount),
+          vendorRank,
+          vendorMentionCount,
           category,
           location,
           message: "Upgrade to see who's outranking you in AI search",
