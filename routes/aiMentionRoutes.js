@@ -139,50 +139,19 @@ router.get('/competitors', vendorAuth, async (req, res) => {
     const paid = isPaidTier(vendor);
 
     if (!paid) {
-      // Count unique competitors without revealing names
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const [competitorAgg, topCompetitorCounts] = await Promise.all([
-        AIMentionScan.aggregate([
-          {
-            $match: {
-              vendorId: new mongoose.Types.ObjectId(vendorId),
-              scanDate: { $gte: thirtyDaysAgo },
-            },
-          },
-          { $unwind: '$competitorsMentioned' },
-          { $group: { _id: '$competitorsMentioned' } },
-          { $count: 'total' },
-        ]),
-        // Get top 3 competitor mention counts (without names)
-        AIMentionScan.aggregate([
-          {
-            $match: {
-              vendorId: new mongoose.Types.ObjectId(vendorId),
-              scanDate: { $gte: thirtyDaysAgo },
-            },
-          },
-          { $unwind: '$competitorsMentioned' },
-          {
-            $group: {
-              _id: '$competitorsMentioned',
-              mentionCount: { $sum: 1 },
-            },
-          },
-          { $sort: { mentionCount: -1 } },
-          { $limit: 3 },
-          { $project: { mentionCount: 1, _id: 0 } },
-        ]),
-      ]);
 
       const category = vendor.services?.[0] || '';
       const location = vendor.location?.city || '';
 
-      // Calculate vendor's actual rank in their category+location
+      let competitorCount = 0;
+      let topCounts = [];
       let vendorRank = null;
       let vendorMentionCount = 0;
+
       if (category && location) {
+        // Get all vendors in same category+location ranked by mention count
         const allVendorMentions = await AIMentionScan.aggregate([
           {
             $match: {
@@ -210,14 +179,21 @@ router.get('/competitors', vendorAuth, async (req, res) => {
           (v) => v._id.toString() === vendorIdStr
         );
         vendorRank = rank >= 0 ? rank + 1 : allVendorMentions.length + 1;
+
+        // Competitors = other vendors in same space (excluding current)
+        const competitors = allVendorMentions.filter(
+          (v) => v._id.toString() !== vendorIdStr
+        );
+        competitorCount = competitors.length;
+        topCounts = competitors.slice(0, 3).map((c) => c.mentionCount);
       }
 
       return res.json({
         success: true,
         data: {
           locked: true,
-          competitorCount: competitorAgg[0]?.total || 0,
-          topCounts: topCompetitorCounts.map((c) => c.mentionCount),
+          competitorCount,
+          topCounts,
           vendorRank,
           vendorMentionCount,
           category,
@@ -231,40 +207,15 @@ router.get('/competitors', vendorAuth, async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Top competitors
-    const topCompetitors = await AIMentionScan.aggregate([
-      {
-        $match: {
-          vendorId: new mongoose.Types.ObjectId(vendorId),
-          scanDate: { $gte: thirtyDaysAgo },
-        },
-      },
-      { $unwind: '$competitorsMentioned' },
-      {
-        $group: {
-          _id: '$competitorsMentioned',
-          mentionCount: { $sum: 1 },
-        },
-      },
-      { $sort: { mentionCount: -1 } },
-      { $limit: 10 },
-      {
-        $project: {
-          name: '$_id',
-          mentionCount: 1,
-          _id: 0,
-        },
-      },
-    ]);
-
-    // Vendor's own rank: how many vendors in same category+location are mentioned more
     const category = vendor.services?.[0] || '';
     const location = vendor.location?.city || '';
 
+    let topCompetitors = [];
     let vendorRank = null;
     let vendorMentionCount = 0;
+
     if (category && location) {
-      // Count mentions for all vendors in the same category+location in last 30 days
+      // Get all vendors in same category+location ranked by AI mention count
       const allVendorMentions = await AIMentionScan.aggregate([
         {
           $match: {
@@ -283,6 +234,7 @@ router.get('/competitors', vendorAuth, async (req, res) => {
         { $sort: { mentionCount: -1 } },
       ]);
 
+      // Find current vendor's rank and mention count
       const vendorIdStr = vendorId.toString();
       const vendorEntry = allVendorMentions.find(
         (v) => v._id.toString() === vendorIdStr
@@ -292,6 +244,29 @@ router.get('/competitors', vendorAuth, async (req, res) => {
         (v) => v._id.toString() === vendorIdStr
       );
       vendorRank = rank >= 0 ? rank + 1 : allVendorMentions.length + 1;
+
+      // Get top competitors (exclude current vendor), populate company names
+      const competitorEntries = allVendorMentions
+        .filter((v) => v._id.toString() !== vendorIdStr)
+        .slice(0, 10);
+
+      if (competitorEntries.length > 0) {
+        const competitorIds = competitorEntries.map((v) => v._id);
+        const competitorVendors = await Vendor.find(
+          { _id: { $in: competitorIds } },
+          { company: 1 }
+        ).lean();
+
+        const nameMap = {};
+        for (const v of competitorVendors) {
+          nameMap[v._id.toString()] = v.company || 'Unknown Vendor';
+        }
+
+        topCompetitors = competitorEntries.map((v) => ({
+          name: nameMap[v._id.toString()] || 'Unknown Vendor',
+          mentionCount: v.mentionCount,
+        }));
+      }
     }
 
     res.json({
