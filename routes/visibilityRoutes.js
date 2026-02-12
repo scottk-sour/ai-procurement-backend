@@ -12,6 +12,7 @@ import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Review from '../models/Review.js';
 import GeoAudit from '../models/GeoAudit.js';
+import VendorActivity from '../models/VendorActivity.js';
 
 const router = express.Router();
 
@@ -127,6 +128,73 @@ async function getReviewData(vendorId) {
 }
 
 /**
+ * Fetch engagement data for visibility score
+ */
+async function getEngagementData(vendorId) {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 7);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(now.getDate() - 30);
+
+  try {
+    const vendor = await Vendor.findById(vendorId).select('account.lastLogin').lean();
+
+    const [searchTestCount, quoteResponse, profileUpdate] = await Promise.all([
+      AIMentionScan.countDocuments({
+        vendorId, source: 'live_test', scanDate: { $gte: monthStart },
+      }).catch(() => 0),
+      VendorActivity.findOne({
+        vendorId,
+        type: { $in: ['request_responded', 'quote_sent', 'customer_contacted'] },
+        date: { $gte: thirtyDaysAgo },
+      }).lean().catch(() => null),
+      VendorActivity.findOne({
+        vendorId,
+        category: { $in: ['profile', 'products'] },
+        date: { $gte: monthStart },
+      }).lean().catch(() => null),
+    ]);
+
+    return {
+      loggedInLast7Days: !!(vendor?.account?.lastLogin && new Date(vendor.account.lastLogin) >= sevenDaysAgo),
+      ranSearchTestThisMonth: searchTestCount > 0,
+      respondedToQuoteWithin24hrs: !!quoteResponse,
+      updatedProfileThisMonth: !!profileUpdate,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Fetch verified-only features data for visibility score
+ */
+async function getVerifiedFeaturesData(vendorId) {
+  try {
+    const [geoAudit, competitorScans] = await Promise.all([
+      GeoAudit.findOne({ vendorId }).sort({ createdAt: -1 }).lean(),
+      AIMentionScan.countDocuments({ vendorId, source: 'weekly_scan' }).catch(() => 0),
+    ]);
+
+    const schemaCheck = geoAudit?.checks?.find(
+      c => c.name && c.name.toLowerCase().includes('schema')
+    );
+
+    return {
+      geoAuditCompleted: !!geoAudit,
+      schemaVerified: schemaCheck ? schemaCheck.score >= 7 : false,
+      priorityPlacement: false,
+      competitorTracking: competitorScans > 0,
+      customAiPrompt: false,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * GET /api/visibility/score
  * Get the authenticated vendor's AI visibility score
  */
@@ -140,14 +208,15 @@ router.get('/score', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
+    const [products, mentionData, reviewData, engagementData, verifiedFeatures] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
       getReviewData(vendor._id),
-      getGeoAuditScore(vendor._id)
+      getEngagementData(vendor._id),
+      getVerifiedFeaturesData(vendor._id),
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, reviewData, engagementData, verifiedFeatures);
 
     res.json({
       success: true,
@@ -176,22 +245,26 @@ router.get('/breakdown', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
+    const [products, mentionData, reviewData, engagementData, verifiedFeatures] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
       getReviewData(vendor._id),
-      getGeoAuditScore(vendor._id)
+      getEngagementData(vendor._id),
+      getVerifiedFeaturesData(vendor._id),
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, reviewData, engagementData, verifiedFeatures);
 
     const detailedBreakdown = {
       ...scoreData.breakdown,
       guidance: {
         profile: 'Complete your profile so AI assistants can find and recommend you.',
         products: 'Add products with pricing to show up in buyer queries.',
-        geo: 'Run a GEO Audit to see how AI-ready your website is.',
+        reviews: 'Get verified reviews to build trust with AI systems.',
         mentions: 'Track how often AI tools mention your business.',
+        engagement: 'Stay active on the platform to maintain your score.',
+        plan: 'Upgrade your plan to unlock more scoring potential.',
+        verified: 'Verified-only features for maximum AI visibility.',
       }
     };
 
@@ -227,14 +300,15 @@ router.get('/recommendations', vendorAuth, async (req, res) => {
       });
     }
 
-    const [products, mentionData, reviewData, geoAuditScore] = await Promise.all([
+    const [products, mentionData, reviewData, engagementData, verifiedFeatures] = await Promise.all([
       findVendorProducts(vendor._id),
       getMentionData(vendor._id),
       getReviewData(vendor._id),
-      getGeoAuditScore(vendor._id)
+      getEngagementData(vendor._id),
+      getVerifiedFeaturesData(vendor._id),
     ]);
 
-    const scoreData = calculateVisibilityScore(vendor, products, mentionData, geoAuditScore, reviewData);
+    const scoreData = calculateVisibilityScore(vendor, products, mentionData, reviewData, engagementData, verifiedFeatures);
 
     const enhancedRecommendations = scoreData.recommendations.map(rec => ({
       ...rec,

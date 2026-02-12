@@ -1,37 +1,15 @@
 /**
- * Calculate AI Visibility Score for a vendor
- * Blended score from 0-100 across 4 components:
+ * AI Visibility Score — Hard-to-climb model
  *
- * - PROFILE COMPLETENESS: max 30 points (30%)
- * - PRODUCT DATA: max 20 points (20%)
- * - GEO AUDIT: max 25 points (25%)
- * - AI MENTIONS: max 25 points (25%)
- *
- * A vendor with a perfect profile but no GEO audit and no AI mentions
- * maxes out at 50/100. This is intentional — it forces engagement
- * with the features that actually drive AI visibility.
+ * 7 categories, 100 points total. Tier ceilings:
+ *   Free vendor, fully active:      ~40/100
+ *   Visible £99, fully active:      ~75/100
+ *   Verified £149, fully active:    ~95/100
+ *   Nobody hits 100 without doing everything.
  */
 
-export function calculateVisibilityScore(vendor, products = [], mentionData = {}, geoAuditScore = null, reviewData = {}) {
-  const breakdown = {
-    profile: { earned: 0, max: 30, label: 'Profile Completeness', items: [] },
-    products: { earned: 0, max: 20, label: 'Product Data', items: [] },
-    geo: { earned: 0, max: 25, label: 'GEO Audit', items: [] },
-    mentions: { earned: 0, max: 25, label: 'AI Mentions', items: [] },
-  };
-
-  // Backward compatibility aliases (old code may reference these)
-  Object.defineProperty(breakdown, 'baseTier', { get() { return breakdown.profile; }, enumerable: false });
-  Object.defineProperty(breakdown, 'subscriptionTier', { get() { return breakdown.profile; }, enumerable: false });
-  Object.defineProperty(breakdown, 'tierBonus', { get() { return breakdown.profile; }, enumerable: false });
-  Object.defineProperty(breakdown, 'profileCompleteness', { get() { return breakdown.profile; }, enumerable: false });
-  Object.defineProperty(breakdown, 'productData', { get() { return breakdown.products; }, enumerable: false });
-  Object.defineProperty(breakdown, 'activity', { get() { return breakdown.mentions; }, enumerable: false });
-  Object.defineProperty(breakdown, 'trustAndReviews', { get() { return breakdown.mentions; }, enumerable: false });
-
-  const tips = [];
-
-  // Normalize tier for display
+export function calculateVisibilityScore(vendor, products = [], mentionData = {}, reviewData = {}, engagementData = {}, verifiedFeatures = {}) {
+  // Normalize tier
   const rawTier = vendor.tier || vendor.account?.tier || 'free';
   const tierMapping = {
     'free': 'listed', 'listed': 'listed',
@@ -40,34 +18,36 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
     'gold': 'verified', 'enterprise': 'verified', 'platinum': 'verified',
   };
   const tier = tierMapping[rawTier.toLowerCase()] || 'listed';
+  const isVerified = tier === 'verified';
+
+  const breakdown = {
+    profile:    { earned: 0, max: 10, label: 'Profile Completeness', items: [] },
+    products:   { earned: 0, max: 10, label: 'Product Catalog', items: [] },
+    reviews:    { earned: 0, max: 10, label: 'Reviews', items: [] },
+    mentions:   { earned: 0, max: 20, label: 'AI Mentions', items: [] },
+    engagement: { earned: 0, max: 10, label: 'Engagement', items: [] },
+    plan:       { earned: 0, max: 20, label: 'Plan Tier', items: [] },
+    verified:   { earned: 0, max: 20, label: 'Verified Features', items: [], locked: !isVerified },
+  };
+
+  const tips = [];
 
   // ============================================
-  // PROFILE COMPLETENESS (max 30 pts)
+  // PROFILE COMPLETENESS (max 10 pts)
   // ============================================
-  const hasCompanyName = !!vendor.company;
-  const hasLocation = !!(vendor.location?.city || vendor.location?.postcode);
-  const hasPhone = !!(vendor.contactInfo?.phone || vendor.phone);
-  const hasEmail = !!vendor.email;
-  const hasWebsite = !!(vendor.contactInfo?.website || vendor.website);
+  const hasCompanyAndLocation = !!vendor.company && !!(vendor.location?.city || vendor.location?.postcode);
+  const hasContactInfo = !!(vendor.contactInfo?.phone || vendor.phone) && !!vendor.email && !!(vendor.contactInfo?.website || vendor.website);
   const description = vendor.businessProfile?.description || vendor.description || '';
-  const hasDescription = description.length >= 50;
+  const hasDescription = description.length >= 100;
   const hasLogo = !!vendor.businessProfile?.logoUrl;
-  const hasServices = (vendor.services || []).length > 0;
-  const hasCoverage = (vendor.location?.coverage || vendor.coverageAreas || []).length > 0;
-  const hasBrands = (vendor.brands || []).length > 0 ||
-    (vendor.businessProfile?.certifications || []).length > 0;
+  const hasCoverageAndServices = (vendor.services || []).length > 0 && (vendor.location?.coverage || vendor.coverageAreas || []).length > 0;
 
   const profileChecks = [
-    { name: 'Company name', points: 3, completed: hasCompanyName },
-    { name: 'Location/postcode', points: 3, completed: hasLocation },
-    { name: 'Phone number', points: 3, completed: hasPhone },
-    { name: 'Email address', points: 3, completed: hasEmail },
-    { name: 'Website URL', points: 3, completed: hasWebsite },
-    { name: 'Description (50+ chars)', points: 3, completed: hasDescription },
-    { name: 'Logo uploaded', points: 3, completed: hasLogo },
-    { name: 'Services listed', points: 3, completed: hasServices },
-    { name: 'Coverage areas defined', points: 3, completed: hasCoverage },
-    { name: 'Brands/certifications listed', points: 3, completed: hasBrands },
+    { name: 'Company name + location', points: 2, completed: hasCompanyAndLocation },
+    { name: 'Phone, email & website', points: 2, completed: hasContactInfo },
+    { name: 'Description (100+ characters)', points: 2, completed: hasDescription },
+    { name: 'Logo uploaded', points: 2, completed: hasLogo },
+    { name: 'Coverage areas + services defined', points: 2, completed: hasCoverageAndServices },
   ];
 
   profileChecks.forEach((check) => {
@@ -75,39 +55,31 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
     if (check.completed) breakdown.profile.earned += check.points;
   });
 
-  const profileMissing = profileChecks.filter((c) => !c.completed);
-  if (profileMissing.length > 0) {
-    const totalMissing = profileMissing.reduce((s, c) => s + c.points, 0);
+  if (breakdown.profile.earned < 10) {
     tips.push({
-      message: `Complete your profile to gain up to ${totalMissing} points`,
-      impact: totalMissing >= 9 ? 'high' : 'medium',
-      points: totalMissing,
-      priority: totalMissing,
-      category: 'profile',
-      action: 'Go to Settings → Profile',
+      message: `Complete your profile to earn ${10 - breakdown.profile.earned} more points`,
+      impact: 'medium', points: 10 - breakdown.profile.earned, priority: 10,
+      category: 'profile', action: 'Go to Settings',
     });
   }
 
   // ============================================
-  // PRODUCT DATA (max 20 pts)
+  // PRODUCT CATALOG (max 10 pts)
   // ============================================
   const productCount = products.length;
-  const hasOneProduct = productCount >= 1;
-  const hasThreeProducts = productCount >= 3;
-  const hasFiveProducts = productCount >= 5;
-  const hasPricing = products.some((p) =>
-    p.costs?.totalMachineCost > 0 ||
-    p.telecomsPricing?.monthlyPerUser > 0 ||
-    p.cctvPricing?.monthlyTotal > 0 ||
+  const productsWithDesc = products.filter(p => (p.description || '').length > 0).length;
+  const productsWithPricing = products.filter(p =>
+    p.costs?.totalMachineCost > 0 || p.costs?.machineCost > 0 ||
+    p.telecomsPricing?.perUserMonthly > 0 ||
+    p.cctvPricing?.perCameraCost > 0 ||
     p.itPricing?.perUserMonthly > 0 ||
     p.leaseRates?.length > 0
-  );
+  ).length;
 
   const productChecks = [
-    { name: 'At least 1 product', points: 5, completed: hasOneProduct },
-    { name: '3+ products', points: 5, completed: hasThreeProducts },
-    { name: '5+ products', points: 5, completed: hasFiveProducts },
-    { name: 'Products have pricing', points: 5, completed: hasPricing },
+    { name: 'Has 1+ products', points: 2, completed: productCount >= 1 },
+    { name: '3+ products with descriptions', points: 3, completed: productsWithDesc >= 3 },
+    { name: '5+ products with pricing', points: 5, completed: productsWithPricing >= 5 },
   ];
 
   productChecks.forEach((check) => {
@@ -115,71 +87,50 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
     if (check.completed) breakdown.products.earned += check.points;
   });
 
-  if (!hasOneProduct) {
+  if (breakdown.products.earned < 10) {
     tips.push({
-      message: 'Add your products and pricing to gain up to 20 points',
-      impact: 'high', points: 20, priority: 20,
-      category: 'products', action: 'Go to Products → Add Product',
-    });
-  } else if (!hasFiveProducts) {
-    const remaining = (hasThreeProducts ? 5 : 10) + (hasPricing ? 0 : 5);
-    tips.push({
-      message: `Upload more products to gain up to ${remaining} points`,
-      impact: 'medium', points: remaining, priority: remaining,
-      category: 'products', action: 'Go to Products → Add Product',
+      message: 'Add more products with descriptions and pricing',
+      impact: 'high', points: 10 - breakdown.products.earned, priority: 15,
+      category: 'products', action: 'Go to Products',
     });
   }
 
   // ============================================
-  // GEO AUDIT (max 25 pts)
+  // REVIEWS (max 10 pts)
   // ============================================
-  if (geoAuditScore !== null && geoAuditScore !== undefined) {
-    const geoPoints = Math.round((geoAuditScore / 100) * 25);
-    breakdown.geo.earned = geoPoints;
-    breakdown.geo.items.push({
-      name: `GEO Audit score: ${geoAuditScore}/100`,
-      points: geoPoints,
-      completed: true,
-    });
+  const { reviewCount = 0, averageRating = 0 } = reviewData || {};
 
-    if (geoAuditScore < 50) {
-      tips.push({
-        message: `Your website scored ${geoAuditScore}/100 for AI readiness — see your GEO report for fixes`,
-        impact: 'high', points: 25 - geoPoints, priority: 25 - geoPoints,
-        category: 'geo', action: 'View GEO Audit Report',
-      });
-    }
-  } else {
-    breakdown.geo.earned = 0;
-    breakdown.geo.items.push({
-      name: 'No GEO Audit yet',
-      points: 0,
-      completed: false,
-    });
+  const reviewChecks = [
+    { name: '1 verified review', points: 2, completed: reviewCount >= 1 },
+    { name: '3+ reviews', points: 3, completed: reviewCount >= 3 },
+    { name: '5+ reviews', points: 3, completed: reviewCount >= 5 },
+    { name: 'Average rating 4.0+', points: 2, completed: averageRating >= 4.0 && reviewCount > 0 },
+  ];
+
+  reviewChecks.forEach((check) => {
+    breakdown.reviews.items.push(check);
+    if (check.completed) breakdown.reviews.earned += check.points;
+  });
+
+  if (reviewCount === 0) {
     tips.push({
-      message: 'Run a GEO Audit to unlock up to 25 points',
-      impact: 'high', points: 25, priority: 25,
-      category: 'geo', action: 'Run GEO Audit',
+      message: 'Get your first verified review to start earning points',
+      impact: 'medium', points: 10, priority: 12,
+      category: 'reviews', action: 'Request reviews from customers',
     });
   }
 
   // ============================================
-  // AI MENTIONS (max 25 pts)
+  // AI MENTIONS (max 20 pts)
   // ============================================
   const { mentionsThisWeek = 0, mentionsLastWeek = 0, totalMentions30d = 0, avgPosition } = mentionData;
 
-  const hasMention1 = totalMentions30d >= 1;
-  const hasMention3 = totalMentions30d >= 3;
-  const hasMention5 = totalMentions30d >= 5;
-  const hasTopPosition = avgPosition === 'first' || avgPosition === 'top3';
-  const hasTrendUp = mentionsThisWeek > mentionsLastWeek;
-
   const mentionChecks = [
-    { name: 'Mentioned in 1+ prompts', points: 5, completed: hasMention1 },
-    { name: 'Mentioned in 3+ prompts', points: 5, completed: hasMention3 },
-    { name: 'Mentioned in 5+ prompts', points: 5, completed: hasMention5 },
-    { name: 'Average position: first or top 3', points: 5, completed: hasTopPosition },
-    { name: 'Mentions trending up (week over week)', points: 5, completed: hasTrendUp },
+    { name: 'Mentioned in 1+ prompts (30 days)', points: 4, completed: totalMentions30d >= 1 },
+    { name: 'Mentioned in 3+ prompts', points: 4, completed: totalMentions30d >= 3 },
+    { name: 'Mentioned in 5+ prompts', points: 4, completed: totalMentions30d >= 5 },
+    { name: 'Average position: top 3', points: 4, completed: avgPosition === 'first' || avgPosition === 'top3' },
+    { name: 'Trending up week on week', points: 4, completed: mentionsThisWeek > mentionsLastWeek && mentionsThisWeek > 0 },
   ];
 
   mentionChecks.forEach((check) => {
@@ -189,63 +140,120 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
 
   if (totalMentions30d === 0) {
     tips.push({
-      message: "AI tools aren't finding you yet — complete your profile and upgrade to boost visibility",
-      impact: 'high', points: 25, priority: 20,
+      message: "AI tools aren't mentioning you yet — improve your profile and products",
+      impact: 'high', points: 20, priority: 20,
       category: 'mentions', action: null,
     });
   }
 
   // ============================================
-  // REVIEW BONUS (max 5 pts, added to mentions)
+  // ENGAGEMENT (max 10 pts)
   // ============================================
-  const { reviewCount = 0, averageRating = 0 } = reviewData || {};
+  const {
+    loggedInLast7Days = false,
+    ranSearchTestThisMonth = false,
+    respondedToQuoteWithin24hrs = false,
+    updatedProfileThisMonth = false,
+  } = engagementData;
 
-  const hasOneReview = reviewCount >= 1;
-  const hasThreeReviews = reviewCount >= 3;
-  const hasHighRating = averageRating >= 4.0 && reviewCount > 0;
-
-  const reviewChecks = [
-    { name: 'Has at least 1 verified review', points: 2, completed: hasOneReview },
-    { name: 'Has 3+ reviews', points: 2, completed: hasThreeReviews },
-    { name: 'Average rating 4.0+', points: 1, completed: hasHighRating },
+  const engagementChecks = [
+    { name: 'Logged in within last 7 days', points: 2, completed: loggedInLast7Days },
+    { name: 'Ran an AI search test this month', points: 2, completed: ranSearchTestThisMonth },
+    { name: 'Responded to a quote within 24hrs', points: 3, completed: respondedToQuoteWithin24hrs },
+    { name: 'Updated profile or products this month', points: 3, completed: updatedProfileThisMonth },
   ];
 
-  reviewChecks.forEach((check) => {
-    breakdown.mentions.items.push(check);
-    if (check.completed) breakdown.mentions.earned += check.points;
+  engagementChecks.forEach((check) => {
+    breakdown.engagement.items.push(check);
+    if (check.completed) breakdown.engagement.earned += check.points;
   });
 
-  // Update mentions max to include review bonus
-  breakdown.mentions.max = 30; // 25 base + 5 review bonus
-
-  if (reviewCount === 0) {
+  if (breakdown.engagement.earned < 5) {
     tips.push({
-      message: 'Get verified reviews to earn up to 5 bonus points',
-      impact: 'medium', points: 5, priority: 10,
-      category: 'mentions', action: 'Request Reviews from Customers',
+      message: 'Stay active — log in, run tests, and respond to leads',
+      impact: 'medium', points: 10 - breakdown.engagement.earned, priority: 8,
+      category: 'engagement', action: 'Go to Dashboard',
     });
   }
 
   // ============================================
+  // PLAN TIER (max 20 pts)
+  // ============================================
+  const isClaimed = vendor.listingStatus !== 'unclaimed';
+  const hasBlogAddon = !!vendor.blogAddonActive;
+
+  const planChecks = [
+    { name: 'Visible plan (£99/mo)', points: 5, completed: tier === 'visible' || tier === 'verified' },
+    { name: 'Verified plan (£149/mo)', points: 5, completed: tier === 'verified' },
+    { name: 'Blog add-on active', points: 5, completed: hasBlogAddon },
+    { name: 'Profile claimed (not unclaimed)', points: 5, completed: isClaimed },
+  ];
+
+  planChecks.forEach((check) => {
+    breakdown.plan.items.push(check);
+    if (check.completed) breakdown.plan.earned += check.points;
+  });
+
+  if (tier === 'listed') {
+    tips.push({
+      message: 'Upgrade to Visible (£99/mo) to earn plan tier points',
+      impact: 'high', points: 5, priority: 18,
+      category: 'plan', action: 'View Plans',
+    });
+  } else if (tier === 'visible') {
+    tips.push({
+      message: 'Upgrade to Verified (£149/mo) to unlock 20 more points',
+      impact: 'high', points: 25, priority: 22,
+      category: 'plan', action: 'View Plans',
+    });
+  }
+
+  // ============================================
+  // VERIFIED-ONLY FEATURES (max 20 pts — £149 only)
+  // ============================================
+  const {
+    geoAuditCompleted = false,
+    schemaVerified = false,
+    priorityPlacement = false,
+    competitorTracking = false,
+    customAiPrompt = false,
+  } = verifiedFeatures;
+
+  const verifiedChecks = [
+    { name: 'GEO audit completed on website', points: 4, completed: isVerified && geoAuditCompleted },
+    { name: 'Schema.org data verified', points: 4, completed: isVerified && schemaVerified },
+    { name: 'Priority placement on location pages', points: 4, completed: isVerified && priorityPlacement },
+    { name: 'Competitor tracking enabled', points: 4, completed: isVerified && competitorTracking },
+    { name: 'Custom AI recommendation prompt', points: 4, completed: isVerified && customAiPrompt },
+  ];
+
+  verifiedChecks.forEach((check) => {
+    breakdown.verified.items.push(check);
+    if (check.completed) breakdown.verified.earned += check.points;
+  });
+
+  // ============================================
   // TOTAL (capped at 100)
   // ============================================
-  const rawTotal =
-    breakdown.profile.earned +
-    breakdown.products.earned +
-    breakdown.geo.earned +
-    breakdown.mentions.earned;
+  const rawTotal = Object.values(breakdown).reduce((sum, cat) => sum + cat.earned, 0);
   const totalScore = Math.min(rawTotal, 100);
 
-  // Sort tips by points desc, take top 3
-  tips.sort((a, b) => b.points - a.points);
+  // Sort tips by priority desc, take top 3
+  tips.sort((a, b) => b.priority - a.priority);
   const topTips = tips.slice(0, 3);
 
-  // Next tier info (for upgrade CTAs)
+  // Max possible for this tier (practical ceiling)
+  let maxPossibleForTier;
+  if (tier === 'listed') maxPossibleForTier = 40;
+  else if (tier === 'visible') maxPossibleForTier = 75;
+  else maxPossibleForTier = 100;
+
+  // Next tier info
   let nextTier = null;
   if (tier === 'listed') {
-    nextTier = { name: 'Visible', price: '£99/mo', additionalPoints: 0 };
+    nextTier = { name: 'Visible', price: '£99/mo', additionalPoints: 35 };
   } else if (tier === 'visible') {
-    nextTier = { name: 'Verified', price: '£149/mo', additionalPoints: 0 };
+    nextTier = { name: 'Verified', price: '£149/mo', additionalPoints: 25 };
   }
 
   // Backward-compat recommendations
@@ -258,8 +266,8 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   return {
     score: totalScore,
     maxScore: 100,
-    maxPossible: 100,
-    maxPossibleForTier: 100,
+    maxPossible: maxPossibleForTier,
+    maxPossibleForTier,
     maxOverall: 100,
     label: getScoreLabel(totalScore),
     colour: getScoreColour(totalScore),
@@ -283,26 +291,29 @@ function getTierDisplayName(tier) {
 }
 
 function getScoreLabel(score) {
-  if (score <= 20) return 'Poor';
-  if (score <= 40) return 'Fair';
-  if (score <= 60) return 'Good';
-  if (score <= 80) return 'Strong';
+  if (score <= 15) return 'Poor';
+  if (score <= 30) return 'Fair';
+  if (score <= 50) return 'Good';
+  if (score <= 70) return 'Strong';
+  if (score <= 85) return 'Very Strong';
   return 'Excellent';
 }
 
 function getScoreColour(score) {
-  if (score <= 20) return '#ef4444';
-  if (score <= 40) return '#f97316';
-  if (score <= 60) return '#eab308';
-  if (score <= 80) return '#3b82f6';
+  if (score <= 15) return '#ef4444';
+  if (score <= 30) return '#f97316';
+  if (score <= 50) return '#eab308';
+  if (score <= 70) return '#3b82f6';
+  if (score <= 85) return '#8b5cf6';
   return '#22c55e';
 }
 
 function getNextMilestone(score) {
-  if (score < 25) return { target: 25, label: 'Fair', pointsNeeded: 25 - score };
-  if (score < 50) return { target: 50, label: 'Good', pointsNeeded: 50 - score };
-  if (score < 70) return { target: 70, label: 'Strong', pointsNeeded: 70 - score };
-  if (score < 85) return { target: 85, label: 'Excellent', pointsNeeded: 85 - score };
+  if (score < 20) return { target: 20, label: 'Fair', pointsNeeded: 20 - score };
+  if (score < 40) return { target: 40, label: 'Good', pointsNeeded: 40 - score };
+  if (score < 60) return { target: 60, label: 'Strong', pointsNeeded: 60 - score };
+  if (score < 75) return { target: 75, label: 'Very Strong', pointsNeeded: 75 - score };
+  if (score < 90) return { target: 90, label: 'Excellent', pointsNeeded: 90 - score };
   if (score < 100) return { target: 100, label: 'Perfect', pointsNeeded: 100 - score };
   return null;
 }
