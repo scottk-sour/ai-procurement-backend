@@ -179,6 +179,7 @@ const vendorSchema = new mongoose.Schema({
     },
     lastLogin: { type: Date },
     loginCount: { type: Number, default: 0 },
+    onboardingCompleted: { type: Boolean, default: false },
     agreementsSigned: [{
       type: { type: String }, // "Terms of Service", "Data Processing Agreement"
       signedAt: { type: Date },

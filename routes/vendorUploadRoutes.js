@@ -264,6 +264,12 @@ router.get('/profile', vendorAuth, async (req, res) => {
         const vendor = await Vendor.findById(req.vendorId).select('-password');
         if (!vendor) return res.status(404).json({ message: 'Vendor not found.' });
 
+        // Auto-complete onboarding for existing vendors with profile data
+        if (!vendor.account?.onboardingCompleted && vendor.company && vendor.services?.length > 0 && vendor.contactInfo?.phone) {
+            vendor.account.onboardingCompleted = true;
+            await vendor.save();
+        }
+
         res.status(200).json({
             success: true,
             vendor: {
@@ -290,6 +296,8 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 specializations: vendor.businessProfile?.specializations || [],
                 // Brands
                 brands: vendor.brands || [],
+                // Onboarding
+                onboardingCompleted: vendor.account?.onboardingCompleted || false,
             },
         });
     } catch (error) {
@@ -394,6 +402,18 @@ router.put('/profile', vendorAuth, async (req, res) => {
             message: 'Failed to update profile.',
             error: error.message
         });
+    }
+});
+
+// Mark onboarding as complete
+router.post('/onboarding-complete', vendorAuth, async (req, res) => {
+    try {
+        await Vendor.findByIdAndUpdate(req.vendorId, {
+            $set: { 'account.onboardingCompleted': true }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to update onboarding status.' });
     }
 });
 
