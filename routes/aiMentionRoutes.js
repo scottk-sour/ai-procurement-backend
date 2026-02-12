@@ -262,6 +262,7 @@ router.get('/competitors', vendorAuth, async (req, res) => {
     const location = vendor.location?.city || '';
 
     let vendorRank = null;
+    let vendorMentionCount = 0;
     if (category && location) {
       // Count mentions for all vendors in the same category+location in last 30 days
       const allVendorMentions = await AIMentionScan.aggregate([
@@ -283,6 +284,10 @@ router.get('/competitors', vendorAuth, async (req, res) => {
       ]);
 
       const vendorIdStr = vendorId.toString();
+      const vendorEntry = allVendorMentions.find(
+        (v) => v._id.toString() === vendorIdStr
+      );
+      vendorMentionCount = vendorEntry?.mentionCount || 0;
       const rank = allVendorMentions.findIndex(
         (v) => v._id.toString() === vendorIdStr
       );
@@ -292,9 +297,12 @@ router.get('/competitors', vendorAuth, async (req, res) => {
     res.json({
       success: true,
       data: {
+        locked: false,
         topCompetitors,
         vendorRank,
-        totalVendorsInArea: null, // Could be enhanced later
+        vendorMentionCount,
+        category,
+        location,
       },
     });
   } catch (error) {
