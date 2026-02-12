@@ -851,12 +851,14 @@ const CATEGORY_LABELS = {
 const CATEGORY_SEARCH_HINTS = {
   copiers: {
     queries: [
-      'Ricoh dealer South Wales copier leasing',
-      'Konica Minolta dealer Wales office copier supplier',
+      'Ricoh Konica Minolta photocopier dealer {city} UK',
+      'office copier leasing MFP supplier {city}',
     ],
     clarification: `CRITICAL — read BEFORE selecting companies:
 
-I am looking for COPIER DEALERS only. A copier dealer is a company that:
+I am looking for office photocopier and multifunction printer (MFP) dealers — companies that sell, lease, and service machines from brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera. NOT printing companies, print shops, litho printers, graphic design studios, or signage companies. Managed print means managing a fleet of office copiers, not running a print shop.
+
+A copier dealer is a company that:
 - Sells or leases Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera or Toshiba photocopiers
 - Offers copier leasing contracts and managed print services (monitoring office copier fleets)
 - Provides toner, maintenance and repair for office MFPs
@@ -869,10 +871,21 @@ It is OK to return only 2-3 companies if that is all you find. Do NOT fill the l
   },
   telecoms: {
     queries: [
-      'business telecoms provider {city} UK',
-      'VoIP phone systems supplier {city}',
+      'business phone systems VoIP provider {city} UK',
+      'hosted telephony SIP trunks supplier {city}',
     ],
-    clarification: '',
+    clarification: `CRITICAL — read BEFORE selecting companies:
+
+I am looking for business telecoms providers — companies that supply business phone systems, VoIP, SIP trunks, hosted telephony, and unified communications from brands like Mitel, Avaya, 8x8, Gamma, Wildix. NOT mobile phone shops, consumer broadband providers, or network infrastructure companies.
+
+A business telecoms provider is a company that:
+- Sells, installs, and supports business phone systems (on-premise PBX or hosted/cloud)
+- Provides VoIP, SIP trunks, unified communications, and call management solutions
+- Works with brands like Mitel, Avaya, 8x8, Gamma, Wildix, 3CX, Cisco
+
+REJECT any company that is a mobile phone retailer, consumer ISP, or pure network/cabling contractor.
+
+It is OK to return only 2-3 companies if that is all you find. Do NOT fill the list with irrelevant companies.`,
   },
   cctv: {
     queries: [
