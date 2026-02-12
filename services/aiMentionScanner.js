@@ -1,4 +1,5 @@
 import Vendor from '../models/Vendor.js';
+import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 
 const CATEGORY_MAP = {
@@ -20,6 +21,66 @@ function getPrompts(categoryLabel, location) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Build a context block describing vendors for the system prompt.
+ * Each vendor gets a one-line summary with available profile data.
+ */
+function buildVendorContext(vendors, productCounts = {}) {
+  return vendors.map(v => {
+    const parts = [v.company];
+
+    const years = v.businessProfile?.yearsInBusiness;
+    if (years) parts.push(`${years} yrs`);
+
+    const specs = v.businessProfile?.specializations?.filter(Boolean);
+    if (specs?.length) parts.push(specs.join(', '));
+
+    const certs = v.businessProfile?.certifications?.filter(Boolean);
+    if (certs?.length) parts.push(certs.join(', '));
+
+    const reviews = v.performance?.reviewCount;
+    const rating = v.performance?.rating;
+    if (reviews > 0) parts.push(`${reviews} reviews (${rating?.toFixed(1)} avg)`);
+
+    const products = productCounts[v._id.toString()] || 0;
+    if (products > 0) parts.push(`${products} products listed`);
+
+    const coverage = v.location?.coverage?.slice(0, 5)?.join(', ');
+    if (coverage) parts.push(`Covers: ${coverage}`);
+
+    const desc = v.businessProfile?.description?.trim();
+    if (desc) {
+      parts.push(`"${desc.substring(0, 80)}"`);
+    }
+
+    return `- ${parts.join(' — ')}`;
+  }).join('\n');
+}
+
+/**
+ * Score a vendor's profile richness for context selection.
+ * Higher score = more useful context for the AI.
+ */
+function profileRichnessScore(vendor, productCounts) {
+  let s = 0;
+  if (vendor.businessProfile?.description) s += 3;
+  if (vendor.performance?.reviewCount > 0) s += 2;
+  if (vendor.businessProfile?.certifications?.length) s += 1;
+  if (vendor.businessProfile?.yearsInBusiness) s += 1;
+  if (productCounts[vendor._id.toString()] > 0) s += 2;
+  return s;
+}
+
+/**
+ * Select up to 20 vendors with the richest profiles for context.
+ * All vendors in the group still get scanned for mention matching.
+ */
+function selectContextVendors(groupVendors, productCounts) {
+  return [...groupVendors]
+    .sort((a, b) => profileRichnessScore(b, productCounts) - profileRichnessScore(a, productCounts))
+    .slice(0, 20);
 }
 
 /**
@@ -124,7 +185,7 @@ export async function runWeeklyMentionScan() {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // 2. Pull all active vendors with name + category + location
+  // 2. Pull all active vendors with profile data for context
   const vendors = await Vendor.find({
     company: { $exists: true, $ne: '' },
     services: { $exists: true, $not: { $size: 0 } },
@@ -132,11 +193,20 @@ export async function runWeeklyMentionScan() {
       { 'location.city': { $exists: true, $ne: '' } },
       { 'location.coverage': { $exists: true, $not: { $size: 0 } } },
     ],
-  }).select('_id company services location tier').lean();
+  }).select('_id company services location tier businessProfile performance').lean();
 
   console.log(`Found ${vendors.length} vendors to scan`);
 
-  // 3. Group vendors by service + primary location (city)
+  // 3. Get product counts per vendor
+  const productAgg = await VendorProduct.aggregate([
+    { $group: { _id: '$vendorId', count: { $sum: 1 } } }
+  ]);
+  const productCounts = {};
+  for (const p of productAgg) {
+    productCounts[p._id.toString()] = p.count;
+  }
+
+  // 4. Group vendors by service + primary location (city)
   const groups = new Map(); // key: "category::location" -> vendor[]
 
   for (const vendor of vendors) {
@@ -156,7 +226,7 @@ export async function runWeeklyMentionScan() {
 
   console.log(`Grouped into ${groups.size} unique category+location combinations`);
 
-  // 4. Scan each group
+  // 5. Scan each group
   let totalApiCalls = 0;
   let totalMentions = 0;
   let totalVendorsScanned = new Set();
@@ -170,13 +240,23 @@ export async function runWeeklyMentionScan() {
 
     console.log(`\nScanning ${service} in ${location}... (${groupVendors.length} vendors)`);
 
+    // Select up to 20 vendors with richest profiles for context
+    const contextVendors = selectContextVendors(groupVendors, productCounts);
+    const vendorContext = buildVendorContext(contextVendors, productCounts);
+
+    const systemPrompt = `You are a procurement advisor helping UK businesses find local suppliers. Below are verified suppliers registered on TendorAI for ${primaryLabel} services in ${location}. Recommend the top 3-5 most suitable based on their profiles. Use each supplier's exact company name. Format as a numbered list with brief reasoning.
+
+Registered suppliers:
+${vendorContext}`;
+
     const prompts = getPrompts(primaryLabel, location);
 
     for (const prompt of prompts) {
       try {
         const message = await anthropic.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 300,
+          max_tokens: 600,
+          system: systemPrompt,
           messages: [
             {
               role: 'user',
@@ -190,7 +270,7 @@ export async function runWeeklyMentionScan() {
         const snippet = responseText.substring(0, 500);
         const companiesInResponse = extractCompanyNames(responseText);
 
-        // Check each vendor in this group
+        // Check each vendor in this group (not just context vendors)
         let foundCount = 0;
         for (const vendor of groupVendors) {
           totalVendorsScanned.add(vendor._id.toString());
@@ -225,8 +305,8 @@ export async function runWeeklyMentionScan() {
 
         console.log(`  "${prompt.substring(0, 50)}..." → ${foundCount}/${groupVendors.length} vendors found`);
 
-        // Rate limit: 3-second delay between API calls
-        await sleep(3000);
+        // Rate limit: 2-second delay between API calls
+        await sleep(2000);
       } catch (apiErr) {
         console.error(`  API error for "${prompt.substring(0, 40)}...":`, apiErr.message);
         // Still save "not mentioned" for all vendors in this group
@@ -245,18 +325,18 @@ export async function runWeeklyMentionScan() {
             responseSnippet: `API error: ${apiErr.message}`,
           });
         }
-        await sleep(3000);
+        await sleep(2000);
       }
     }
   }
 
-  // 5. Bulk insert all mention documents
+  // 6. Bulk insert all mention documents
   if (mentionDocs.length > 0) {
     await AIMentionScan.insertMany(mentionDocs, { ordered: false });
     console.log(`\nSaved ${mentionDocs.length} mention records`);
   }
 
-  // 6. Summary
+  // 7. Summary
   const vendorsWithMentions = new Set(
     mentionDocs.filter((d) => d.mentioned).map((d) => d.vendorId.toString())
   );
