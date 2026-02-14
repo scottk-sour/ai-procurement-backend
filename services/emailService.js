@@ -21,13 +21,15 @@ const getTransporter = () => {
   if (transporter) return transporter;
 
   // Check if email credentials are configured
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn('⚠️ Email credentials not configured. Emails will be logged but not sent.');
     return null;
   }
 
   transporter = nodemailer.createTransport({
-    service: 'Gmail',
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT || '587', 10),
+    secure: parseInt(process.env.EMAIL_PORT || '587', 10) === 465,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -42,7 +44,7 @@ export const sendEmail = async ({ to, subject, html, text }) => {
   const transport = getTransporter();
 
   const mailOptions = {
-    from: `"TendorAI" <${process.env.EMAIL_USER || 'noreply@tendorai.com'}>`,
+    from: process.env.EMAIL_FROM || `"TendorAI" <${process.env.EMAIL_USER || 'noreply@tendorai.com'}>`,
     to,
     subject,
     html,
