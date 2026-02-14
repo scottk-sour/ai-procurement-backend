@@ -9,6 +9,7 @@ import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import VendorPost from '../models/VendorPost.js';
 import AeoReport from '../models/AeoReport.js';
+import { sendAeoReportEmail } from '../services/emailService.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
@@ -1075,7 +1076,17 @@ Respond in JSON format only, no markdown fences:
       console.error('Failed to save AEO report:', err.message)
     );
 
-    // 5. Return results
+    // 5. Send email copy if provided
+    if (email) {
+      sendAeoReportEmail(email, {
+        companyName, category, city,
+        aiMentioned, aiPosition, aiRecommendations, competitorsOnTendorAI,
+      }).catch((err) =>
+        console.error('Failed to send AEO report email:', err.message)
+      );
+    }
+
+    // 6. Return results
     res.json({
       success: true,
       companyName,

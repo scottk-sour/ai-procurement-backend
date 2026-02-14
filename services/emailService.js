@@ -8,7 +8,8 @@ import {
   reviewResponseTemplate,
   leadNotificationTemplate,
   reviewRequestTemplate,
-  verifiedReviewNotificationTemplate
+  verifiedReviewNotificationTemplate,
+  aeoReportTemplate
 } from './emailTemplates.js';
 
 dotenv.config();
@@ -224,6 +225,36 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
 };
 
 // =====================================================
+// AEO REPORT (to lead)
+// =====================================================
+
+export const sendAeoReportEmail = async (email, reportData) => {
+  const categoryLabels = {
+    copiers: 'copier and managed print',
+    telecoms: 'telecoms and VoIP',
+    cctv: 'CCTV and security',
+    it: 'IT support',
+  };
+
+  return sendEmail({
+    to: email,
+    subject: `Your AI Visibility Report — ${reportData.companyName}`,
+    html: aeoReportTemplate({
+      companyName: reportData.companyName,
+      category: categoryLabels[reportData.category] || reportData.category,
+      city: reportData.city,
+      aiMentioned: reportData.aiMentioned,
+      aiPosition: reportData.aiPosition,
+      aiRecommendations: reportData.aiRecommendations,
+      competitorsOnTendorAI: reportData.competitorsOnTendorAI,
+    }),
+    text: reportData.aiMentioned
+      ? `AI Visibility Report for ${reportData.companyName}: AI mentions you at position #${reportData.aiPosition} for ${categoryLabels[reportData.category] || reportData.category} in ${reportData.city}. Protect your ranking — claim your free listing at https://tendorai.com/vendor-signup`
+      : `AI Visibility Report for ${reportData.companyName}: AI does NOT recommend you for ${categoryLabels[reportData.category] || reportData.category} in ${reportData.city}. Fix this — claim your free listing at https://tendorai.com/vendor-signup`
+  });
+};
+
+// =====================================================
 // QUOTE NOTIFICATION STUBS (for quoteRoutes.js compatibility)
 // These are called with optional chaining, so they won't crash if they fail
 // =====================================================
@@ -258,6 +289,7 @@ export default {
   sendLeadNotification,
   sendReviewRequestEmail,
   sendVerifiedReviewNotification,
+  sendAeoReportEmail,
   sendVendorContactRequest,
   sendQuoteAcceptedNotification,
   sendQuoteDeclinedNotification
