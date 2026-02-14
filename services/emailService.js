@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import {
   passwordResetTemplate,
@@ -14,53 +14,48 @@ import {
 
 dotenv.config();
 
-// Create reusable transporter
-let transporter = null;
+// Create Resend client
+let resendClient = null;
 
-const getTransporter = () => {
-  if (transporter) return transporter;
+const getResendClient = () => {
+  if (resendClient) return resendClient;
 
-  // Check if email credentials are configured
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️ Email credentials not configured. Emails will be logged but not sent.');
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('⚠️ RESEND_API_KEY not configured. Emails will be logged but not sent.');
     return null;
   }
 
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT || '587', 10),
-    secure: parseInt(process.env.EMAIL_PORT || '587', 10) === 465,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  return transporter;
+  resendClient = new Resend(process.env.RESEND_API_KEY);
+  return resendClient;
 };
 
 // Helper to send email
 export const sendEmail = async ({ to, subject, html, text }) => {
-  const transport = getTransporter();
+  const resend = getResendClient();
+  const from = process.env.EMAIL_FROM || 'TendorAI <noreply@tendorai.com>';
 
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || `"TendorAI" <${process.env.EMAIL_USER || 'noreply@tendorai.com'}>`,
-    to,
-    subject,
-    html,
-    text: text || subject // Fallback plain text
-  };
-
-  // If no transporter (credentials missing), log the email
-  if (!transport) {
+  // If no client (API key missing), log the email
+  if (!resend) {
     console.log('📧 Email (would send):', { to, subject });
     return { success: true, simulated: true };
   }
 
   try {
-    await transport.sendMail(mailOptions);
-    console.log(`✅ Email sent to: ${to}`);
-    return { success: true };
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
+      subject,
+      html,
+      text: text || subject,
+    });
+
+    if (error) {
+      console.error(`❌ Failed to send email to ${to}:`, error.message);
+      throw new Error(error.message);
+    }
+
+    console.log(`✅ Email sent to: ${to} (id: ${data.id})`);
+    return { success: true, id: data.id };
   } catch (error) {
     console.error(`❌ Failed to send email to ${to}:`, error.message);
     throw error;

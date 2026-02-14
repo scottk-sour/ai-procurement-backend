@@ -64,6 +64,7 @@
     "papaparse": "^5.4.1",
     "pdf-parse": "^1.1.1",
     "pdf.js-extract": "^0.2.1",
+    "resend": "^6.9.2",
     "stripe": "^20.3.0",
     "winston": "^3.18.3",
     "winston-daily-rotate-file": "^5.0.0",
