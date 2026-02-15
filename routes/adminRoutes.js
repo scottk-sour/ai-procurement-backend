@@ -11,6 +11,10 @@ import VendorProduct from '../models/VendorProduct.js';
 import Subscriber from '../models/Subscriber.js';
 import AeoReport from '../models/AeoReport.js';
 import VendorLead from '../models/VendorLead.js';
+import Review from '../models/Review.js';
+import VendorPost from '../models/VendorPost.js';
+import GeoAudit from '../models/GeoAudit.js';
+import AIMentionScan from '../models/AIMentionScan.js';
 import Stripe from 'stripe';
 import { sendEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
 import 'dotenv/config';
@@ -396,6 +400,63 @@ router.patch('/vendors/:id/status', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Error updating vendor status:', error.message);
     res.status(500).json({ success: false, message: 'Error updating vendor status.' });
+  }
+});
+
+// Delete a vendor and all associated data
+router.delete('/vendors/:id', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const vendor = await Vendor.findById(id);
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: 'Vendor not found.' });
+    }
+
+    // Delete all associated data in parallel
+    await Promise.all([
+      VendorProduct.deleteMany({ vendorId: id }),
+      VendorLead.deleteMany({ vendor: id }),
+      Review.deleteMany({ vendor: id }),
+      VendorPost.deleteMany({ vendor: id }),
+      GeoAudit.deleteMany({ vendorId: id }),
+      AIMentionScan.deleteMany({ vendorId: id }),
+    ]);
+
+    await Vendor.findByIdAndDelete(id);
+
+    console.log(`Admin deleted vendor ${id} (${vendor.company})`);
+    res.json({ success: true, message: 'Vendor deleted' });
+  } catch (error) {
+    console.error('Error deleting vendor:', error.message);
+    res.status(500).json({ success: false, message: 'Error deleting vendor.' });
+  }
+});
+
+// Bulk delete vendors and all associated data
+router.post('/vendors/bulk-delete', adminAuth, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'ids array is required.' });
+    }
+
+    // Delete all associated data in parallel
+    await Promise.all([
+      VendorProduct.deleteMany({ vendorId: { $in: ids } }),
+      VendorLead.deleteMany({ vendor: { $in: ids } }),
+      Review.deleteMany({ vendor: { $in: ids } }),
+      VendorPost.deleteMany({ vendor: { $in: ids } }),
+      GeoAudit.deleteMany({ vendorId: { $in: ids } }),
+      AIMentionScan.deleteMany({ vendorId: { $in: ids } }),
+    ]);
+
+    const result = await Vendor.deleteMany({ _id: { $in: ids } });
+
+    console.log(`Admin bulk-deleted ${result.deletedCount} vendors`);
+    res.json({ success: true, message: `${result.deletedCount} vendors deleted`, count: result.deletedCount });
+  } catch (error) {
+    console.error('Error bulk-deleting vendors:', error.message);
+    res.status(500).json({ success: false, message: 'Error deleting vendors.' });
   }
 });
 
