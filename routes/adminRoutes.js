@@ -11,8 +11,17 @@ import VendorProduct from '../models/VendorProduct.js';
 import Subscriber from '../models/Subscriber.js';
 import AeoReport from '../models/AeoReport.js';
 import VendorLead from '../models/VendorLead.js';
+import Stripe from 'stripe';
 import { sendEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
 import 'dotenv/config';
+
+// Initialize Stripe (same pattern as stripeRoutes.js)
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-11-20.acacia',
+  });
+}
 
 const router = express.Router();
 
@@ -95,15 +104,55 @@ router.get('/stats', adminAuth, async (req, res) => {
       if (t._id) tierBreakdown[t._id] = t.count;
     });
 
-    // Active subscriptions (paid tiers)
-    const activeSubscriptions = await Vendor.countDocuments({
-      tier: { $in: ['visible', 'verified', 'basic', 'managed', 'enterprise'] }
-    });
+    // Revenue & subscription data — use Stripe if available, else estimate from tiers
+    let monthlyRevenue, activeSubscriptions, pastDueSubscriptions = 0, revenueSource;
 
-    // Calculate monthly revenue (visible=£99, verified/managed/enterprise=£149)
-    const visibleCount = tierBreakdown.visible + tierBreakdown.basic;
-    const verifiedCount = tierBreakdown.verified + tierBreakdown.managed + tierBreakdown.enterprise;
-    const monthlyRevenue = (visibleCount * 99) + (verifiedCount * 149);
+    if (stripe) {
+      try {
+        // Fetch all active subscriptions with price data
+        const activeSubs = [];
+        let hasMore = true;
+        let startingAfter;
+        while (hasMore) {
+          const params = { status: 'active', limit: 100, expand: ['data.items.data.price'] };
+          if (startingAfter) params.starting_after = startingAfter;
+          const batch = await stripe.subscriptions.list(params);
+          activeSubs.push(...batch.data);
+          hasMore = batch.has_more;
+          if (hasMore) startingAfter = batch.data[batch.data.length - 1].id;
+        }
+
+        // Sum MRR from subscription line items (unit_amount is in pence)
+        monthlyRevenue = activeSubs.reduce((sum, sub) => {
+          const price = sub.items.data[0]?.price;
+          if (!price) return sum;
+          return sum + (price.unit_amount / 100);
+        }, 0);
+        activeSubscriptions = activeSubs.length;
+
+        // Count past-due subscriptions
+        const pastDueSubs = await stripe.subscriptions.list({ status: 'past_due', limit: 100 });
+        pastDueSubscriptions = pastDueSubs.data.length;
+
+        revenueSource = 'stripe';
+      } catch (stripeErr) {
+        console.error('Stripe API error, falling back to tier estimate:', stripeErr.message);
+        // Fall through to tier-based estimate
+        stripe = null; // prevent repeated failures this request
+      }
+    }
+
+    if (!revenueSource) {
+      // Fallback: estimate from vendor tiers
+      activeSubscriptions = await Vendor.countDocuments({
+        tier: { $in: ['visible', 'verified', 'basic', 'managed', 'enterprise'] }
+      });
+      const visibleCount = tierBreakdown.visible + tierBreakdown.basic;
+      const verifiedCount = tierBreakdown.verified + tierBreakdown.managed + tierBreakdown.enterprise;
+      monthlyRevenue = (visibleCount * 99) + (verifiedCount * 149);
+      pastDueSubscriptions = 0;
+      revenueSource = 'estimated';
+    }
 
     // Pending claims (vendors with placeholder emails)
     const pendingClaims = await Vendor.countDocuments({
@@ -134,6 +183,8 @@ router.get('/stats', adminAuth, async (req, res) => {
         totalProducts,
         activeSubscriptions,
         monthlyRevenue,
+        pastDueSubscriptions,
+        revenueSource,
         pendingClaims,
         recentVendors,
         tierBreakdown,
