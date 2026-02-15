@@ -11,6 +11,7 @@ import VendorProduct from '../models/VendorProduct.js';
 import Subscriber from '../models/Subscriber.js';
 import AeoReport from '../models/AeoReport.js';
 import VendorLead from '../models/VendorLead.js';
+import { sendEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -191,7 +192,7 @@ router.get('/users', adminAuth, async (req, res) => {
 router.get('/vendors', adminAuth, async (req, res) => {
   try {
     const vendors = await Vendor.find({})
-      .select('company name email services tier account subscriptionStatus stripeCustomerId stripeSubscriptionId createdAt location performance postcodeAreas')
+      .select('company name email services tier account subscriptionStatus stripeCustomerId stripeSubscriptionId createdAt location performance postcodeAreas listingStatus claimedBy claimedAt status')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -214,7 +215,7 @@ router.get('/vendors', adminAuth, async (req, res) => {
       email: v.email,
       services: v.services || [],
       tier: v.tier || v.account?.tier || 'free',
-      status: v.account?.status || 'pending',
+      status: v.status || v.account?.status || 'pending',
       subscriptionStatus: v.subscriptionStatus || 'none',
       hasStripe: !!v.stripeCustomerId,
       productCount: productCountMap[v._id.toString()] || 0,
@@ -223,6 +224,9 @@ router.get('/vendors', adminAuth, async (req, res) => {
       postcodeAreas: v.postcodeAreas || [],
       rating: v.performance?.rating || 0,
       isClaimed: !v.email?.startsWith('unclaimed-'),
+      listingStatus: v.listingStatus || 'unclaimed',
+      claimedBy: v.claimedBy || null,
+      claimedAt: v.claimedAt || null,
       createdAt: v.createdAt
     }));
 
@@ -263,7 +267,7 @@ router.get('/vendors/:id', adminAuth, async (req, res) => {
 router.patch('/vendors/:id/tier', adminAuth, async (req, res) => {
   try {
     const { tier } = req.body;
-    const validTiers = ['free', 'visible', 'verified', 'basic', 'managed', 'enterprise'];
+    const validTiers = ['free', 'visible', 'verified'];
 
     if (!validTiers.includes(tier)) {
       return res.status(400).json({ success: false, message: 'Invalid tier.' });
@@ -301,7 +305,7 @@ router.patch('/vendors/:id/tier', adminAuth, async (req, res) => {
 router.patch('/vendors/:id/status', adminAuth, async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['active', 'pending', 'suspended', 'inactive'];
+    const validStatuses = ['active', 'pending', 'suspended', 'inactive', 'unclaimed'];
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status.' });
@@ -316,7 +320,22 @@ router.patch('/vendors/:id/status', adminAuth, async (req, res) => {
       vendor.account.status = status;
     }
     vendor.status = status;
+
+    // If rejecting a claim, revert listing status
+    if (status === 'unclaimed') {
+      vendor.listingStatus = 'unclaimed';
+    }
+
     await vendor.save();
+
+    // Send welcome email when activating a vendor
+    if (status === 'active') {
+      try {
+        await sendVendorWelcomeEmail(vendor.email, { vendorName: vendor.name || vendor.company });
+      } catch (emailErr) {
+        console.error('Failed to send activation email:', emailErr.message);
+      }
+    }
 
     res.json({
       success: true,

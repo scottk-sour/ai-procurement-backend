@@ -17,6 +17,7 @@ import CopierQuoteRequest from "../models/CopierQuoteRequest.js";
 import CopierListing from "../models/CopierListing.js";
 import AIRecommendationEngine from "../services/aiRecommendationEngine.js";
 import { importVendorProducts, VendorUploadValidator } from "../controllers/vendorProductImportController.js";
+import { sendEmail } from "../services/emailService.js";
 
 const router = express.Router();
 const { JWT_SECRET } = process.env;
@@ -151,41 +152,44 @@ router.post('/login', loginLimiter, async (req, res) => {
             return res.status(400).json({ message: 'Email and password are required.' });
         }
 
-        // FIXED: Select both old (status) and new (account.status) field formats
         const vendor = await Vendor.findOne({ email }).select('password name email company services status account');
-        console.log('ðŸ” Vendor found:', vendor ? 'YES' : 'NO');
-        console.log('ðŸ” Vendor ID:', vendor?._id);
-
-        // FIXED: Check both possible status locations - PRIORITIZE OLD STATUS FIELD
-        const vendorStatus = (vendor?.status || vendor?.account?.status || '').toLowerCase();
-        console.log('ðŸ” Vendor status structure:', {
-            directStatus: vendor?.status,
-            accountStatus: vendor?.account?.status,
-            hasAccount: !!vendor?.account
-        });
-        console.log('ðŸ” Effective status:', vendorStatus);
 
         if (!vendor) {
-            console.log('âŒ No vendor found with email:', email);
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
 
-        console.log('ðŸ” Comparing passwords...');
-        console.log('ðŸ” Stored password hash length:', vendor.password?.length);
-        const isMatch = await bcrypt.compare(password, vendor.password);
-        console.log('ðŸ” Password match:', isMatch);
+        // Derive effective status from both possible locations
+        const vendorStatus = (vendor.status || vendor.account?.status || '').toLowerCase();
 
-        if (!isMatch) {
-            console.log('âŒ Password comparison failed');
-            return res.status(401).json({ message: 'Invalid email or password.' });
-        }
-        
-        // FIXED: Check status from the resolved location
-        if (vendorStatus !== 'active') {
-            console.log('âŒ Vendor account not active:', vendorStatus);
+        // Check unclaimed status before password (unclaimed vendors have no password)
+        if (vendorStatus === 'unclaimed') {
             return res.status(403).json({
-                message: 'Account is not active. Contact support.',
-                status: vendorStatus
+                message: "This listing hasn't been claimed yet. Is this your business?",
+                status: 'unclaimed',
+                vendorId: vendor._id.toString()
+            });
+        }
+
+        if (!vendor.password) {
+            return res.status(401).json({ message: 'Invalid email or password.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, vendor.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid email or password.' });
+        }
+
+        // Status-specific messages for non-active accounts
+        if (vendorStatus === 'pending') {
+            return res.status(403).json({
+                message: "Your account is being reviewed. We'll activate it within 24 hours.",
+                status: 'pending'
+            });
+        }
+        if (vendorStatus !== 'active') {
+            return res.status(403).json({
+                message: 'Your account has been deactivated. Contact support.',
+                status: vendorStatus || 'inactive'
             });
         }
 
@@ -744,6 +748,105 @@ router.get('/all', async (req, res) => {
             message: 'Failed to fetch vendors',
             error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
         });
+    }
+});
+
+// ===== VENDOR CLAIM ROUTE (public) =====
+
+router.post('/claim', async (req, res) => {
+    try {
+        const { vendorId, name, email, password, role } = req.body;
+
+        if (!vendorId || !name || !email || !password || !role) {
+            return res.status(400).json({ message: 'All fields are required.' });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+        }
+
+        if (!isValidObjectId(vendorId)) {
+            return res.status(400).json({ message: 'Invalid vendor ID.' });
+        }
+
+        const vendor = await Vendor.findById(vendorId);
+        if (!vendor) {
+            return res.status(404).json({ message: 'Vendor not found.' });
+        }
+
+        if (vendor.listingStatus !== 'unclaimed') {
+            return res.status(400).json({ message: 'This listing has already been claimed.' });
+        }
+
+        // Check email isn't already taken by another vendor
+        const existingVendor = await Vendor.findOne({ email: email.toLowerCase() });
+        if (existingVendor && existingVendor._id.toString() !== vendorId) {
+            return res.status(400).json({ message: 'This email is already associated with another account.' });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Update vendor
+        vendor.email = email.toLowerCase();
+        vendor.password = hashedPassword;
+        vendor.name = name;
+        vendor.listingStatus = 'claimed';
+        vendor.status = 'pending';
+        if (vendor.account) {
+            vendor.account.status = 'pending';
+        }
+        vendor.claimedBy = { name, email: email.toLowerCase(), role, date: new Date() };
+        vendor.claimedAt = new Date();
+
+        await vendor.save();
+
+        // Send notification email to admin
+        try {
+            await sendEmail({
+                to: 'scott.davies@tendorai.com',
+                subject: `New Listing Claim: ${vendor.company}`,
+                html: `
+                    <h2>New Vendor Claim</h2>
+                    <p><strong>${vendor.company}</strong> has been claimed.</p>
+                    <table style="border-collapse:collapse;margin:16px 0">
+                        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Name:</td><td>${name}</td></tr>
+                        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Email:</td><td>${email}</td></tr>
+                        <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Role:</td><td>${role}</td></tr>
+                    </table>
+                    <p>Review and activate in the <a href="https://tendorai.com/admin/vendors">admin dashboard</a>.</p>
+                `,
+                text: `New claim: ${vendor.company} by ${name} (${email}, ${role}). Review in admin dashboard.`
+            });
+        } catch (emailErr) {
+            console.error('Failed to send admin claim notification:', emailErr.message);
+        }
+
+        // Send confirmation email to claimer
+        try {
+            await sendEmail({
+                to: email,
+                subject: `Claim Received — ${vendor.company} on TendorAI`,
+                html: `
+                    <h2>Thanks for claiming ${vendor.company}!</h2>
+                    <p>Hi ${name},</p>
+                    <p>We've received your claim for <strong>${vendor.company}</strong> on TendorAI.</p>
+                    <p>Our team will review and activate your account within 24 hours. Once activated, you'll be able to log in and manage your listing.</p>
+                    <p>— The TendorAI Team</p>
+                `,
+                text: `Hi ${name}, we've received your claim for ${vendor.company}. We'll review and activate within 24 hours.`
+            });
+        } catch (emailErr) {
+            console.error('Failed to send claim confirmation email:', emailErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Claim submitted successfully. We'll review and activate your account within 24 hours."
+        });
+    } catch (error) {
+        console.error('Error processing vendor claim:', error.message);
+        res.status(500).json({ message: 'Failed to process claim. Please try again.' });
     }
 });
 

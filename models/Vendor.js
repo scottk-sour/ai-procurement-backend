@@ -27,9 +27,8 @@ const vendorSchema = new mongoose.Schema({
     match: [/.+@.+\..+/, 'Please provide a valid email address'],
     index: true,
   },
-  password: { 
-    type: String, 
-    required: true,
+  password: {
+    type: String,
     minlength: 6
   },
 
@@ -237,8 +236,10 @@ const vendorSchema = new mongoose.Schema({
   },
 
   claimedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    name: { type: String },
+    email: { type: String },
+    role: { type: String },
+    date: { type: Date }
   },
 
   // Import metadata
