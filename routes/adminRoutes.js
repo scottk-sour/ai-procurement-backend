@@ -8,6 +8,9 @@ import Vendor from '../models/Vendor.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import Lead from '../models/Lead.js';
 import VendorProduct from '../models/VendorProduct.js';
+import Subscriber from '../models/Subscriber.js';
+import AeoReport from '../models/AeoReport.js';
+import VendorLead from '../models/VendorLead.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -423,6 +426,145 @@ router.get('/vendors/export/csv', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Error exporting vendors:', error.message);
     res.status(500).json({ success: false, message: 'Error exporting vendors.' });
+  }
+});
+
+// Get all newsletter subscribers
+router.get('/subscribers', adminAuth, async (req, res) => {
+  try {
+    const subscribers = await Subscriber.find({})
+      .sort({ subscribedAt: -1 })
+      .lean();
+
+    res.json({ success: true, data: subscribers });
+  } catch (error) {
+    console.error('Error fetching subscribers:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching subscribers.' });
+  }
+});
+
+// Get all AEO report submissions
+router.get('/aeo-reports', adminAuth, async (req, res) => {
+  try {
+    const reports = await AeoReport.find({})
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({ success: true, data: reports });
+  } catch (error) {
+    console.error('Error fetching AEO reports:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching AEO reports.' });
+  }
+});
+
+// Get all leads from all sources (combined view)
+router.get('/all-leads', adminAuth, async (req, res) => {
+  try {
+    const { source } = req.query;
+
+    const fetchSource = async (src) => {
+      switch (src) {
+        case 'newsletter': {
+          const subs = await Subscriber.find({}).lean();
+          return subs.map(s => ({
+            email: s.email,
+            name: '',
+            company: '',
+            source: 'newsletter',
+            category: '',
+            city: '',
+            date: s.subscribedAt || s.createdAt
+          }));
+        }
+        case 'aeo': {
+          const reports = await AeoReport.find({}).lean();
+          return reports.map(r => ({
+            email: r.email,
+            name: '',
+            company: r.companyName || '',
+            source: 'aeo',
+            category: r.category || '',
+            city: r.city || '',
+            date: r.createdAt
+          }));
+        }
+        case 'quote': {
+          const quotes = await QuoteRequest.find({}).lean();
+          return quotes.map(q => ({
+            email: q.email,
+            name: q.contactName || '',
+            company: q.companyName || '',
+            source: 'quote',
+            category: q.serviceType || '',
+            city: q.location?.postcode || '',
+            date: q.createdAt
+          }));
+        }
+        case 'vendor-lead': {
+          const leads = await VendorLead.find({}).lean();
+          return leads.map(l => ({
+            email: l.customer?.email || '',
+            name: l.customer?.contactName || '',
+            company: l.customer?.companyName || '',
+            source: 'vendor-lead',
+            category: l.service || '',
+            city: l.customer?.postcode || '',
+            date: l.createdAt
+          }));
+        }
+        default:
+          return [];
+      }
+    };
+
+    let allLeads = [];
+    const sources = source
+      ? [source]
+      : ['newsletter', 'aeo', 'quote', 'vendor-lead'];
+
+    const results = await Promise.all(sources.map(fetchSource));
+    allLeads = results.flat();
+
+    // Sort by date descending
+    allLeads.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Get counts per source
+    const counts = {};
+    for (const src of ['newsletter', 'aeo', 'quote', 'vendor-lead']) {
+      if (source && source !== src) continue;
+      const srcLeads = allLeads.filter(l => l.source === src);
+      counts[src] = srcLeads.length;
+    }
+
+    // If only counts requested
+    if (req.query.counts === 'true') {
+      const [newsletterCount, aeoCount, quoteCount, vendorLeadCount] = await Promise.all([
+        Subscriber.countDocuments(),
+        AeoReport.countDocuments(),
+        QuoteRequest.countDocuments(),
+        VendorLead.countDocuments()
+      ]);
+      return res.json({
+        success: true,
+        counts: {
+          newsletter: newsletterCount,
+          aeo: aeoCount,
+          quote: quoteCount,
+          'vendor-lead': vendorLeadCount,
+          total: newsletterCount + aeoCount + quoteCount + vendorLeadCount
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: allLeads,
+      counts,
+      total: allLeads.length
+    });
+  } catch (error) {
+    console.error('Error fetching all leads:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching leads.' });
   }
 });
 
