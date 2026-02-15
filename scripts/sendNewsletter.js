@@ -65,7 +65,7 @@ if (!htmlFile && !bodyText) {
 
 // Load HTML content
 let htmlContent = null;
-let plainText = (bodyText || '').replace(/\\n/g, '\n');
+let plainText = (bodyText || '').replace(/\\n/g, '\n').replace(/\\!/g, '!');
 
 if (htmlFile) {
   const filePath = path.resolve(htmlFile);
