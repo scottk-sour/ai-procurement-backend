@@ -40,22 +40,29 @@ const adminAuth = (req, res, next) => {
 
 // Admin Login
 router.post('/login', (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
-  }
+    if (!email || !password) {
+      return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
+    }
 
-  if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-    try {
+    console.log('[Admin Login] Env check:', {
+      hasEmail: !!ADMIN_EMAIL,
+      hasPassword: !!ADMIN_PASSWORD,
+      hasSecret: !!ADMIN_JWT_SECRET,
+      secretLength: ADMIN_JWT_SECRET?.length,
+    });
+
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       const token = jwt.sign({ role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '8h' });
       return res.status(200).json({ status: 'success', token, message: 'Login successful.' });
-    } catch (error) {
-      console.error('Error generating token:', error.message);
-      return res.status(500).json({ status: 'error', message: 'Internal server error.' });
+    } else {
+      return res.status(401).json({ status: 'error', message: 'Invalid credentials.' });
     }
-  } else {
-    return res.status(401).json({ status: 'error', message: 'Invalid credentials.' });
+  } catch (error) {
+    console.error('[Admin Login] Error:', error.message, error.stack);
+    return res.status(500).json({ status: 'error', message: 'Login failed: ' + error.message });
   }
 });
 
