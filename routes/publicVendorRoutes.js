@@ -9,6 +9,7 @@ import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import VendorPost from '../models/VendorPost.js';
 import AeoReport from '../models/AeoReport.js';
+import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail } from '../services/emailService.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
@@ -1104,6 +1105,31 @@ Respond in JSON format only, no markdown fences:
       success: false,
       error: 'Failed to generate AEO report. Please try again.',
     });
+  }
+});
+
+/**
+ * POST /api/public/subscribe
+ * Newsletter signup — saves email to MongoDB
+ */
+router.post('/subscribe', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Valid email is required.' });
+    }
+
+    await Subscriber.findOneAndUpdate(
+      { email: email.toLowerCase().trim() },
+      { email: email.toLowerCase().trim(), source: 'website', unsubscribed: false },
+      { upsert: true }
+    );
+
+    res.json({ success: true, message: 'Subscribed successfully.' });
+  } catch (error) {
+    console.error('Subscribe error:', error);
+    res.status(500).json({ message: 'Failed to subscribe. Please try again.' });
   }
 });
 
