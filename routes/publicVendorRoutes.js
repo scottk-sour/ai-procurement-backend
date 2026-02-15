@@ -58,10 +58,12 @@ router.get('/vendors', async (req, res) => {
       limit = 20
     } = req.query;
 
-    // Build query - only active vendors
+    // Build query - active verified + unclaimed vendors
     const query = {
-      'account.status': 'active',
-      'account.verificationStatus': 'verified'
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
     };
 
     // Filter by service category
@@ -305,8 +307,10 @@ router.get('/vendors/:id', async (req, res) => {
 
     const vendor = await Vendor.findOne({
       _id: id,
-      'account.status': 'active',
-      'account.verificationStatus': 'verified'
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
     }).lean();
 
     if (!vendor) {
@@ -449,12 +453,18 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
     const locationNorm = location.toLowerCase().replace(/-/g, ' ');
 
-    // Build query
+    // Build query - active verified + unclaimed vendors
     const query = {
-      'account.status': 'active',
-      'account.verificationStatus': 'verified',
-      'services': { $regex: new RegExp(categoryNorm, 'i') },
-      'location.coverage': { $regex: new RegExp(locationNorm, 'i') }
+      $and: [
+        {
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' }
+          ]
+        },
+        { services: { $regex: new RegExp(categoryNorm, 'i') } },
+        { 'location.coverage': { $regex: new RegExp(locationNorm, 'i') } }
+      ]
     };
 
     const pageNum = Math.max(1, parseInt(page));
@@ -505,7 +515,7 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
 
     // Page metadata for SEO
     const pageTitle = `${capitalize(categoryNorm)} Suppliers in ${capitalize(locationNorm)}`;
-    const pageDescription = `Find trusted ${categoryNorm} suppliers and installers in ${locationNorm}. Compare ${total} verified vendors, read reviews, and get quotes.`;
+    const pageDescription = `Find trusted ${categoryNorm} suppliers and installers in ${locationNorm}. Compare ${total} vendors, read reviews, and get quotes.`;
 
     res.json({
       success: true,
@@ -547,11 +557,13 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
 router.get('/categories', async (req, res) => {
   try {
     const categories = await Vendor.aggregate([
-      { 
-        $match: { 
-          'account.status': 'active',
-          'account.verificationStatus': 'verified'
-        } 
+      {
+        $match: {
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' }
+          ]
+        }
       },
       { $unwind: '$services' },
       { 
@@ -597,9 +609,11 @@ router.get('/locations', async (req, res) => {
   try {
     const { category } = req.query;
 
-    const matchStage = { 
-      'account.status': 'active',
-      'account.verificationStatus': 'verified'
+    const matchStage = {
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
     };
 
     if (category) {
@@ -654,19 +668,23 @@ router.get('/locations', async (req, res) => {
  */
 router.get('/stats', async (req, res) => {
   try {
+    const statusFilter = {
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
+    };
+
     const [vendorCount, categoryStats, locationCount] = await Promise.all([
-      Vendor.countDocuments({ 
-        'account.status': 'active',
-        'account.verificationStatus': 'verified'
-      }),
+      Vendor.countDocuments(statusFilter),
       Vendor.aggregate([
-        { $match: { 'account.status': 'active', 'account.verificationStatus': 'verified' } },
+        { $match: statusFilter },
         { $unwind: '$services' },
         { $group: { _id: '$services', count: { $sum: 1 } } },
         { $count: 'total' }
       ]),
       Vendor.aggregate([
-        { $match: { 'account.status': 'active', 'account.verificationStatus': 'verified' } },
+        { $match: statusFilter },
         { $unwind: '$location.coverage' },
         { $group: { _id: '$location.coverage' } },
         { $count: 'total' }
