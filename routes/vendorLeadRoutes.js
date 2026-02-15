@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import VendorLead from '../models/VendorLead.js';
 import Vendor from '../models/Vendor.js';
 import vendorAuth from '../middleware/vendorAuth.js';
+import { sendNewLeadNotification } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -34,7 +35,14 @@ router.post('/', async (req, res) => {
       phone,
       postcode,
       message,
-      source
+      source,
+      // New structured fields
+      requirements,
+      colour,
+      a3,
+      specificVolume,
+      currentMonthlyCost,
+      currentProvider: currentProviderData
     } = req.body;
 
     // Validate vendor exists and can receive quotes
@@ -66,6 +74,12 @@ router.post('/', async (req, res) => {
       timeline,
       contractPreference,
       budgetRange,
+      colour: colour !== undefined ? colour : null,
+      a3: a3 !== undefined ? a3 : null,
+      specificVolume: specificVolume || undefined,
+      currentMonthlyCost: currentMonthlyCost || undefined,
+      currentProvider: currentProviderData || {},
+      requirements: requirements || {},
       customer: {
         companyName,
         contactName,
@@ -80,7 +94,29 @@ router.post('/', async (req, res) => {
 
     await lead.save();
 
-    // TODO: Send email notification to vendor
+    // Send email notification to vendor (non-blocking)
+    try {
+      const vendorEmail = vendor.email || '';
+      const isRealEmail = vendorEmail &&
+        !vendorEmail.startsWith('unclaimed-') &&
+        !vendorEmail.startsWith('info@') &&
+        /.+@.+\..+/.test(vendorEmail);
+
+      if (isRealEmail) {
+        const vendorName = vendor.company || vendor.name || 'there';
+        sendNewLeadNotification(vendorEmail, {
+          vendorName,
+          service,
+          postcode,
+          requirements: requirements || {},
+          timeline: lead.timeline,
+          leadId: lead._id.toString(),
+        }).catch(err => console.error('[VendorLead] Email notification failed:', err.message));
+      }
+    } catch (emailErr) {
+      console.error('[VendorLead] Email setup error:', emailErr.message);
+    }
+
     // TODO: Send confirmation email to customer
 
     res.json({

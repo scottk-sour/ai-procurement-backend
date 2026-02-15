@@ -46,6 +46,7 @@ const vendorLeadSchema = new mongoose.Schema({
   currentProvider: {
     name: { type: String, trim: true },
     contractEndDate: { type: Date },
+    monthlyCost: { type: String, trim: true },
     satisfactionLevel: {
       type: String,
       enum: ['very-happy', 'happy', 'neutral', 'unhappy', 'very-unhappy']
@@ -58,6 +59,12 @@ const vendorLeadSchema = new mongoose.Schema({
   features: [{
     type: String
   }],
+
+  // Flexible storage for all category-specific answers
+  requirements: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
 
   // Timeline and budget
   timeline: {

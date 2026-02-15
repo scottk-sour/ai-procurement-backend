@@ -402,6 +402,56 @@ export const aeoReportTemplate = ({ companyName, category, city, aiMentioned, ai
 `);
 };
 
+// =====================================================
+// NEW LEAD NOTIFICATION (sent to vendor on VendorLead creation)
+// =====================================================
+
+export const newLeadNotificationTemplate = ({ vendorName, service, postcode, requirementsSummary, timelineLabel, dashboardUrl }) => {
+  const requirementRows = requirementsSummary.map(item => `
+    <tr><td style="padding: 6px 0; color: #374151; font-size: 14px;">${item}</td></tr>
+  `).join('');
+
+  const timelineColor = timelineLabel === 'ASAP' ? '#ef4444' : '#7c3aed';
+
+  return wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>New Lead</h1>
+      <p>${service} enquiry in ${postcode}</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${vendorName},</h2>
+      <p>A business is looking for <strong>${service}</strong> in <strong>${postcode}</strong> and you've been matched as a supplier.</p>
+
+      ${requirementRows ? `
+      <div class="info-box">
+        <h3>Requirements Summary</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          ${requirementRows}
+        </table>
+      </div>
+      ` : ''}
+
+      ${timelineLabel ? `
+      <p style="margin: 16px 0;">
+        <strong>Timeline:</strong> <span style="color: ${timelineColor}; font-weight: 600;">${timelineLabel}</span>
+      </p>
+      ` : ''}
+
+      <p><strong>Respond quickly</strong> — leads contacted within 2 hours are 3x more likely to convert.</p>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">View Lead</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p>This lead was sent via <a href="https://tendorai.com">TendorAI</a></p>
+      <p>Manage your notifications in <a href="https://tendorai.com/vendor-dashboard/settings">account settings</a></p>
+    </div>
+  </div>
+`);
+};
+
 // Export all templates
 export default {
   passwordResetTemplate,
@@ -412,5 +462,6 @@ export default {
   leadNotificationTemplate,
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
-  aeoReportTemplate
+  aeoReportTemplate,
+  newLeadNotificationTemplate
 };

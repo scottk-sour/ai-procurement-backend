@@ -9,7 +9,8 @@ import {
   leadNotificationTemplate,
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
-  aeoReportTemplate
+  aeoReportTemplate,
+  newLeadNotificationTemplate
 } from './emailTemplates.js';
 
 dotenv.config();
@@ -30,9 +31,9 @@ const getResendClient = () => {
 };
 
 // Helper to send email
-export const sendEmail = async ({ to, subject, html, text }) => {
+export const sendEmail = async ({ to, subject, html, text, from: customFrom }) => {
   const resend = getResendClient();
-  const from = process.env.EMAIL_FROM || 'TendorAI <noreply@tendorai.com>';
+  const from = customFrom || process.env.EMAIL_FROM || 'TendorAI <noreply@tendorai.com>';
 
   // If no client (API key missing), log the email
   if (!resend) {
@@ -252,6 +253,50 @@ export const sendAeoReportEmail = async (email, reportData) => {
 };
 
 // =====================================================
+// NEW LEAD NOTIFICATION (sent to vendor when a VendorLead is created)
+// =====================================================
+
+export const sendNewLeadNotification = async (vendorEmail, { vendorName, service, postcode, requirements, timeline, leadId }) => {
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
+
+  // Build a human-readable requirements summary
+  const summaryParts = [];
+  if (requirements) {
+    if (requirements.volume) summaryParts.push(`Volume: ${requirements.volume} pages/mo`);
+    if (requirements.colour) summaryParts.push(`Colour: ${requirements.colour}`);
+    if (requirements.a3) summaryParts.push(`A3: ${requirements.a3}`);
+    if (requirements.devices) summaryParts.push(`Devices: ${requirements.devices}`);
+    if (requirements.users) summaryParts.push(`Users: ${requirements.users}`);
+    if (requirements.cameras) summaryParts.push(`Cameras: ${requirements.cameras}`);
+    if (requirements.cameraLocation) summaryParts.push(`Location: ${requirements.cameraLocation}`);
+    if (Array.isArray(requirements.features) && requirements.features.length) summaryParts.push(`Features: ${requirements.features.join(', ')}`);
+    if (Array.isArray(requirements.telecomsServices) && requirements.telecomsServices.length) summaryParts.push(`Services: ${requirements.telecomsServices.join(', ')}`);
+    if (Array.isArray(requirements.securityServices) && requirements.securityServices.length) summaryParts.push(`Services: ${requirements.securityServices.join(', ')}`);
+    if (Array.isArray(requirements.itServices) && requirements.itServices.length) summaryParts.push(`Services: ${requirements.itServices.join(', ')}`);
+    if (Array.isArray(requirements.brands) && requirements.brands.length) summaryParts.push(`Brands: ${requirements.brands.join(', ')}`);
+  }
+
+  const timelineLabels = { urgent: 'ASAP', soon: '1-3 months', planning: '3-6 months', future: 'Just researching' };
+  const timelineLabel = timelineLabels[timeline] || timeline || '';
+  if (timelineLabel) summaryParts.push(`Timeline: ${timelineLabel}`);
+
+  return sendEmail({
+    to: vendorEmail,
+    from: 'TendorAI <scott.davies@tendorai.com>',
+    subject: `New Lead: ${service || 'Business'} enquiry in ${postcode || 'your area'}`,
+    html: newLeadNotificationTemplate({
+      vendorName: vendorName || 'there',
+      service: service || 'Business services',
+      postcode: postcode || 'Not specified',
+      requirementsSummary: summaryParts,
+      timelineLabel,
+      dashboardUrl,
+    }),
+    text: `Hi ${vendorName || 'there'}, you have a new ${service} lead in ${postcode || 'your area'}. ${summaryParts.join('. ')}. View in your dashboard: ${dashboardUrl}`
+  });
+};
+
+// =====================================================
 // QUOTE NOTIFICATION STUBS (for quoteRoutes.js compatibility)
 // These are called with optional chaining, so they won't crash if they fail
 // =====================================================
@@ -284,6 +329,7 @@ export default {
   sendReviewNotification,
   sendReviewResponseNotification,
   sendLeadNotification,
+  sendNewLeadNotification,
   sendReviewRequestEmail,
   sendVerifiedReviewNotification,
   sendAeoReportEmail,
