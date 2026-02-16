@@ -23,6 +23,7 @@
     "format:check": "echo \"Format check will be configured in Week 3\"",
     "scan:mentions": "node scripts/weeklyAIMentionScan.js",
     "email:weekly": "node scripts/sendWeeklyVendorEmails.js",
+    "generate:reports": "node scripts/generateBatchReports.js",
     "clean": "rm -rf node_modules package-lock.json && npm install",
     "build": "echo \"No build step required for Node.js\""
   },
@@ -62,6 +63,7 @@
     "nodemailer": "^7.0.10",
     "openai": "^4.80.1",
     "papaparse": "^5.4.1",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "pdf.js-extract": "^0.2.1",
     "resend": "^6.9.2",

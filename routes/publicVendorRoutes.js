@@ -848,6 +848,53 @@ function capitalize(str) {
 }
 
 // ============================================================
+// AEO FULL REPORT — Public viewing (no auth, report ID = secret token)
+// ============================================================
+
+/**
+ * GET /api/public/aeo-report/:reportId
+ * Return full report JSON (excludes pdfBuffer and ipAddress)
+ */
+router.get('/aeo-report/:reportId', async (req, res) => {
+  try {
+    const report = await AeoReport.findById(req.params.reportId)
+      .select('-pdfBuffer -ipAddress')
+      .lean();
+
+    if (!report) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+
+    res.json({ success: true, data: report });
+  } catch (error) {
+    console.error('AEO report fetch error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch report' });
+  }
+});
+
+/**
+ * GET /api/public/aeo-report/:reportId/pdf
+ * Return PDF as binary download
+ */
+router.get('/aeo-report/:reportId/pdf', async (req, res) => {
+  try {
+    const report = await AeoReport.findById(req.params.reportId).select('pdfBuffer companyName').lean();
+
+    if (!report || !report.pdfBuffer) {
+      return res.status(404).json({ success: false, error: 'PDF not found' });
+    }
+
+    const filename = `AEO-Report-${(report.companyName || 'Company').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(report.pdfBuffer);
+  } catch (error) {
+    console.error('AEO report PDF error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch PDF' });
+  }
+});
+
+// ============================================================
 // AEO REPORT — Public sales tool
 // ============================================================
 

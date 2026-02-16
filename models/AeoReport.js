@@ -17,6 +17,45 @@ const aeoReportSchema = new mongoose.Schema({
   competitorsOnTendorAI: { type: Number, default: 0 },
   ipAddress: { type: String },
   createdAt: { type: Date, default: Date.now },
+
+  // Full report fields (optional — basic reports won't have these)
+  reportType: { type: String, enum: ['basic', 'full'], default: 'basic' },
+  score: { type: Number, min: 0, max: 100, default: null },
+  scoreBreakdown: {
+    websiteOptimisation: { type: Number, default: null },
+    contentAuthority: { type: Number, default: null },
+    directoryPresence: { type: Number, default: null },
+    reviewSignals: { type: Number, default: null },
+    structuredData: { type: Number, default: null },
+    competitivePosition: { type: Number, default: null },
+  },
+  searchedCompany: {
+    website: { type: String, default: null },
+    hasReviews: { type: Boolean, default: null },
+    hasPricing: { type: Boolean, default: null },
+    hasBrands: { type: Boolean, default: null },
+    hasStructuredData: { type: Boolean, default: null },
+    hasDetailedServices: { type: Boolean, default: null },
+    hasSocialMedia: { type: Boolean, default: null },
+    hasGoogleBusiness: { type: Boolean, default: null },
+    summary: { type: String, default: null },
+  },
+  competitors: [
+    {
+      name: String,
+      description: String,
+      reason: String,
+      website: { type: String, default: null },
+      strengths: [String],
+    },
+  ],
+  gaps: [
+    {
+      title: String,
+      explanation: String,
+    },
+  ],
+  pdfBuffer: { type: Buffer, default: null },
 });
 
 aeoReportSchema.index({ createdAt: -1 });

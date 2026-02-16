@@ -17,6 +17,8 @@ import GeoAudit from '../models/GeoAudit.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Stripe from 'stripe';
 import { sendEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
+import { generateFullReport } from '../services/aeoReportGenerator.js';
+import { generateReportPdf } from '../services/aeoReportPdf.js';
 import 'dotenv/config';
 
 // Initialize Stripe (same pattern as stripeRoutes.js)
@@ -703,6 +705,141 @@ router.get('/all-leads', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching all leads:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching leads.' });
+  }
+});
+
+// ============================================================
+// AEO FULL REPORT GENERATION — Admin tools for cold outreach
+// ============================================================
+
+/**
+ * POST /api/admin/generate-vendor-report
+ * Generate a single full AEO visibility report
+ * Body: { companyName, category, city, email? }
+ */
+router.post('/generate-vendor-report', adminAuth, async (req, res) => {
+  try {
+    const { companyName, category, city, email } = req.body;
+
+    if (!companyName || !category || !city) {
+      return res.status(400).json({
+        success: false,
+        message: 'companyName, category, and city are required.',
+      });
+    }
+
+    const validCategories = ['copiers', 'telecoms', 'cctv', 'it'];
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        message: `category must be one of: ${validCategories.join(', ')}`,
+      });
+    }
+
+    console.log(`[Admin] Generating full AEO report for "${companyName}" (${category}, ${city})`);
+
+    // 1. Generate report data via Claude
+    const reportData = await generateFullReport({ companyName, category, city, email });
+
+    // 2. Generate PDF
+    const pdfBuffer = await generateReportPdf(reportData);
+
+    // 3. Save to MongoDB
+    const report = await AeoReport.create({
+      ...reportData,
+      pdfBuffer,
+    });
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
+    const apiBaseUrl = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
+
+    console.log(`[Admin] Report generated: ${report._id} — Score: ${report.score}/100`);
+
+    res.json({
+      success: true,
+      reportId: report._id,
+      score: report.score,
+      aiMentioned: report.aiMentioned,
+      competitors: report.competitors?.length || 0,
+      gaps: report.gaps?.length || 0,
+      reportUrl: `${baseUrl}/aeo-report/results/${report._id}`,
+      pdfUrl: `${apiBaseUrl}/api/public/aeo-report/${report._id}/pdf`,
+    });
+  } catch (error) {
+    console.error('[Admin] Report generation error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: `Failed to generate report: ${error.message}`,
+    });
+  }
+});
+
+/**
+ * POST /api/admin/generate-vendor-reports-batch
+ * Generate multiple full AEO reports sequentially
+ * Body: { reports: [{ companyName, category, city, email? }] }
+ * Max 10 per batch, 3s delay between each
+ */
+router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
+  try {
+    const { reports } = req.body;
+
+    if (!Array.isArray(reports) || reports.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'reports array is required.',
+      });
+    }
+
+    if (reports.length > 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 10 reports per batch.',
+      });
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
+    const apiBaseUrl = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
+    const results = [];
+
+    for (let i = 0; i < reports.length; i++) {
+      const { companyName, category, city, email } = reports[i];
+
+      try {
+        if (!companyName || !category || !city) {
+          results.push({ companyName, success: false, error: 'Missing required fields' });
+          continue;
+        }
+
+        console.log(`[Admin Batch] ${i + 1}/${reports.length}: "${companyName}" (${category}, ${city})`);
+
+        const reportData = await generateFullReport({ companyName, category, city, email });
+        const pdfBuffer = await generateReportPdf(reportData);
+        const report = await AeoReport.create({ ...reportData, pdfBuffer });
+
+        results.push({
+          companyName,
+          success: true,
+          reportId: report._id,
+          score: report.score,
+          reportUrl: `${baseUrl}/aeo-report/results/${report._id}`,
+          pdfUrl: `${apiBaseUrl}/api/public/aeo-report/${report._id}/pdf`,
+        });
+
+        // 3s delay between reports to avoid rate limits
+        if (i < reports.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      } catch (err) {
+        console.error(`[Admin Batch] Failed: "${companyName}" — ${err.message}`);
+        results.push({ companyName, success: false, error: err.message });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('[Admin Batch] Error:', error.message);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
