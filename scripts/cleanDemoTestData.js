@@ -78,7 +78,7 @@ async function main() {
     // Fix broken website (was "https://demo@tendorai.com")
     const website = vendor.contactInfo?.website || '';
     if (!website || website.includes('@') || !website.startsWith('http')) {
-      updates['contactInfo.website'] = 'https://tendorai.com';
+      updates['contactInfo.website'] = 'https://www.tendorai.com';
       console.log(`Fixed: broken website (was "${website}")`);
     }
 

@@ -1195,8 +1195,8 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
           includesPartsLabour: bestProduct.service.includesPartsLabour,
           responseTime: bestProduct.service.responseTime
         } : null,
-        profileUrl: `https://tendorai.com/suppliers/${v._id}`,
-        quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
+        profileUrl: `https://www.tendorai.com/suppliers/${v._id}`,
+        quoteUrl: `https://www.tendorai.com/suppliers/${v._id}?quote=true`
       };
     });
 
@@ -1328,13 +1328,13 @@ app.post('/api/ai-query', aiQueryLimiter, async (req, res) => {
       note: pricedFinalResults.length > 0
         ? 'Prices are estimates based on your requirements. Request formal quotes for final pricing.'
         : 'Request quotes from these suppliers for personalised pricing.',
-      compareUrl: `https://tendorai.com/compare?ids=${finalResults.map(r => r.id).join(',')}`,
+      compareUrl: `https://www.tendorai.com/compare?ids=${finalResults.map(r => r.id).join(',')}`,
       ...(warnings.length > 0 && { warnings }),
       metadata: {
         monthlyVolume: actualVolume,
         colourRatio,
         source: 'TendorAI',
-        website: 'https://tendorai.com',
+        website: 'https://www.tendorai.com',
         apiVersion: '3.0',
         timestamp: new Date().toISOString()
       }

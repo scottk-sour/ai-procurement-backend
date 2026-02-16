@@ -425,8 +425,8 @@ router.get('/docs', (req, res) => {
       500: 'Internal Server Error - Service unavailable'
     },
     support: {
-      website: 'https://tendorai.com',
-      documentation: 'https://tendorai.com/api-docs',
+      website: 'https://www.tendorai.com',
+      documentation: 'https://www.tendorai.com/api-docs',
       contact: 'scott.davies@tendorai.com'
     }
   });
@@ -618,8 +618,8 @@ router.post('/suppliers',
             disclaimer: 'Estimate only - request quote for accurate pricing'
           } : null,
           productCount: products.length,
-          profileUrl: `https://tendorai.com/suppliers/${v._id}`,
-          quoteUrl: `https://tendorai.com/suppliers/${v._id}?quote=true`
+          profileUrl: `https://www.tendorai.com/suppliers/${v._id}`,
+          quoteUrl: `https://www.tendorai.com/suppliers/${v._id}?quote=true`
         };
       });
 
@@ -821,7 +821,7 @@ router.get('/suppliers',
             disclaimer: 'Estimate only - request quote for accurate pricing'
           } : null,
           productCount: products.length,
-          profileUrl: `https://tendorai.com/suppliers/${v._id}`
+          profileUrl: `https://www.tendorai.com/suppliers/${v._id}`
         };
       });
 
@@ -1142,8 +1142,8 @@ router.get('/supplier/:id', async (req, res) => {
         responseTime: vendor.serviceCapabilities?.responseTime || 'Next day',
         tier: vendor.tier || vendor.account?.tier || 'free',
         canReceiveQuotes: ['basic', 'managed', 'enterprise', 'visible', 'verified'].includes(vendor.tier || vendor.account?.tier),
-        profileUrl: `https://tendorai.com/suppliers/${vendor._id}`,
-        quoteUrl: `https://tendorai.com/suppliers/${vendor._id}?quote=true`
+        profileUrl: `https://www.tendorai.com/suppliers/${vendor._id}`,
+        quoteUrl: `https://www.tendorai.com/suppliers/${vendor._id}?quote=true`
       }
     });
 

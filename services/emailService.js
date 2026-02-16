@@ -68,7 +68,7 @@ export const sendEmail = async ({ to, subject, html, text, from: customFrom }) =
 // =====================================================
 
 export const sendPasswordResetEmail = async (email, { vendorName, resetToken }) => {
-  const resetUrl = `https://tendorai.com/vendor-reset-password?token=${resetToken}`;
+  const resetUrl = `https://www.tendorai.com/vendor-reset-password?token=${resetToken}`;
 
   return sendEmail({
     to: email,
@@ -83,8 +83,8 @@ export const sendPasswordResetEmail = async (email, { vendorName, resetToken }) 
 // =====================================================
 
 export const sendVendorWelcomeEmail = async (email, { vendorName }) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
-  const loginUrl = 'https://tendorai.com/vendor-login';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const loginUrl = 'https://www.tendorai.com/vendor-login';
 
   return sendEmail({
     to: email,
@@ -99,7 +99,7 @@ export const sendVendorWelcomeEmail = async (email, { vendorName }) => {
 // =====================================================
 
 export const sendQuoteRequestEmail = async (vendorEmail, quoteDetails) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
@@ -127,7 +127,7 @@ export const sendQuoteNotification = sendQuoteRequestEmail;
 // =====================================================
 
 export const sendReviewNotification = async (vendorEmail, reviewDetails) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
@@ -162,7 +162,7 @@ export const sendReviewResponseNotification = async (reviewerEmail, details) => 
 // =====================================================
 
 export const sendLeadNotification = async (vendorEmail, leadDetails) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
@@ -184,7 +184,7 @@ export const sendLeadNotification = async (vendorEmail, leadDetails) => {
 // =====================================================
 
 export const sendReviewRequestEmail = async (customerEmail, { customerName, vendorName, category, reviewToken }) => {
-  const reviewUrl = `https://tendorai.com/review?token=${reviewToken}`;
+  const reviewUrl = `https://www.tendorai.com/review?token=${reviewToken}`;
 
   return sendEmail({
     to: customerEmail,
@@ -204,7 +204,7 @@ export const sendReviewRequestEmail = async (customerEmail, { customerName, vend
 // =====================================================
 
 export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
@@ -258,7 +258,7 @@ export const sendAeoReportEmail = async (email, reportData) => {
 // =====================================================
 
 export const sendNewLeadNotification = async (vendorEmail, { vendorName, service, postcode, requirements, timeline, leadId }) => {
-  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
 
   // Build a human-readable requirements summary
   const summaryParts = [];

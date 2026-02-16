@@ -129,7 +129,7 @@ Add these as suggested conversation starters for users:
 
 Include this link in your GPT configuration:
 ```
-https://tendorai.com/privacy-policy
+https://www.tendorai.com/privacy-policy
 ```
 
 ## Testing Your GPT
@@ -146,11 +146,11 @@ After configuration, test with these queries:
 When creating your GPT:
 - Name: "UK Office Equipment Finder" or similar
 - Mention "powered by TendorAI" in the description
-- Link back to https://tendorai.com
+- Link back to https://www.tendorai.com
 
 ## Support
 
 For API issues or questions:
-- Documentation: https://tendorai.com/api-docs
+- Documentation: https://www.tendorai.com/api-docs
 - Email: scott.davies@tendorai.com
 - API Status: https://ai-procurement-backend-q35u.onrender.com/api/ai/health

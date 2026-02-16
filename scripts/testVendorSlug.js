@@ -84,7 +84,7 @@ checks.forEach(([label, pass]) => {
 
 // 3. Verify page URLs
 const pageUrl = `https://www.tendorai.com/suppliers/vendor/${vendor.slug}`;
-const canonicalUrl = `https://tendorai.com/suppliers/vendor/${vendor.slug}`;
+const canonicalUrl = `https://www.tendorai.com/suppliers/vendor/${vendor.slug}`;
 console.log(`\n=== URLS ===`);
 console.log(`Page:      ${pageUrl}`);
 console.log(`Canonical: ${canonicalUrl}`);

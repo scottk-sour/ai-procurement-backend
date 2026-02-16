@@ -177,7 +177,7 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
       // Redirect to billing portal instead
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: `${process.env.FRONTEND_URL || 'https://tendorai.com'}/vendor-dashboard/upgrade`
+        return_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard/upgrade`
       });
 
       return res.json({
@@ -198,8 +198,8 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
           quantity: 1,
         },
       ],
-      success_url: `${process.env.FRONTEND_URL || 'https://tendorai.com'}/vendor-dashboard?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL || 'https://tendorai.com'}/vendor-dashboard/upgrade?subscription=cancelled`,
+      success_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard/upgrade?subscription=cancelled`,
       metadata: {
         vendorId: vendor._id.toString(),
         planId: normalizedPlanId,
@@ -246,7 +246,7 @@ router.post('/create-portal-session', requireStripe, authenticateVendor, async (
 
     const session = await stripe.billingPortal.sessions.create({
       customer: vendor.stripeCustomerId,
-      return_url: `${process.env.FRONTEND_URL || 'https://tendorai.com'}/vendor-dashboard/upgrade`,
+      return_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard/upgrade`,
     });
 
     logger.info('Portal session created', { vendorId: vendor._id });

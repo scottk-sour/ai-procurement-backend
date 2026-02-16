@@ -108,7 +108,7 @@ async function handleSearchSuppliers(args) {
     const rating = v.performance?.rating ? ` (${v.performance.rating.toFixed(1)}★)` : '';
     const city = v.location?.city || 'UK';
     const coverage = v.location?.coverage?.slice(0, 3).join(', ') || '';
-    return `${i + 1}. **${v.company}**${rating} — ${city}${coverage ? ` | Covers: ${coverage}` : ''}\n   Profile: https://tendorai.com/suppliers/profile/${v._id || v.id}`;
+    return `${i + 1}. **${v.company}**${rating} — ${city}${coverage ? ` | Covers: ${coverage}` : ''}\n   Profile: https://www.tendorai.com/suppliers/profile/${v._id || v.id}`;
   });
 
   const text = vendors.length > 0
@@ -139,7 +139,7 @@ async function handleGetVendorProfile(args) {
     vendor.brands?.length ? `**Brands:** ${vendor.brands.join(', ')}` : '',
     `**Tier:** ${vendor.tier || 'free'}`,
     '',
-    `Profile: https://tendorai.com/suppliers/profile/${args.vendorId}`,
+    `Profile: https://www.tendorai.com/suppliers/profile/${args.vendorId}`,
   ].filter(Boolean).join('\n');
 
   return { content: [{ type: 'text', text }] };

@@ -35,7 +35,7 @@
 ### FRONTEND_URL
 - **Purpose:** Frontend URL for CORS configuration
 - **Example:** `http://localhost:3000`
-- **Production:** `https://tendorai.com` or your production URL
+- **Production:** `https://www.tendorai.com` or your production URL
 - **Used in:** CORS middleware
 - **Required:** ✅ Yes
 
@@ -220,7 +220,7 @@ SENTRY_DSN=https://...
 NODE_ENV=production
 MONGODB_URI=mongodb+srv://user:pass@cluster-prod.mongodb.net/tendorai
 PORT=5000
-FRONTEND_URL=https://tendorai.com
+FRONTEND_URL=https://www.tendorai.com
 LOG_LEVEL=warn
 JWT_SECRET=production_secret_strong_random_32_plus_chars
 OPENAI_API_KEY=sk-your-production-key

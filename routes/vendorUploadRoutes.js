@@ -814,7 +814,7 @@ router.post('/claim', async (req, res) => {
                         <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Email:</td><td>${email}</td></tr>
                         <tr><td style="padding:4px 12px 4px 0;font-weight:bold">Role:</td><td>${role}</td></tr>
                     </table>
-                    <p>Review and activate in the <a href="https://tendorai.com/admin/vendors">admin dashboard</a>.</p>
+                    <p>Review and activate in the <a href="https://www.tendorai.com/admin/vendors">admin dashboard</a>.</p>
                 `,
                 text: `New claim: ${vendor.company} by ${name} (${email}, ${role}). Review in admin dashboard.`
             });
