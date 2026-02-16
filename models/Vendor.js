@@ -272,6 +272,15 @@ const vendorSchema = new mongoose.Schema({
   emailUnsubscribed: {
     type: Boolean,
     default: false
+  },
+
+  slug: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    lowercase: true,
+    index: true
   }
 
 }, {
