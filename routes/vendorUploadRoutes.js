@@ -18,6 +18,8 @@ import CopierListing from "../models/CopierListing.js";
 import AIRecommendationEngine from "../services/aiRecommendationEngine.js";
 import { importVendorProducts, VendorUploadValidator } from "../controllers/vendorProductImportController.js";
 import { sendEmail } from "../services/emailService.js";
+import AeoReport from "../models/AeoReport.js";
+import { generateFullReport } from "../services/aeoReportGenerator.js";
 
 const router = express.Router();
 const { JWT_SECRET } = process.env;
@@ -1429,6 +1431,126 @@ router.get("/listings", async (req, res) => {
     } catch (error) {
         res.status(500).json({ message: "Internal server error.", error: error.message });
     }
+});
+
+// ─── AEO Visibility Score (real) ────────────────────────────────────
+
+// Map vendor services to AEO report categories
+const SERVICE_TO_AEO_CATEGORY = {
+  'Photocopiers': 'copiers',
+  'Managed Print': 'copiers',
+  'Telecoms': 'telecoms',
+  'VoIP': 'telecoms',
+  'CCTV': 'cctv',
+  'Security': 'cctv',
+  'IT Support': 'it',
+  'IT': 'it',
+  'Managed IT': 'it',
+};
+
+function getAeoCategory(services) {
+  if (!services?.length) return 'it';
+  for (const svc of services) {
+    const cat = SERVICE_TO_AEO_CATEGORY[svc];
+    if (cat) return cat;
+  }
+  return 'it';
+}
+
+// GET /api/vendors/aeo-score — Return latest AEO report for authenticated vendor
+router.get('/aeo-score', vendorAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId).select('company').lean();
+    if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
+
+    const report = await AeoReport.findOne({
+      companyName: { $regex: new RegExp(`^${vendor.company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      score: { $ne: null },
+    })
+      .sort({ createdAt: -1 })
+      .select('-pdfBuffer -ipAddress')
+      .lean();
+
+    if (!report) {
+      return res.json({
+        success: true,
+        hasReport: false,
+        data: null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      hasReport: true,
+      data: {
+        reportId: report._id,
+        score: report.score,
+        scoreBreakdown: report.scoreBreakdown,
+        searchedCompany: report.searchedCompany,
+        competitors: report.competitors,
+        gaps: report.gaps,
+        aiMentioned: report.aiMentioned,
+        aiPosition: report.aiPosition,
+        reportType: report.reportType,
+        createdAt: report.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('AEO score lookup error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch AEO score' });
+  }
+});
+
+// POST /api/vendors/aeo-rescan — Trigger a new AEO report for authenticated vendor
+const rescanLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 2,
+  message: { success: false, error: 'Too many scans. Please try again later.' },
+  keyGenerator: (req) => req.vendorId,
+});
+
+router.post('/aeo-rescan', vendorAuth, rescanLimiter, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId)
+      .select('company services location email')
+      .lean();
+    if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
+
+    const category = getAeoCategory(vendor.services);
+    const city = vendor.location?.city || 'London';
+
+    const report = await generateFullReport({
+      companyName: vendor.company,
+      category,
+      city,
+      email: vendor.email,
+    });
+
+    // Save the report
+    const saved = await AeoReport.create({
+      ...report,
+      ipAddress: req.ip,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        reportId: saved._id,
+        score: saved.score,
+        scoreBreakdown: saved.scoreBreakdown,
+        searchedCompany: saved.searchedCompany,
+        competitors: saved.competitors,
+        gaps: saved.gaps,
+        aiMentioned: saved.aiMentioned,
+        aiPosition: saved.aiPosition,
+        reportType: saved.reportType,
+        createdAt: saved.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('AEO rescan error:', err);
+    res.status(500).json({ success: false, error: 'Failed to generate new scan' });
+  }
 });
 
 export default router;
