@@ -99,7 +99,7 @@ export const vendorWelcomeTemplate = ({ vendorName, loginUrl, dashboardUrl }) =>
     </div>
     <div class="footer">
       <p>Welcome to <a href="https://tendorai.com">TendorAI</a></p>
-      <p>Questions? Contact us at support@tendorai.com</p>
+      <p>Questions? Contact us at scott.davies@tendorai.com</p>
     </div>
   </div>
 `);

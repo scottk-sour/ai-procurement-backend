@@ -287,7 +287,7 @@ export const getWelcomeTemplate = ({ name, userType }) => {
         </p>
       `}
 
-      <p>Have questions? Our support team is here to help at <a href="mailto:support@tendorai.com" style="color: ${BRAND.primary};">support@tendorai.com</a></p>
+      <p>Have questions? Our support team is here to help at <a href="mailto:scott.davies@tendorai.com" style="color: ${BRAND.primary};">scott.davies@tendorai.com</a></p>
     </div>
   `;
 

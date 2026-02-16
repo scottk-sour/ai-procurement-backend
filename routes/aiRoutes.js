@@ -427,7 +427,7 @@ router.get('/docs', (req, res) => {
     support: {
       website: 'https://tendorai.com',
       documentation: 'https://tendorai.com/api-docs',
-      contact: 'support@tendorai.com'
+      contact: 'scott.davies@tendorai.com'
     }
   });
 });

@@ -152,5 +152,5 @@ When creating your GPT:
 
 For API issues or questions:
 - Documentation: https://tendorai.com/api-docs
-- Email: support@tendorai.com
+- Email: scott.davies@tendorai.com
 - API Status: https://ai-procurement-backend-q35u.onrender.com/api/ai/health
