@@ -234,21 +234,22 @@ export const sendAeoReportEmail = async (email, reportData) => {
     it: 'IT support',
   };
 
+  const categoryLabel = categoryLabels[reportData.category] || reportData.category;
+
   return sendEmail({
     to: email,
-    subject: `Your AI Visibility Report — ${reportData.companyName}`,
+    subject: `Your AI Visibility Report — ${reportData.companyName} (Score: ${reportData.score}/100)`,
     html: aeoReportTemplate({
       companyName: reportData.companyName,
-      category: categoryLabels[reportData.category] || reportData.category,
+      category: categoryLabel,
       city: reportData.city,
+      score: reportData.score,
       aiMentioned: reportData.aiMentioned,
-      aiPosition: reportData.aiPosition,
-      aiRecommendations: reportData.aiRecommendations,
-      competitorsOnTendorAI: reportData.competitorsOnTendorAI,
+      reportUrl: reportData.reportUrl,
     }),
     text: reportData.aiMentioned
-      ? `AI Visibility Report for ${reportData.companyName}: AI mentions you at position #${reportData.aiPosition} for ${categoryLabels[reportData.category] || reportData.category} in ${reportData.city}. Protect your ranking — claim your free listing at https://tendorai.com/vendor-signup`
-      : `AI Visibility Report for ${reportData.companyName}: AI does NOT recommend you for ${categoryLabels[reportData.category] || reportData.category} in ${reportData.city}. Fix this — claim your free listing at https://tendorai.com/vendor-signup`
+      ? `AI Visibility Report for ${reportData.companyName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`
+      : `AI Visibility Report for ${reportData.companyName}: Score ${reportData.score}/100. AI does NOT recommend you for ${categoryLabel} in ${reportData.city}. View your full report: ${reportData.reportUrl}`
   });
 };
 

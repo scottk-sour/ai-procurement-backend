@@ -332,66 +332,55 @@ export const verifiedReviewNotificationTemplate = ({ vendorName, reviewerName, r
 // AEO REPORT (to lead)
 // =====================================================
 
-export const aeoReportTemplate = ({ companyName, category, city, aiMentioned, aiPosition, aiRecommendations = [], competitorsOnTendorAI }) => {
-  const signupUrl = 'https://tendorai.com/vendor-signup';
-
-  const competitorRows = aiRecommendations.map((c, i) => {
-    const isYou = aiMentioned && (i + 1) === aiPosition;
-    const bg = isYou ? '#fef3c7' : '#f9fafb';
-    const border = isYou ? '2px solid #f59e0b' : '1px solid #e5e7eb';
-    const badge = isYou ? '<span style="background:#f59e0b;color:white;font-size:11px;padding:2px 8px;border-radius:12px;margin-left:8px;">That\'s you</span>' : '';
-    return `
-      <tr>
-        <td style="padding:12px 16px;border:${border};background:${bg};border-radius:6px;">
-          <strong style="color:#1f2937;">#${i + 1} ${c.name}${badge}</strong><br>
-          <span style="color:#6b7280;font-size:13px;">${c.description}</span>
-        </td>
-      </tr>
-      <tr><td style="height:8px;"></td></tr>
-    `;
-  }).join('');
+export const aeoReportTemplate = ({ companyName, category, city, score, aiMentioned, reportUrl }) => {
+  const scoreColor = score <= 30 ? '#ef4444' : score <= 60 ? '#f59e0b' : '#1B4F72';
+  const scoreLabel = score <= 20 ? 'Critical' : score <= 35 ? 'Poor' : score <= 50 ? 'Below Average' : score <= 65 ? 'Average' : 'Good';
 
   const verdictHeader = aiMentioned
-    ? `AI Mentions ${companyName} — Position #${aiPosition}`
-    : `AI Does NOT Recommend ${companyName}`;
-
-  const verdictColor = aiMentioned ? '#f59e0b' : '#ef4444';
+    ? `${companyName} — AI Visibility Score: ${score}/100`
+    : `${companyName} — AI Visibility Score: ${score}/100`;
 
   const verdictMessage = aiMentioned
-    ? `<p>When we asked AI "Who are the best ${category} companies in ${city}?", <strong>${companyName}</strong> appeared at position <strong>#${aiPosition}</strong>. But this position isn't guaranteed — your competitors are investing in AI visibility.</p>`
-    : `<p>When we asked AI "Who are the best ${category} companies in ${city}?", <strong>${companyName}</strong> was not mentioned. These companies were recommended instead of you:</p>`;
-
-  const ctaMessage = aiMentioned
-    ? 'Protect your AI ranking — claim your free listing before competitors push you down.'
-    : 'Fix this now — list your business on TendorAI to start showing up in AI recommendations.';
-
-  const ctaButton = aiMentioned
-    ? 'Protect Your AI Visibility'
-    : 'Claim Your Free Listing on TendorAI';
+    ? `<p>When we asked AI "Who are the best ${category} companies in ${city}?", <strong>${companyName}</strong> was mentioned — but competitors rank higher. Your full report shows exactly who AI recommends instead and what you can do about it.</p>`
+    : `<p>When we asked AI "Who are the best ${category} companies in ${city}?", <strong>${companyName}</strong> was <strong>not mentioned</strong>. Your full report shows who AI recommends instead, what gaps are holding you back, and how to fix it.</p>`;
 
   return wrapTemplate(`
   <div class="container">
-    <div class="header" style="background: linear-gradient(135deg, ${verdictColor} 0%, ${aiMentioned ? '#d97706' : '#dc2626'} 100%);">
+    <div class="header" style="background: linear-gradient(135deg, ${scoreColor} 0%, #1C1C1C 100%);">
       <h1>${verdictHeader}</h1>
-      <p>Your AI Visibility Report</p>
+      <p>Your AI Visibility Report is Ready</p>
     </div>
     <div class="content">
       <h2>Hi,</h2>
       ${verdictMessage}
 
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
-        ${competitorRows}
-      </table>
-
-      <div class="info-box">
-        <h3>Why this matters</h3>
-        <p style="margin:0;">200M+ people use ChatGPT monthly. 100M+ use Perplexity. As more customers use AI instead of Google to find suppliers, businesses not in AI recommendations become invisible. ${competitorsOnTendorAI} ${category} suppliers in ${city} are already on TendorAI.</p>
+      <div style="text-align:center;margin:30px 0;">
+        <div style="display:inline-block;width:120px;height:120px;border-radius:50%;border:6px solid ${scoreColor};text-align:center;line-height:108px;">
+          <span style="font-size:42px;font-weight:bold;color:${scoreColor};">${score}</span>
+        </div>
+        <p style="color:#6b7280;font-size:14px;margin-top:8px;">${scoreLabel} — out of 100</p>
       </div>
 
-      <p>${ctaMessage}</p>
+      <h3>Your report includes:</h3>
+      <ul style="color:#374151;line-height:2;">
+        <li>Your AI visibility score with detailed breakdown</li>
+        <li>What AI knows (and doesn't know) about your business</li>
+        <li>Who AI recommends instead — with website links</li>
+        <li>Specific gaps holding you back</li>
+        <li>Downloadable PDF report</li>
+      </ul>
 
-      <p style="text-align: center;">
-        <a href="${signupUrl}" class="button">${ctaButton} →</a>
+      <p style="text-align: center; margin-top: 30px;">
+        <a href="${reportUrl}" class="button">View Your Full Report</a>
+      </p>
+
+      <div class="info-box" style="margin-top:24px;">
+        <h3>Why this matters</h3>
+        <p style="margin:0;">200M+ people use ChatGPT monthly. 100M+ use Perplexity. Buyers are switching from Google to AI to find suppliers. If AI doesn't recommend you, you're losing leads you'll never know about.</p>
+      </div>
+
+      <p style="text-align: center; margin-top: 20px;">
+        <a href="https://tendorai.com/vendor-signup" class="button" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Claim Your Free Profile on TendorAI</a>
       </p>
     </div>
     <div class="footer">

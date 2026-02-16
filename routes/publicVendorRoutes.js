@@ -11,6 +11,8 @@ import VendorPost from '../models/VendorPost.js';
 import AeoReport from '../models/AeoReport.js';
 import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail } from '../services/emailService.js';
+import { generateFullReport } from '../services/aeoReportGenerator.js';
+import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
@@ -895,7 +897,7 @@ router.get('/aeo-report/:reportId/pdf', async (req, res) => {
 });
 
 // ============================================================
-// AEO REPORT — Public sales tool
+// AEO REPORT — Public generation (full report with PDF)
 // ============================================================
 
 const aeoRateLimiter = rateLimit({
@@ -907,80 +909,10 @@ const aeoRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const CATEGORY_LABELS = {
-  copiers: 'photocopier and managed print',
-  telecoms: 'business telecoms and VoIP',
-  cctv: 'CCTV and security system',
-  it: 'IT support and managed services',
-};
-
-// Category-specific search queries and clarifications for AEO report
-const CATEGORY_SEARCH_HINTS = {
-  copiers: {
-    queries: [
-      'Ricoh Konica Minolta photocopier dealer {city} UK',
-      'office copier leasing MFP supplier {city}',
-    ],
-    clarification: `CRITICAL — read BEFORE selecting companies:
-
-I am looking for office photocopier and multifunction printer (MFP) dealers — companies that sell, lease, and service machines from brands like Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera. NOT printing companies, print shops, litho printers, graphic design studios, or signage companies. Managed print means managing a fleet of office copiers, not running a print shop.
-
-A copier dealer is a company that:
-- Sells or leases Ricoh, Konica Minolta, Canon, Xerox, Sharp, Kyocera or Toshiba photocopiers
-- Offers copier leasing contracts and managed print services (monitoring office copier fleets)
-- Provides toner, maintenance and repair for office MFPs
-
-REJECT any company that is a print shop, commercial printer, litho printer, signage maker, graphic designer, wide format printer, or vehicle wrapper. These are NOT copier dealers even if they own a photocopier.
-
-The simple test: does the company's website show copier HARDWARE for sale or lease (e.g. Ricoh MP C3004, Konica Minolta bizhub)? If the website shows printing SERVICES (business cards, flyers, banners), it is a print shop — exclude it.
-
-It is OK to return only 2-3 companies if that is all you find. Do NOT fill the list with print shops.`,
-  },
-  telecoms: {
-    queries: [
-      'business phone systems VoIP provider {city} UK',
-      'hosted telephony SIP trunks supplier {city}',
-    ],
-    clarification: `CRITICAL — read BEFORE selecting companies:
-
-I am looking for business telecoms providers — companies that supply business phone systems, VoIP, SIP trunks, hosted telephony, and unified communications from brands like Mitel, Avaya, 8x8, Gamma, Wildix. NOT mobile phone shops, consumer broadband providers, or network infrastructure companies.
-
-A business telecoms provider is a company that:
-- Sells, installs, and supports business phone systems (on-premise PBX or hosted/cloud)
-- Provides VoIP, SIP trunks, unified communications, and call management solutions
-- Works with brands like Mitel, Avaya, 8x8, Gamma, Wildix, 3CX, Cisco
-
-REJECT any company that is a mobile phone retailer, consumer ISP, or pure network/cabling contractor.
-
-It is OK to return only 2-3 companies if that is all you find. Do NOT fill the list with irrelevant companies.`,
-  },
-  cctv: {
-    queries: [
-      'CCTV installer {city} UK',
-      'security systems company {city}',
-    ],
-    clarification: '',
-  },
-  it: {
-    queries: [
-      'IT support company {city} UK',
-      'managed IT services provider {city}',
-    ],
-    clarification: '',
-  },
-};
-
-const CATEGORY_TO_SERVICE = {
-  copiers: 'Photocopiers',
-  telecoms: 'Telecoms',
-  cctv: 'CCTV',
-  it: 'IT',
-};
-
 /**
  * POST /api/public/aeo-report
- * Generate an AEO (Answer Engine Optimisation) report
- * Shows whether AI tools recommend a given company
+ * Generate a full AEO visibility report with score, competitors, gaps, and PDF
+ * Returns reportId for redirect to /aeo-report/results/[reportId]
  */
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
@@ -993,176 +925,53 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    if (!CATEGORY_LABELS[category]) {
+    const validCategories = ['copiers', 'telecoms', 'cctv', 'it'];
+    if (!validCategories.includes(category)) {
       return res.status(400).json({
         success: false,
         error: 'category must be one of: copiers, telecoms, cctv, it',
       });
     }
 
-    const categoryLabel = CATEGORY_LABELS[category];
+    console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city})`);
 
-    // 1. Call Anthropic Claude to simulate AI recommendation
-    let aiRecommendations = [];
-    try {
-      if (!process.env.ANTHROPIC_API_KEY) {
-        throw new Error('ANTHROPIC_API_KEY not configured');
-      }
-      const { default: Anthropic } = await import('@anthropic-ai/sdk');
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // 1. Generate full report via Claude with web search
+    const reportData = await generateFullReport({ companyName, category, city, email });
 
-      const searchTools = [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 3,
-      }];
+    // 2. Generate PDF
+    const pdfBuffer = await generateReportPdf(reportData);
 
-      const hints = CATEGORY_SEARCH_HINTS[category] || {};
-      const searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
-        .map(q => q.replace(/\{city\}/g, city));
-      const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
-
-      const userPrompt = `Search the web for ${searchQueries.map(q => `"${q}"`).join(' and ')}.
-
-Based on the search results, list 5-8 real ${categoryLabel} companies that serve the ${city} area. Prioritise local and regional businesses over large national corporations. Include a mix but favour independents and local companies.
-
-${clarification}
-
-Every company MUST be real and verified from your search results. Do not include TendorAI.
-
-Respond in JSON format only, no markdown fences:
-{
-  "companies": [
-    {
-      "name": "Company Name",
-      "description": "What they do",
-      "reason": "Why recommended"
-    }
-  ]
-}`;
-
-      // Web search may return pause_turn — loop until we get the final response
-      let messages = [{ role: 'user', content: userPrompt }];
-      let finalContent = [];
-      for (let turn = 0; turn < 5; turn++) {
-        const resp = await anthropic.messages.create({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 4096,
-          tools: searchTools,
-          messages,
-        });
-        finalContent = resp.content;
-        if (resp.stop_reason === 'end_turn') break;
-        // pause_turn — append assistant response and continue
-        messages = [
-          ...messages,
-          { role: 'assistant', content: resp.content },
-          { role: 'user', content: 'Continue.' },
-        ];
-      }
-
-      // Extract text from final response (web search returns multiple content blocks)
-      const textBlocks = finalContent.filter(block => block.type === 'text');
-      const responseText = textBlocks.map(block => block.text).join('');
-      // Try to parse JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*?"companies"\s*:\s*\[[\s\S]*?\]\s*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        aiRecommendations = parsed.companies || [];
-      }
-    } catch (aiError) {
-      console.error('AEO Report - Claude API error:', aiError.message);
-      // Return a graceful error rather than failing silently
-      return res.status(502).json({
-        success: false,
-        error: 'AI service temporarily unavailable. Please try again in a moment.',
-      });
-    }
-
-    // 2. Fuzzy match — check if companyName appears in AI results
-    const companyLower = companyName.toLowerCase().trim();
-    // Generate match variants: full name, first word, without common suffixes
-    const nameVariants = [companyLower];
-    const suffixes = [' ltd', ' limited', ' plc', ' inc', ' llp', ' uk', ' group', ' services'];
-    for (const suffix of suffixes) {
-      if (companyLower.endsWith(suffix)) {
-        nameVariants.push(companyLower.slice(0, -suffix.length).trim());
-      }
-    }
-    // Also add first two words if name is longer
-    const words = companyLower.split(/\s+/);
-    if (words.length >= 2) {
-      nameVariants.push(words.slice(0, 2).join(' '));
-    }
-
-    let aiMentioned = false;
-    let aiPosition = null;
-
-    for (let i = 0; i < aiRecommendations.length; i++) {
-      const recName = (aiRecommendations[i].name || '').toLowerCase();
-      const matched = nameVariants.some(
-        (variant) => recName.includes(variant) || variant.includes(recName)
-      );
-      if (matched) {
-        aiMentioned = true;
-        aiPosition = i + 1;
-        break;
-      }
-    }
-
-    // 3. Count competitors on TendorAI in this category + city
-    const serviceRegex = new RegExp(CATEGORY_TO_SERVICE[category], 'i');
-    const cityRegex = new RegExp(city, 'i');
-
-    const competitorsOnTendorAI = await Vendor.countDocuments({
-      'account.status': 'active',
-      services: serviceRegex,
-      $or: [
-        { 'location.city': cityRegex },
-        { 'location.coverage': cityRegex },
-      ],
+    // 3. Save to MongoDB
+    const report = await AeoReport.create({
+      ...reportData,
+      pdfBuffer,
+      ipAddress: req.ip,
     });
 
-    // 4. Save report for lead generation
-    const report = {
-      companyName,
-      category,
-      city,
-      email: email || undefined,
-      aiMentioned,
-      aiPosition,
-      aiRecommendations,
-      competitorsOnTendorAI,
-      ipAddress: req.ip,
-      createdAt: new Date(),
-    };
+    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
+    const reportUrl = `${baseUrl}/aeo-report/results/${report._id}`;
 
-    // Save async — don't block the response
-    AeoReport.create(report).catch((err) =>
-      console.error('Failed to save AEO report:', err.message)
-    );
+    console.log(`[AEO Public] Report generated: ${report._id} — Score: ${report.score}/100`);
 
-    // 5. Send email copy if provided
+    // 4. Send email with link to full report (not inline data)
     if (email) {
       sendAeoReportEmail(email, {
-        companyName, category, city,
-        aiMentioned, aiPosition, aiRecommendations, competitorsOnTendorAI,
+        companyName,
+        category,
+        city,
+        score: report.score,
+        aiMentioned: report.aiMentioned,
+        reportUrl,
       }).catch((err) =>
         console.error('Failed to send AEO report email:', err.message)
       );
     }
 
-    // 6. Return results
+    // 5. Return reportId for frontend redirect
     res.json({
       success: true,
-      companyName,
-      category,
-      city,
-      aiMentioned,
-      aiPosition,
-      aiRecommendations,
-      competitorsOnTendorAI,
-      timestamp: new Date().toISOString(),
+      reportId: report._id,
+      reportUrl,
     });
   } catch (error) {
     console.error('AEO Report error:', error);
