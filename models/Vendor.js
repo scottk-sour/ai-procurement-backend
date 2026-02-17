@@ -3,18 +3,19 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto'; // ADDED: ES modules import
 
-const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software'];
+const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software',
+  'Solicitors', 'Accountants'];
 
 const vendorSchema = new mongoose.Schema({
   // Core Identity
-  name: { 
-    type: String, 
-    required: true, 
-    trim: true 
+  name: {
+    type: String,
+    required: true,
+    trim: true
   },
-  company: { 
-    type: String, 
-    required: true, 
+  company: {
+    type: String,
+    required: true,
     trim: true,
     index: true
   },
@@ -31,6 +32,25 @@ const vendorSchema = new mongoose.Schema({
     type: String,
     minlength: 6
   },
+
+  // Vendor Type
+  vendorType: {
+    type: String,
+    enum: ['office-equipment', 'solicitor', 'accountant'],
+    default: 'office-equipment'
+  },
+
+  // SRA / Regulatory
+  sraNumber: { type: String, trim: true, sparse: true },
+  regulatoryBody: { type: String, trim: true },
+  practiceAreas: [{ type: String, trim: true }],
+  organisationType: { type: String, trim: true },
+  companyNumber: { type: String, trim: true },
+  officeCount: { type: Number },
+
+  // Import / Claim
+  source: { type: String, trim: true },
+  claimed: { type: Boolean, default: false },
 
   // Business Profile
   services: {
@@ -418,6 +438,10 @@ vendorSchema.index({ 'integration.apiKey': 1 }, { sparse: true });
 vendorSchema.index({ listingStatus: 1 });
 vendorSchema.index({ postcodeAreas: 1 });
 vendorSchema.index({ brands: 1 });
+vendorSchema.index({ vendorType: 1 });
+vendorSchema.index({ sraNumber: 1 }, { sparse: true });
+vendorSchema.index({ practiceAreas: 1 });
+vendorSchema.index({ vendorType: 1, 'location.city': 1 });
 
 const Vendor = mongoose.model('Vendor', vendorSchema);
 export default Vendor;
