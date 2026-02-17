@@ -3,16 +3,32 @@
  *
  * Uses Claude with web search to deeply research a target company,
  * find competitors, identify gaps, and produce a scored report.
+ *
+ * Supports multiple verticals: office equipment, solicitors, accountants.
  */
 
 import Vendor from '../models/Vendor.js';
 
+// ─── Category labels (human-readable) ────────────────────────────────────────
+
 const CATEGORY_LABELS = {
+  // Office equipment
   copiers: 'photocopier and managed print',
   telecoms: 'business telecoms and VoIP',
   cctv: 'CCTV and security system',
   it: 'IT support and managed services',
+  // Solicitors
+  conveyancing: 'conveyancing solicitor',
+  'family-law': 'family law solicitor',
+  'criminal-law': 'criminal law solicitor',
+  'commercial-law': 'commercial law solicitor',
+  'employment-law': 'employment law solicitor',
+  'wills-and-probate': 'wills and probate solicitor',
+  immigration: 'immigration solicitor',
+  'personal-injury': 'personal injury solicitor',
 };
+
+// ─── Category → Vendor service field mapping ─────────────────────────────────
 
 const CATEGORY_TO_SERVICE = {
   copiers: 'Photocopiers',
@@ -21,7 +37,22 @@ const CATEGORY_TO_SERVICE = {
   it: 'IT',
 };
 
+// Category → practiceAreas mapping for solicitors
+const CATEGORY_TO_PRACTICE_AREA = {
+  conveyancing: 'Conveyancing',
+  'family-law': 'Family Law',
+  'criminal-law': 'Criminal Law',
+  'commercial-law': 'Commercial Law',
+  'employment-law': 'Employment Law',
+  'wills-and-probate': 'Wills & Probate',
+  immigration: 'Immigration',
+  'personal-injury': 'Personal Injury',
+};
+
+// ─── Industry-specific search hints and clarifications ───────────────────────
+
 const CATEGORY_SEARCH_HINTS = {
+  // Office equipment
   copiers: {
     queries: [
       'Ricoh Konica Minolta photocopier dealer {city} UK',
@@ -44,14 +75,158 @@ const CATEGORY_SEARCH_HINTS = {
     queries: ['IT support company {city} UK', 'managed IT services provider {city}'],
     clarification: '',
   },
+  // Solicitors
+  conveyancing: {
+    queries: [
+      'conveyancing solicitors {city} UK',
+      'property solicitor house purchase {city}',
+    ],
+    clarification: `CRITICAL — I am looking for solicitor firms that handle conveyancing (buying/selling property). They must be SRA-regulated law firms. NOT estate agents, mortgage brokers, or online-only comparison sites. Look for firms that specifically list conveyancing or property law as a service.`,
+  },
+  'family-law': {
+    queries: [
+      'family law solicitor {city} UK',
+      'divorce solicitor child custody lawyer {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms practising family law (divorce, child custody, financial settlements, prenuptial agreements). NOT mediators-only, counsellors, or generic legal directories.`,
+  },
+  'criminal-law': {
+    queries: [
+      'criminal defence solicitor {city} UK',
+      'criminal lawyer legal aid {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms practising criminal law (defence, magistrates court, crown court). NOT barristers chambers or generic legal directories.`,
+  },
+  'commercial-law': {
+    queries: [
+      'commercial solicitor {city} UK',
+      'business lawyer contract law {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms practising commercial law (contracts, company law, M&A, shareholder disputes). NOT accountants or business consultants.`,
+  },
+  'employment-law': {
+    queries: [
+      'employment law solicitor {city} UK',
+      'unfair dismissal tribunal lawyer {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms practising employment law (unfair dismissal, discrimination, tribunal claims, settlement agreements). NOT HR consultancies.`,
+  },
+  'wills-and-probate': {
+    queries: [
+      'wills and probate solicitor {city} UK',
+      'estate planning solicitor {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms handling wills, probate, estate planning, powers of attorney, trusts. NOT will-writing services that are not law firms.`,
+  },
+  immigration: {
+    queries: [
+      'immigration solicitor {city} UK',
+      'visa solicitor work permit lawyer {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms handling immigration (visas, work permits, asylum, citizenship applications, sponsor licences). NOT immigration advisors who are not qualified solicitors.`,
+  },
+  'personal-injury': {
+    queries: [
+      'personal injury solicitor {city} UK',
+      'accident claims lawyer no win no fee {city}',
+    ],
+    clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms handling personal injury claims (road traffic accidents, workplace injuries, clinical negligence). NOT claims management companies.`,
+  },
 };
+
+// ─── Detect vendor type from category ────────────────────────────────────────
+
+const SOLICITOR_CATEGORIES = new Set([
+  'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+  'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+]);
+
+function getVendorType(category) {
+  if (SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
+  return 'equipment';
+}
+
+// ─── Build the checklist section of the prompt per vendorType ─────────────────
+
+function getChecklistPrompt(vendorType) {
+  if (vendorType === 'solicitor') {
+    return `  "searchedCompany": {
+    "website": "https://example.com or null if not found",
+    "hasReviews": true/false (Google reviews, Trustpilot, ReviewSolicitors, etc.),
+    "hasPricing": true/false (fee estimates, fixed-fee packages, pricing page),
+    "hasBrands": true/false (SRA regulated, Law Society accredited, Lexcel, CQS, legal aid),
+    "hasStructuredData": true/false (schema.org/LegalService markup, JSON-LD),
+    "hasDetailedServices": true/false (detailed practice area pages with process info),
+    "hasSocialMedia": true/false (LinkedIn, Facebook, Twitter/X presence),
+    "hasGoogleBusiness": true/false (Google Business Profile with reviews),
+    "summary": "2-3 sentence summary of what you found about the firm online"
+  }`;
+  }
+
+  // Default: office equipment
+  return `  "searchedCompany": {
+    "website": "https://example.com or null if not found",
+    "hasReviews": true/false,
+    "hasPricing": true/false,
+    "hasBrands": true/false,
+    "hasStructuredData": true/false,
+    "hasDetailedServices": true/false,
+    "hasSocialMedia": true/false,
+    "hasGoogleBusiness": true/false,
+    "summary": "2-3 sentence summary of what you found about the company online"
+  }`;
+}
+
+// ─── Scoring hints per vendorType ────────────────────────────────────────────
+
+function getScoringHints(vendorType) {
+  if (vendorType === 'solicitor') {
+    return `SCORING RULES:
+- score is 0-100 overall AI visibility score
+- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
+- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (LegalService)?
+- contentAuthority: Does the firm have authoritative content — legal guides, blog posts, case studies, FAQ pages?
+- directoryPresence: Is the firm on the SRA register, Law Society Find a Solicitor, legal directories (Chambers, Legal 500), Google Business?
+- reviewSignals: Google reviews, Trustpilot, ReviewSolicitors, client testimonials?
+- structuredData: Schema.org/LegalService markup, JSON-LD, LocalBusiness structured data?
+- competitivePosition: How visible are they vs other solicitors in the area? Would AI recommend them?`;
+  }
+
+  // Default: office equipment
+  return `SCORING RULES:
+- score is 0-100 overall AI visibility score
+- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
+- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup?
+- contentAuthority: Does the company have authoritative content, blog posts, case studies?
+- directoryPresence: Is the company listed on relevant directories, Google Business, Yell, etc?
+- reviewSignals: Google reviews, Trustpilot, industry-specific review sites?
+- structuredData: Schema.org markup, JSON-LD, structured data on their website?
+- competitivePosition: How visible are they vs competitors? Are they the go-to recommendation?`;
+}
+
+// ─── Gap hints per vendorType ────────────────────────────────────────────────
+
+function getGapHints(vendorType) {
+  if (vendorType === 'solicitor') {
+    return `GAP RULES:
+- Return 3-5 specific, actionable gaps
+- Focus on things the firm is missing that competing solicitors have
+- Common solicitor gaps: no SRA-linked website, no legal directory listings, no client testimonials, no detailed practice area pages, no fee transparency, no schema markup, no blog/legal guides
+- Be specific: "No visible client reviews on Google" not "Poor online presence"`;
+  }
+
+  return `GAP RULES:
+- Return 3-5 specific, actionable gaps
+- Focus on things the company is missing that competitors have
+- Be specific: "No visible Google reviews" not "Poor online presence"`;
+}
 
 /**
  * Generate a full AEO visibility report for a company.
  *
  * @param {Object} params
  * @param {string} params.companyName
- * @param {string} params.category - copiers|telecoms|cctv|it
+ * @param {string} params.category - copiers|telecoms|cctv|it|conveyancing|family-law|...
  * @param {string} params.city
  * @param {string} [params.email]
  * @returns {Object} Full report data ready for saving
@@ -64,11 +239,18 @@ export async function generateFullReport({ companyName, category, city, email })
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const categoryLabel = CATEGORY_LABELS[category];
+  const vendorType = getVendorType(category);
+  const categoryLabel = CATEGORY_LABELS[category] || category;
   const hints = CATEGORY_SEARCH_HINTS[category] || {};
   const searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
     .map((q) => q.replace(/\{city\}/g, city));
   const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
+
+  const entityLabel = vendorType === 'solicitor' ? 'firm' : 'company';
+  const entityLabelPlural = vendorType === 'solicitor' ? 'firms' : 'companies';
+  const checklistPrompt = getChecklistPrompt(vendorType);
+  const scoringHints = getScoringHints(vendorType);
+  const gapHints = getGapHints(vendorType);
 
   const userPrompt = `You are researching a UK business for an AI visibility audit. Search the web thoroughly.
 
@@ -84,22 +266,12 @@ ${clarification}
 Based on your research, respond with ONLY this JSON (no markdown fences, no explanation):
 
 {
-  "searchedCompany": {
-    "website": "https://example.com or null if not found",
-    "hasReviews": true/false,
-    "hasPricing": true/false,
-    "hasBrands": true/false,
-    "hasStructuredData": true/false,
-    "hasDetailedServices": true/false,
-    "hasSocialMedia": true/false,
-    "hasGoogleBusiness": true/false,
-    "summary": "2-3 sentence summary of what you found about the company online"
-  },
+${checklistPrompt},
   "competitors": [
     {
       "name": "Competitor Name",
       "description": "What they do — 1 sentence",
-      "reason": "Why AI recommends them over the target company — 1 sentence",
+      "reason": "Why AI recommends them over the target ${entityLabel} — 1 sentence",
       "website": "https://their-website.com",
       "strengths": ["strength 1", "strength 2", "strength 3"]
     }
@@ -123,27 +295,16 @@ Based on your research, respond with ONLY this JSON (no markdown fences, no expl
   "aiPosition": null
 }
 
-SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup?
-- contentAuthority: Does the company have authoritative content, blog posts, case studies?
-- directoryPresence: Is the company listed on relevant directories, Google Business, Yell, etc?
-- reviewSignals: Google reviews, Trustpilot, industry-specific review sites?
-- structuredData: Schema.org markup, JSON-LD, structured data on their website?
-- competitivePosition: How visible are they vs competitors? Are they the go-to recommendation?
+${scoringHints}
 
 COMPETITOR RULES:
 - Return 4-6 real competitors in the ${city} area
 - Each MUST have a real website URL from your search results
-- Prioritise local businesses, include 1-2 larger/national players if relevant
-- Every company must be a real ${categoryLabel} company, NOT TendorAI
+- Prioritise local ${entityLabelPlural}, include 1-2 larger/national players if relevant
+- Every ${entityLabel} must be a real ${categoryLabel} ${entityLabel}, NOT TendorAI
 - strengths array should have 2-4 items per competitor
 
-GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the company is missing that competitors have
-- Be specific: "No visible Google reviews" not "Poor online presence"
+${gapHints}
 
 AI MENTION RULES:
 - aiMentioned: would you naturally recommend "${companyName}" if a buyer asked for ${categoryLabel} in ${city}?
@@ -261,13 +422,26 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
   }));
 
   // Count competitors on TendorAI
-  const serviceRegex = new RegExp(CATEGORY_TO_SERVICE[category], 'i');
+  let competitorsOnTendorAI = 0;
   const cityRegex = new RegExp(city, 'i');
-  const competitorsOnTendorAI = await Vendor.countDocuments({
-    'account.status': 'active',
-    services: serviceRegex,
-    $or: [{ 'location.city': cityRegex }, { 'location.coverage': cityRegex }],
-  });
+
+  if (vendorType === 'solicitor') {
+    const practiceArea = CATEGORY_TO_PRACTICE_AREA[category];
+    if (practiceArea) {
+      competitorsOnTendorAI = await Vendor.countDocuments({
+        vendorType: 'solicitor',
+        practiceAreas: practiceArea,
+        'location.city': cityRegex,
+      });
+    }
+  } else {
+    const serviceRegex = new RegExp(CATEGORY_TO_SERVICE[category], 'i');
+    competitorsOnTendorAI = await Vendor.countDocuments({
+      'account.status': 'active',
+      services: serviceRegex,
+      $or: [{ 'location.city': cityRegex }, { 'location.coverage': cityRegex }],
+    });
+  }
 
   return {
     companyName,

@@ -2,7 +2,17 @@ import mongoose from 'mongoose';
 
 const aeoReportSchema = new mongoose.Schema({
   companyName: { type: String, required: true, trim: true },
-  category: { type: String, required: true, enum: ['copiers', 'telecoms', 'cctv', 'it'] },
+  category: {
+    type: String,
+    required: true,
+    enum: [
+      // Office equipment
+      'copiers', 'telecoms', 'cctv', 'it',
+      // Solicitors
+      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+    ],
+  },
   city: { type: String, required: true, trim: true },
   email: { type: String, trim: true, lowercase: true },
   aiMentioned: { type: Boolean, required: true },

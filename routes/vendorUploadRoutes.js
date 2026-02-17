@@ -1448,7 +1448,28 @@ const SERVICE_TO_AEO_CATEGORY = {
   'Managed IT': 'it',
 };
 
-function getAeoCategory(services) {
+// Map solicitor practice areas to AEO report categories
+const PRACTICE_AREA_TO_AEO_CATEGORY = {
+  'Conveyancing': 'conveyancing',
+  'Family Law': 'family-law',
+  'Criminal Law': 'criminal-law',
+  'Commercial Law': 'commercial-law',
+  'Employment Law': 'employment-law',
+  'Wills & Probate': 'wills-and-probate',
+  'Immigration': 'immigration',
+  'Personal Injury': 'personal-injury',
+};
+
+function getAeoCategory(vendor) {
+  // Solicitor: use first practice area
+  if (vendor.vendorType === 'solicitor' && vendor.practiceAreas?.length) {
+    const cat = PRACTICE_AREA_TO_AEO_CATEGORY[vendor.practiceAreas[0]];
+    if (cat) return cat;
+    return 'conveyancing'; // fallback for solicitors
+  }
+
+  // Equipment: use services
+  const services = vendor.services;
   if (!services?.length) return 'it';
   for (const svc of services) {
     const cat = SERVICE_TO_AEO_CATEGORY[svc];
@@ -1512,11 +1533,11 @@ const rescanLimiter = rateLimit({
 router.post('/aeo-rescan', vendorAuth, rescanLimiter, async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.vendorId)
-      .select('company services location email')
+      .select('company services location email vendorType practiceAreas')
       .lean();
     if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
 
-    const category = getAeoCategory(vendor.services);
+    const category = getAeoCategory(vendor);
     const city = vendor.location?.city || 'London';
 
     const report = await generateFullReport({

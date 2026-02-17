@@ -728,7 +728,11 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
       });
     }
 
-    const validCategories = ['copiers', 'telecoms', 'cctv', 'it'];
+    const validCategories = [
+      'copiers', 'telecoms', 'cctv', 'it',
+      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+    ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
         success: false,

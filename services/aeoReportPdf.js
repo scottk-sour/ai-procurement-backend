@@ -192,6 +192,7 @@ function getScoreLabel(score) {
 function drawCoverPage(ctx, report) {
   const page = addPage(ctx);
   const { font, bold } = ctx;
+  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
 
   // Full blue header band
   page.drawRectangle({ x: 0, y: PAGE_H - 120, width: PAGE_W, height: 120, color: BLUE });
@@ -233,10 +234,20 @@ function drawCoverPage(ctx, report) {
 
   y -= 25;
   const categoryLabel = {
+    // Office equipment
     copiers: 'Photocopiers & Managed Print',
     telecoms: 'Business Telecoms & VoIP',
     cctv: 'CCTV & Security Systems',
     it: 'IT Support & Managed Services',
+    // Solicitors
+    conveyancing: 'Conveyancing',
+    'family-law': 'Family Law',
+    'criminal-law': 'Criminal Law',
+    'commercial-law': 'Commercial Law',
+    'employment-law': 'Employment Law',
+    'wills-and-probate': 'Wills & Probate',
+    immigration: 'Immigration',
+    'personal-injury': 'Personal Injury',
   }[report.category] || report.category;
   const catCity = `${categoryLabel} — ${report.city}`;
   const catCityW = font.widthOfTextAtSize(catCity, 12);
@@ -253,7 +264,7 @@ function drawCoverPage(ctx, report) {
   y -= 25;
   const subhead = report.aiMentioned
     ? `You appear at position ${report.aiPosition || '?'}, but ${report.competitors?.length || 0} competitors rank ahead or alongside you.`
-    : `When buyers ask AI for ${categoryLabel.toLowerCase()} in ${report.city}, you don't appear. Here's who does.`;
+    : `When ${isSolicitor ? 'clients' : 'buyers'} ask AI for ${categoryLabel.toLowerCase()}${isSolicitor ? 's' : ''} in ${report.city}, you don't appear. Here's who does.`;
   drawWrappedText(page, subhead, MARGIN + 20, y, font, 11, GREY, CONTENT_W - 40, 16);
 
   // Key stats bar at bottom
@@ -285,6 +296,7 @@ function drawWhatAiKnowsPage(ctx, report) {
   drawHeader(page, ctx);
   const { font, bold } = ctx;
   const sc = report.searchedCompany || {};
+  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
 
   let y = PAGE_H - 75;
   page.drawText('What AI Knows About You', { x: MARGIN, y, size: 20, font: bold, color: DARK });
@@ -293,12 +305,21 @@ function drawWhatAiKnowsPage(ctx, report) {
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: BLUE });
 
   y -= 25;
-  y = drawWrappedText(page, sc.summary || 'Limited information was found about your company online.', MARGIN, y, font, 11, GREY, CONTENT_W, 16);
+  y = drawWrappedText(page, sc.summary || `Limited information was found about your ${isSolicitor ? 'firm' : 'company'} online.`, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
 
   y -= 20;
   page.drawText('AI Visibility Checklist', { x: MARGIN, y, size: 14, font: bold, color: DARK });
 
-  const checks = [
+  const checks = isSolicitor ? [
+    { label: 'Firm Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
+    { label: 'Client Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, ReviewSolicitors, etc.' },
+    { label: 'Fee Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Fee estimates or fixed fees visible' : 'No fee information found' },
+    { label: 'Accreditations & Qualifications', value: !!sc.hasBrands, detail: sc.hasBrands ? 'SRA, Law Society, Lexcel, CQS visible' : 'No accreditations or quality marks listed' },
+    { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'LegalService schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
+    { label: 'Detailed Practice Area Pages', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Practice area pages with process detail' : 'Vague or missing practice area descriptions' },
+    { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
+    { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
+  ] : [
     { label: 'Company Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
     { label: 'Customer Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, Trustpilot, etc.' },
     { label: 'Pricing Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Pricing visible on website' : 'No pricing information found' },
@@ -399,9 +420,11 @@ function drawCompetitorsPage(ctx, report) {
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: RED });
 
   y -= 20;
+  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
+  const entityPlural = isSolicitor ? 'solicitors' : 'suppliers';
   const introText = report.aiMentioned
-    ? `When buyers ask AI for ${report.category} suppliers in ${report.city}, these companies appear alongside or ahead of you:`
-    : `When buyers ask AI for ${report.category} suppliers in ${report.city}, these are the companies AI recommends instead of you:`;
+    ? `When buyers ask AI for ${report.category} ${entityPlural} in ${report.city}, these ${isSolicitor ? 'firms' : 'companies'} appear alongside or ahead of you:`
+    : `When buyers ask AI for ${report.category} ${entityPlural} in ${report.city}, these are the ${isSolicitor ? 'firms' : 'companies'} AI recommends instead of you:`;
   y = drawWrappedText(page, introText, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
   y -= 15;
 
@@ -454,6 +477,7 @@ function drawGapsPage(ctx, report) {
   const page = addPage(ctx);
   drawHeader(page, ctx);
   const { font, bold } = ctx;
+  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
 
   let y = PAGE_H - 75;
   page.drawText('Your Visibility Gaps', { x: MARGIN, y, size: 20, font: bold, color: DARK });
@@ -504,7 +528,7 @@ function drawGapsPage(ctx, report) {
     page.drawText('What This Means', { x: MARGIN + 15, y: y - 2, size: 14, font: bold, color: WHITE });
     drawWrappedText(
       page,
-      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential buyers use ChatGPT, Perplexity, or Claude to find ${report.category} suppliers in ${report.city}, they are being directed to your competitors.`,
+      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential ${isSolicitor ? 'clients' : 'buyers'} use ChatGPT, Perplexity, or Claude to find ${report.category} ${isSolicitor ? 'solicitors' : 'suppliers'} in ${report.city}, they are being directed to your competitors.`,
       MARGIN + 15, y - 22, font, 10, WHITE, CONTENT_W - 30, 14
     );
   }
