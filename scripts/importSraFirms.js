@@ -33,21 +33,31 @@ const LIMIT_ARG = args.find(a => a.startsWith('--limit='));
 const IMPORT_LIMIT = LIMIT_ARG ? parseInt(LIMIT_ARG.split('=')[1], 10) : Infinity;
 
 // ─── Practice Area Mapping ────────────────────────────────────────────
+// Mapping based on actual SRA API WorkArea values
 const PRACTICE_AREA_RULES = [
-  { pattern: /residential conveyancing/i, mapped: 'Conveyancing' },
-  { pattern: /commercial conveyancing|commercial property/i, mapped: 'Commercial Property' },
-  { pattern: /family and matrimonial|children law/i, mapped: 'Family Law' },
+  { pattern: /property\s*-\s*residential|residential conveyancing/i, mapped: 'Conveyancing' },
+  { pattern: /property\s*-\s*commercial|commercial conveyancing|commercial property/i, mapped: 'Commercial Property' },
+  { pattern: /family\s*\/?\s*matrimonial|family and matrimonial/i, mapped: 'Family Law' },
+  { pattern: /^children$/i, mapped: 'Family Law' },
+  { pattern: /^criminal$/i, mapped: 'Criminal Law' },
   { pattern: /criminal litigation|crime/i, mapped: 'Criminal Law' },
-  { pattern: /company and commercial|corporate|mergers/i, mapped: 'Commercial Law' },
-  { pattern: /employment/i, mapped: 'Employment Law' },
-  { pattern: /wills|probate|trusts|elderly client/i, mapped: 'Wills & Probate' },
-  { pattern: /immigration|asylum/i, mapped: 'Immigration' },
+  { pattern: /commercial\s*\/?\s*corporate|company and commercial|mergers/i, mapped: 'Commercial Law' },
+  { pattern: /^employment$/i, mapped: 'Employment Law' },
+  { pattern: /wills|probate|trusts|elderly client|tax planning/i, mapped: 'Wills & Probate' },
+  { pattern: /^immigration$|asylum/i, mapped: 'Immigration' },
   { pattern: /personal injury|clinical negligence|medical negligence/i, mapped: 'Personal Injury' },
   { pattern: /debt|insolvency|bankruptcy/i, mapped: 'Debt & Insolvency' },
-  { pattern: /intellectual property|(?:^|\b)IT(?:\b|$)|technology/i, mapped: 'IP & Technology' },
-  { pattern: /planning|environmental/i, mapped: 'Planning & Environment' },
-  { pattern: /landlord and tenant|housing/i, mapped: 'Housing & Landlord' },
+  { pattern: /intellectual property/i, mapped: 'IP & Technology' },
+  { pattern: /^planning$/i, mapped: 'Planning & Environment' },
+  { pattern: /landlord and tenant/i, mapped: 'Housing & Landlord' },
   { pattern: /social welfare|welfare benefits/i, mapped: 'Social Welfare' },
+  { pattern: /discrimination|civil liberties|human rights/i, mapped: 'Human Rights' },
+  { pattern: /mental health/i, mapped: 'Mental Health' },
+  { pattern: /^consumer$/i, mapped: 'Consumer Law' },
+  { pattern: /arbitration|alternative dispute/i, mapped: 'Dispute Resolution' },
+  { pattern: /financial advice/i, mapped: 'Financial Services' },
+  { pattern: /litigation\s*-\s*other/i, mapped: 'Litigation' },
+  { pattern: /non-litigation\s*-\s*other/i, mapped: 'Non-Litigation' },
 ];
 
 function mapPracticeAreas(workAreas) {
@@ -69,6 +79,27 @@ function mapPracticeAreas(workAreas) {
     }
   }
   return [...mapped];
+}
+
+// ─── City Name Normalization ──────────────────────────────────────────
+function normalizeCity(city) {
+  if (!city) return '';
+  // Title case, but handle hyphenated names and "upon" etc.
+  return city.trim()
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase())
+    // Fix common prepositions that shouldn't be capitalized
+    .replace(/\bUpon\b/g, 'upon')
+    .replace(/\bOn\b/g, 'on')
+    .replace(/\bIn\b/g, 'in')
+    .replace(/\bDe\b/g, 'de')
+    .replace(/\bLe\b/g, 'le')
+    .replace(/\bLa\b/g, 'la')
+    .replace(/\bThe\b/g, 'the')
+    .replace(/\bOf\b/g, 'of')
+    .replace(/\bAnd\b/g, 'and')
+    // But capitalize first letter always
+    .replace(/^./, c => c.toUpperCase());
 }
 
 // ─── Slug Generation ──────────────────────────────────────────────────
@@ -116,9 +147,9 @@ async function fetchPage(page) {
 // ─── Pick Best Office ─────────────────────────────────────────────────
 function pickOffice(offices) {
   if (!offices || offices.length === 0) return null;
-  // Prefer head office
+  // Prefer head office (API uses "HO" or "Head office")
   const head = offices.find(o =>
-    o.OfficeType && o.OfficeType.toLowerCase().includes('head')
+    o.OfficeType && (o.OfficeType === 'HO' || o.OfficeType.toLowerCase().includes('head'))
   );
   return head || offices[0];
 }
@@ -128,11 +159,13 @@ function buildVendorDoc(org) {
   const office = pickOffice(org.Offices);
   if (!office) return null;
 
-  const town = (office.Town || '').trim();
+  const rawTown = (office.Town || '').trim();
   const country = (office.Country || '').trim();
 
   // Skip if no town
-  if (!town) return null;
+  if (!rawTown) return null;
+
+  const town = normalizeCity(rawTown);
 
   // Skip if not England or Wales
   if (country && !['England', 'Wales'].includes(country)) return null;
@@ -399,8 +432,8 @@ async function main() {
   }
   console.log(`\nAuthorisation status values found: ${[...statusValues].join(', ')}`);
 
-  // Accept "Authorised" or "Active" as valid statuses
-  const validStatuses = new Set(['Authorised', 'Active', 'authorised', 'active']);
+  // Accept valid authorisation statuses
+  const validStatuses = new Set(['Authorised', 'Active', 'authorised', 'active', 'YES', 'Yes', 'yes']);
 
   const toImport = [];
   const slugsSeen = new Set();
