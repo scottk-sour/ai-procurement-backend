@@ -1,5 +1,5 @@
 // routes/sitemap.js
-// Dynamic XML sitemap generation with all category/location combinations
+// Dynamic XML sitemap — queries DB for all category/location/vendor URLs
 
 import express from 'express';
 import Vendor from '../models/Vendor.js';
@@ -7,285 +7,263 @@ import VendorPost from '../models/VendorPost.js';
 
 const router = express.Router();
 
-// Base URL for the site
 const BASE_URL = 'https://www.tendorai.com';
 
-// Static pages with their priorities and change frequencies
+// ─── In-memory cache (1 hour) ──────────────────────────────────────
+let cachedXml = null;
+let cacheExpiry = 0;
+const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// ─── Static pages ──────────────────────────────────────────────────
 const STATIC_PAGES = [
-  { path: '/', priority: '1.0', changefreq: 'daily' },
-  { path: '/login', priority: '0.6', changefreq: 'monthly' },
-  { path: '/signup', priority: '0.7', changefreq: 'monthly' },
-  { path: '/vendor-login', priority: '0.6', changefreq: 'monthly' },
-  { path: '/vendor-signup', priority: '0.7', changefreq: 'monthly' },
-  { path: '/how-it-works', priority: '0.8', changefreq: 'weekly' },
-  { path: '/contact', priority: '0.7', changefreq: 'monthly' },
-  { path: '/about-us', priority: '0.7', changefreq: 'monthly' },
-  { path: '/why-choose-us', priority: '0.8', changefreq: 'weekly' },
-  { path: '/privacy-policy', priority: '0.3', changefreq: 'yearly' },
-  { path: '/faq', priority: '0.7', changefreq: 'weekly' },
-  // Service pages
-  { path: '/services/photocopiers', priority: '0.9', changefreq: 'weekly' },
-  { path: '/services/telecoms', priority: '0.9', changefreq: 'weekly' },
-  { path: '/services/cctv', priority: '0.9', changefreq: 'weekly' },
-  { path: '/services/it', priority: '0.9', changefreq: 'weekly' },
-  // Supplier directory index
-  { path: '/suppliers', priority: '0.9', changefreq: 'daily' },
+  { path: '/', priority: '1.0', changefreq: 'weekly' },
+  { path: '/about', priority: '0.7', changefreq: 'monthly' },
+  { path: '/how-it-works', priority: '0.8', changefreq: 'monthly' },
+  { path: '/contact', priority: '0.6', changefreq: 'monthly' },
+  { path: '/faq', priority: '0.7', changefreq: 'monthly' },
+  { path: '/for-vendors', priority: '0.9', changefreq: 'weekly' },
+  { path: '/aeo-report', priority: '0.9', changefreq: 'weekly' },
+  { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
+  { path: '/terms', priority: '0.3', changefreq: 'yearly' },
+  { path: '/suppliers', priority: '0.9', changefreq: 'weekly' },
+  { path: '/resources', priority: '0.8', changefreq: 'weekly' },
+  // Resource articles
+  { path: '/resources/photocopier-costs-uk-2026', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/copier-lease-vs-buy-uk', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/voip-vs-traditional-phone-systems', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/cctv-installation-costs-uk', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/managed-print-services-guide', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/business-phone-system-buyers-guide', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/office-security-checklist', priority: '0.7', changefreq: 'monthly' },
+  { path: '/resources/ai-visibility-vs-seo-agencies', priority: '0.7', changefreq: 'monthly' },
 ];
 
-// Major UK cities for SEO (top 40)
-const UK_CITIES = [
-  'london', 'birmingham', 'manchester', 'leeds', 'glasgow',
-  'liverpool', 'newcastle', 'sheffield', 'bristol', 'edinburgh',
-  'cardiff', 'belfast', 'nottingham', 'leicester', 'coventry',
-  'bradford', 'stoke-on-trent', 'wolverhampton', 'plymouth', 'southampton',
-  'reading', 'derby', 'dudley', 'northampton', 'portsmouth',
-  'luton', 'preston', 'aberdeen', 'milton-keynes', 'sunderland',
-  'norwich', 'swansea', 'bournemouth', 'brighton', 'hull',
-  'peterborough', 'stockport', 'oxford', 'cambridge', 'york'
+// ─── Category slugs (must match frontend SERVICES keys) ───────────
+const EQUIPMENT_SLUGS = [
+  'photocopiers', 'telecoms', 'cctv', 'it-services',
+  'office-equipment', 'security-systems',
 ];
 
-// Service categories
-const CATEGORIES = [
-  'photocopiers',
-  'telecoms',
-  'cctv',
-  'it-services',
-  'office-equipment',
-  'security-systems'
+const SOLICITOR_SLUGS = [
+  'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+  'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
 ];
 
-/**
- * GET /sitemap.xml
- * Generate dynamic XML sitemap
- */
-router.get('/sitemap.xml', async (req, res) => {
+const ALL_CATEGORY_SLUGS = [...EQUIPMENT_SLUGS, ...SOLICITOR_SLUGS];
+
+// Solicitor slug → practiceArea value for DB queries
+const SOLICITOR_PRACTICE_MAP = {
+  conveyancing: 'Conveyancing',
+  'family-law': 'Family Law',
+  'criminal-law': 'Criminal Law',
+  'commercial-law': 'Commercial Law',
+  'employment-law': 'Employment Law',
+  'wills-and-probate': 'Wills & Probate',
+  immigration: 'Immigration',
+  'personal-injury': 'Personal Injury',
+};
+
+// Equipment slug → service value
+const EQUIPMENT_SERVICE_MAP = {
+  photocopiers: 'Photocopiers',
+  telecoms: 'Telecoms',
+  cctv: 'CCTV',
+  'it-services': 'IT',
+  'office-equipment': 'Photocopiers', // alias
+  'security-systems': 'Security',
+};
+
+function toSlug(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+// ─── Build sitemap data from DB ────────────────────────────────────
+async function buildSitemapUrls() {
+  const now = new Date().toISOString().split('T')[0];
+  const urls = [];
+  const seen = new Set();
+
+  function add(path, priority, changefreq, lastmod) {
+    const loc = `${BASE_URL}${path}`;
+    if (seen.has(loc)) return;
+    seen.add(loc);
+    urls.push({ loc, lastmod: lastmod || now, changefreq, priority });
+  }
+
+  // 1. Static pages
+  for (const p of STATIC_PAGES) {
+    add(p.path, p.priority, p.changefreq);
+  }
+
+  // 2. Category index pages
+  for (const slug of ALL_CATEGORY_SLUGS) {
+    add(`/suppliers/${slug}`, '0.9', 'weekly');
+  }
+
+  // 3. Location pages — query DB for category+city combos with 2+ vendors
+  //    Solicitors: group by practiceArea + city
+  //    Equipment: group by service + coverage area
   try {
-    const urls = [];
-    const now = new Date().toISOString().split('T')[0];
+    // Solicitor location pages
+    const solicitorLocations = await Vendor.aggregate([
+      {
+        $match: {
+          vendorType: 'solicitor',
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' },
+          ],
+        },
+      },
+      { $unwind: '$practiceAreas' },
+      {
+        $group: {
+          _id: { practiceArea: '$practiceAreas', city: '$location.city' },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+    ]);
 
-    // Add static pages
-    STATIC_PAGES.forEach(page => {
-      urls.push({
-        loc: `${BASE_URL}${page.path}`,
-        lastmod: now,
-        changefreq: page.changefreq,
-        priority: page.priority
-      });
-    });
+    // Build reverse map: practiceArea → slug
+    const paToSlug = {};
+    for (const [slug, pa] of Object.entries(SOLICITOR_PRACTICE_MAP)) {
+      paToSlug[pa] = slug;
+    }
 
-    // Generate category/location combinations
-    for (const category of CATEGORIES) {
-      for (const location of UK_CITIES) {
-        urls.push({
-          loc: `${BASE_URL}/suppliers/${category}/${location}`,
-          lastmod: now,
-          changefreq: 'weekly',
-          priority: '0.8'
-        });
+    for (const item of solicitorLocations) {
+      const slug = paToSlug[item._id.practiceArea];
+      const city = item._id.city;
+      if (slug && city) {
+        add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
       }
     }
 
-    // Fetch actual vendor locations from database for more specific pages
-    try {
-      const vendorLocations = await Vendor.aggregate([
-        {
-          $match: {
-            'account.status': 'active',
-            'account.verificationStatus': 'verified'
-          }
+    // Equipment location pages
+    const equipmentLocations = await Vendor.aggregate([
+      {
+        $match: {
+          vendorType: { $ne: 'solicitor' },
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' },
+          ],
         },
-        { $unwind: '$services' },
-        { $unwind: '$location.coverage' },
-        {
-          $group: {
-            _id: {
-              service: '$services',
-              location: '$location.coverage'
-            },
-            count: { $sum: 1 }
-          }
+      },
+      { $unwind: '$services' },
+      { $unwind: '$location.coverage' },
+      {
+        $group: {
+          _id: { service: '$services', location: '$location.coverage' },
+          count: { $sum: 1 },
         },
-        {
-          $match: { count: { $gte: 1 } }
-        },
-        { $limit: 500 } // Limit to prevent sitemap bloat
-      ]);
+      },
+      { $match: { count: { $gte: 2 } } },
+    ]);
 
-      // Add database-driven pages (excluding duplicates with static list)
-      const existingPaths = new Set(urls.map(u => u.loc));
-
-      vendorLocations.forEach(item => {
-        const service = item._id.service?.toLowerCase().replace(/\s+/g, '-') || '';
-        const location = item._id.location?.toLowerCase().replace(/\s+/g, '-') || '';
-
-        if (service && location) {
-          const path = `${BASE_URL}/suppliers/${service}/${location}`;
-          if (!existingPaths.has(path)) {
-            urls.push({
-              loc: path,
-              lastmod: now,
-              changefreq: 'weekly',
-              priority: '0.7'
-            });
-            existingPaths.add(path);
-          }
-        }
-      });
-    } catch (dbError) {
-      console.error('Sitemap DB query error:', dbError);
-      // Continue with static pages only
+    // Build reverse map: service → slug
+    const svcToSlug = {};
+    for (const [slug, svc] of Object.entries(EQUIPMENT_SERVICE_MAP)) {
+      if (!svcToSlug[svc]) svcToSlug[svc] = slug;
     }
 
-    // Add vendor blog posts to sitemap
-    try {
-      const posts = await VendorPost.find({ status: 'published' })
-        .select('slug updatedAt')
-        .sort({ createdAt: -1 })
-        .limit(200)
-        .lean();
+    for (const item of equipmentLocations) {
+      const slug = svcToSlug[item._id.service];
+      const loc = item._id.location;
+      if (slug && loc) {
+        add(`/suppliers/${slug}/${toSlug(loc)}`, '0.8', 'weekly');
+      }
+    }
+  } catch (err) {
+    console.error('Sitemap location query error:', err);
+  }
 
-      posts.forEach(post => {
-        if (post.slug) {
-          urls.push({
-            loc: `${BASE_URL}/posts/${post.slug}`,
-            lastmod: post.updatedAt ? post.updatedAt.toISOString().split('T')[0] : now,
-            changefreq: 'monthly',
-            priority: '0.6'
-          });
-        }
-      });
-    } catch (postError) {
-      console.error('Sitemap posts query error:', postError);
+  // 4. Vendor profile pages
+  try {
+    // Slug-based profiles (solicitors + any vendor with slug)
+    const slugVendors = await Vendor.find(
+      { slug: { $exists: true, $ne: null } },
+      { slug: 1, updatedAt: 1 }
+    ).lean();
+
+    for (const v of slugVendors) {
+      if (v.slug) {
+        const mod = v.updatedAt ? v.updatedAt.toISOString().split('T')[0] : now;
+        add(`/suppliers/vendor/${v.slug}`, '0.7', 'monthly', mod);
+      }
     }
 
-    // Generate XML
+    // ID-based profiles (verified vendors without slugs)
+    const idVendors = await Vendor.find(
+      {
+        'account.status': 'active',
+        'account.verificationStatus': 'verified',
+        $or: [{ slug: { $exists: false } }, { slug: null }],
+      },
+      { _id: 1, updatedAt: 1 }
+    ).lean();
+
+    for (const v of idVendors) {
+      const mod = v.updatedAt ? v.updatedAt.toISOString().split('T')[0] : now;
+      add(`/suppliers/profile/${v._id.toString()}`, '0.7', 'monthly', mod);
+    }
+  } catch (err) {
+    console.error('Sitemap vendor query error:', err);
+  }
+
+  // 5. Vendor blog posts
+  try {
+    const posts = await VendorPost.find({ status: 'published' })
+      .select('slug updatedAt')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    for (const p of posts) {
+      if (p.slug) {
+        const mod = p.updatedAt ? p.updatedAt.toISOString().split('T')[0] : now;
+        add(`/posts/${p.slug}`, '0.6', 'monthly', mod);
+      }
+    }
+  } catch (err) {
+    console.error('Sitemap posts query error:', err);
+  }
+
+  return urls;
+}
+
+// ─── GET /sitemap.xml ──────────────────────────────────────────────
+router.get('/sitemap.xml', async (req, res) => {
+  try {
+    // Serve from cache if still valid
+    if (cachedXml && Date.now() < cacheExpiry) {
+      res.header('Content-Type', 'application/xml');
+      res.header('Cache-Control', 'public, max-age=3600');
+      return res.send(cachedXml);
+    }
+
+    const urls = await buildSitemapUrls();
     const xml = generateSitemapXml(urls);
 
-    res.header('Content-Type', 'application/xml');
-    res.header('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
-    res.send(xml);
+    // Store in cache
+    cachedXml = xml;
+    cacheExpiry = Date.now() + CACHE_TTL;
 
+    console.log(`Sitemap generated: ${urls.length} URLs`);
+
+    res.header('Content-Type', 'application/xml');
+    res.header('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
   } catch (error) {
     console.error('Sitemap generation error:', error);
     res.status(500).send('Error generating sitemap');
   }
 });
 
-/**
- * GET /sitemap-index.xml
- * Generate sitemap index for large sites
- */
-router.get('/sitemap-index.xml', async (req, res) => {
-  try {
-    const now = new Date().toISOString().split('T')[0];
-
-    const sitemaps = [
-      { loc: `${BASE_URL}/sitemap.xml`, lastmod: now },
-      { loc: `${BASE_URL}/sitemap-categories.xml`, lastmod: now },
-      { loc: `${BASE_URL}/sitemap-locations.xml`, lastmod: now }
-    ];
-
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemaps.map(sm => `  <sitemap>
-    <loc>${sm.loc}</loc>
-    <lastmod>${sm.lastmod}</lastmod>
-  </sitemap>`).join('\n')}
-</sitemapindex>`;
-
-    res.header('Content-Type', 'application/xml');
-    res.header('Cache-Control', 'public, max-age=3600');
-    res.send(xml);
-
-  } catch (error) {
-    console.error('Sitemap index error:', error);
-    res.status(500).send('Error generating sitemap index');
-  }
-});
-
-/**
- * GET /sitemap-categories.xml
- * Category-specific sitemap
- */
-router.get('/sitemap-categories.xml', async (req, res) => {
-  try {
-    const urls = [];
-    const now = new Date().toISOString().split('T')[0];
-
-    // All category pages across all locations
-    for (const category of CATEGORIES) {
-      // Category index
-      urls.push({
-        loc: `${BASE_URL}/suppliers/${category}`,
-        lastmod: now,
-        changefreq: 'daily',
-        priority: '0.9'
-      });
-
-      // Category + location pages
-      for (const location of UK_CITIES) {
-        urls.push({
-          loc: `${BASE_URL}/suppliers/${category}/${location}`,
-          lastmod: now,
-          changefreq: 'weekly',
-          priority: '0.8'
-        });
-      }
-    }
-
-    const xml = generateSitemapXml(urls);
-
-    res.header('Content-Type', 'application/xml');
-    res.header('Cache-Control', 'public, max-age=3600');
-    res.send(xml);
-
-  } catch (error) {
-    console.error('Category sitemap error:', error);
-    res.status(500).send('Error generating category sitemap');
-  }
-});
-
-/**
- * GET /sitemap-locations.xml
- * Location-specific sitemap
- */
-router.get('/sitemap-locations.xml', async (req, res) => {
-  try {
-    const urls = [];
-    const now = new Date().toISOString().split('T')[0];
-
-    // All location pages
-    for (const location of UK_CITIES) {
-      // Location index (all categories)
-      urls.push({
-        loc: `${BASE_URL}/suppliers/all/${location}`,
-        lastmod: now,
-        changefreq: 'daily',
-        priority: '0.8'
-      });
-    }
-
-    const xml = generateSitemapXml(urls);
-
-    res.header('Content-Type', 'application/xml');
-    res.header('Cache-Control', 'public, max-age=3600');
-    res.send(xml);
-
-  } catch (error) {
-    console.error('Location sitemap error:', error);
-    res.status(500).send('Error generating location sitemap');
-  }
-});
-
-/**
- * Helper to generate XML sitemap
- */
+// ─── Helpers ───────────────────────────────────────────────────────
 function generateSitemapXml(urls) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
-        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map(url => `  <url>
     <loc>${escapeXml(url.loc)}</loc>
     <lastmod>${url.lastmod}</lastmod>
@@ -295,9 +273,6 @@ ${urls.map(url => `  <url>
 </urlset>`;
 }
 
-/**
- * Escape XML special characters
- */
 function escapeXml(str) {
   return str
     .replace(/&/g, '&amp;')
