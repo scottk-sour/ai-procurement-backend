@@ -441,19 +441,100 @@ router.get('/vendors/:id', async (req, res) => {
   }
 });
 
+// Solicitor slug → practiceAreas mapping
+const SOLICITOR_SLUG_MAP = {
+  conveyancing: 'Conveyancing',
+  'family-law': 'Family Law',
+  'criminal-law': 'Criminal Law',
+  'commercial-law': 'Commercial Law',
+  'employment-law': 'Employment Law',
+  'wills-and-probate': 'Wills & Probate',
+  immigration: 'Immigration',
+  'personal-injury': 'Personal Injury',
+};
+
+function isSolicitorSlug(slug) {
+  return slug in SOLICITOR_SLUG_MAP;
+}
+
+/**
+ * GET /api/public/vendors/locations/:category
+ * List all cities for a given category, with vendor counts
+ * Returns: array of { city, count } sorted by count desc
+ */
+router.get('/vendors/locations/:category', async (req, res) => {
+  try {
+    const { category } = req.params;
+    const { limit = 50 } = req.query;
+
+    const statusFilter = {
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
+    };
+
+    let matchStage;
+    if (isSolicitorSlug(category)) {
+      const practiceArea = SOLICITOR_SLUG_MAP[category];
+      matchStage = { ...statusFilter, vendorType: 'solicitor', practiceAreas: practiceArea };
+    } else {
+      const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
+      matchStage = { ...statusFilter, services: { $regex: new RegExp(categoryNorm, 'i') } };
+    }
+
+    const locations = await Vendor.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$location.city',
+          count: { $sum: 1 }
+        }
+      },
+      { $match: { _id: { $ne: null, $ne: '' } } },
+      { $sort: { count: -1 } },
+      { $limit: Math.min(parseInt(limit) || 50, 200) },
+      {
+        $project: {
+          _id: 0,
+          city: '$_id',
+          count: 1
+        }
+      }
+    ]);
+
+    res.json({ success: true, data: { locations, total: locations.length, category } });
+  } catch (error) {
+    console.error('Public vendor locations API error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch locations' });
+  }
+});
+
 /**
  * GET /api/public/vendors/category/:category/location/:location
  * SEO-friendly endpoint for directory pages
- * Example: /api/public/vendors/category/cctv/location/cardiff
+ * Handles both office equipment (services field) and solicitor categories (practiceAreas field)
  */
 router.get('/vendors/category/:category/location/:location', async (req, res) => {
   try {
     const { category, location } = req.params;
     const { page = 1, limit = 20 } = req.query;
 
-    // Normalize inputs
-    const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
     const locationNorm = location.toLowerCase().replace(/-/g, ' ');
+    const isSolicitor = isSolicitorSlug(category);
+
+    // Build category filter
+    let categoryFilter;
+    let categoryLabel;
+    if (isSolicitor) {
+      const practiceArea = SOLICITOR_SLUG_MAP[category];
+      categoryFilter = { vendorType: 'solicitor', practiceAreas: practiceArea };
+      categoryLabel = practiceArea;
+    } else {
+      const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
+      categoryFilter = { services: { $regex: new RegExp(categoryNorm, 'i') } };
+      categoryLabel = categoryNorm;
+    }
 
     // Build query - active verified + unclaimed vendors
     const query = {
@@ -464,8 +545,11 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
             { listingStatus: 'unclaimed' }
           ]
         },
-        { services: { $regex: new RegExp(categoryNorm, 'i') } },
-        { 'location.coverage': { $regex: new RegExp(locationNorm, 'i') } }
+        categoryFilter,
+        // For solicitors match on city; for equipment match on coverage
+        isSolicitor
+          ? { 'location.city': { $regex: new RegExp(`^${locationNorm}$`, 'i') } }
+          : { 'location.coverage': { $regex: new RegExp(locationNorm, 'i') } }
       ]
     };
 
@@ -479,8 +563,15 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
       .select({
         'company': 1,
         'services': 1,
+        'vendorType': 1,
+        'practiceAreas': 1,
+        'sraNumber': 1,
+        'regulatoryBody': 1,
+        'claimed': 1,
         'location.city': 1,
         'location.coverage': 1,
+        'location.postcode': 1,
+        'location.address': 1,
         'performance.rating': 1,
         'performance.reviewCount': 1,
         'tier': 1,
@@ -492,7 +583,8 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
         'brands': 1,
         'subscription.priorityBoost': 1,
         'listingStatus': 1,
-        'account.loginCount': 1
+        'account.loginCount': 1,
+        'slug': 1
       })
       .lean();
 
@@ -516,8 +608,11 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     const publicNationalVendors = nationalVendors.map(v => formatVendorForPublic(v));
 
     // Page metadata for SEO
-    const pageTitle = `${capitalize(categoryNorm)} Suppliers in ${capitalize(locationNorm)}`;
-    const pageDescription = `Find trusted ${categoryNorm} suppliers and installers in ${locationNorm}. Compare ${total} vendors, read reviews, and get quotes.`;
+    const suffix = isSolicitor ? 'Solicitors' : 'Suppliers';
+    const pageTitle = `${capitalize(categoryLabel)} ${suffix} in ${capitalize(locationNorm)}`;
+    const pageDescription = isSolicitor
+      ? `Find verified ${categoryLabel.toLowerCase()} solicitors in ${capitalize(locationNorm)}. SRA-regulated firms with reviews and accreditations on TendorAI.`
+      : `Find trusted ${categoryLabel} suppliers and installers in ${capitalize(locationNorm)}. Compare ${total} vendors, read reviews, and get quotes.`;
 
     res.json({
       success: true,
@@ -533,11 +628,12 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
           nationalCount: nationalVendors.length
         },
         meta: {
-          category: categoryNorm,
+          category: categoryLabel,
           location: locationNorm,
           title: pageTitle,
           description: pageDescription,
-          canonical: `/suppliers/${category}/${location}`
+          canonical: `/suppliers/${category}/${location}`,
+          isSolicitor
         }
       }
     });
@@ -799,9 +895,15 @@ function formatVendorForPublic(v) {
     website: v.contactInfo?.website || v.website,
     showPricing: showPricing,
     accountClaimed: isVendorClaimed(v),
+    // Solicitor-specific fields
+    vendorType: v.vendorType || 'office-equipment',
+    practiceAreas: v.practiceAreas || [],
+    sraNumber: v.sraNumber || null,
+    regulatoryBody: v.regulatoryBody || null,
+    slug: v.slug || null,
     // Schema.org metadata for AI consumption
     '@context': 'https://schema.org',
-    '@type': 'LocalBusiness',
+    '@type': v.vendorType === 'solicitor' ? 'LegalService' : 'LocalBusiness',
     'areaServed': v.location?.coverage || v.coverageAreas || []
   };
 }
