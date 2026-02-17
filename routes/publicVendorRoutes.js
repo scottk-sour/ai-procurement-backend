@@ -300,6 +300,86 @@ router.get('/vendors', async (req, res) => {
 });
 
 /**
+ * GET /api/public/vendors/search
+ * Search vendors by business name
+ *
+ * Query params:
+ * - q: Search string (required, min 2 chars)
+ * - limit: Max results (default 20, max 50)
+ *
+ * Returns: Array of matching vendors sorted by claimed first, tier, then alphabetical
+ */
+router.get('/vendors/search', async (req, res) => {
+  try {
+    const { q, limit = 20 } = req.query;
+
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Query parameter "q" is required (min 2 characters)'
+      });
+    }
+
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 20));
+
+    const query = {
+      company: { $regex: new RegExp(q.trim(), 'i') },
+      $or: [
+        { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+        { listingStatus: 'unclaimed' }
+      ]
+    };
+
+    const vendors = await Vendor.find(query)
+      .select({
+        company: 1,
+        'location.city': 1,
+        vendorType: 1,
+        practiceAreas: 1,
+        services: 1,
+        slug: 1,
+        sraNumber: 1,
+        claimed: 1,
+        tier: 1
+      })
+      .limit(limitNum)
+      .lean();
+
+    // Sort: claimed first, then tier priority, then alphabetical
+    vendors.sort((a, b) => {
+      const claimedA = isVendorClaimed(a) ? 1 : 0;
+      const claimedB = isVendorClaimed(b) ? 1 : 0;
+      if (claimedB !== claimedA) return claimedB - claimedA;
+
+      const tierA = TIER_PRIORITY[a.tier] || 0;
+      const tierB = TIER_PRIORITY[b.tier] || 0;
+      if (tierB !== tierA) return tierB - tierA;
+
+      return (a.company || '').localeCompare(b.company || '');
+    });
+
+    const results = vendors.map(v => ({
+      id: v._id,
+      company: v.company,
+      city: v.location?.city || '',
+      vendorType: v.vendorType || 'office-equipment',
+      slug: v.slug || null
+    }));
+
+    res.json({
+      success: true,
+      data: { vendors: results, total: results.length }
+    });
+  } catch (error) {
+    console.error('Vendor search API error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to search vendors'
+    });
+  }
+});
+
+/**
  * GET /api/public/vendors/:id
  * Get single vendor profile with badges and tier-based visibility
  */
