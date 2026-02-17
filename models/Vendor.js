@@ -42,6 +42,7 @@ const vendorSchema = new mongoose.Schema({
 
   // SRA / Regulatory
   sraNumber: { type: String, trim: true, sparse: true },
+  icaewFirmNumber: { type: String, trim: true, sparse: true },
   regulatoryBody: { type: String, trim: true },
   practiceAreas: [{ type: String, trim: true }],
   organisationType: { type: String, trim: true },
@@ -440,6 +441,7 @@ vendorSchema.index({ postcodeAreas: 1 });
 vendorSchema.index({ brands: 1 });
 vendorSchema.index({ vendorType: 1 });
 vendorSchema.index({ sraNumber: 1 }, { sparse: true });
+vendorSchema.index({ icaewFirmNumber: 1 }, { sparse: true });
 vendorSchema.index({ practiceAreas: 1 });
 vendorSchema.index({ vendorType: 1, 'location.city': 1 });
 
