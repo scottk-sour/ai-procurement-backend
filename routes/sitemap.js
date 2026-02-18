@@ -25,6 +25,8 @@ const STATIC_PAGES = [
   { path: '/aeo-report', priority: '0.9', changefreq: 'weekly' },
   { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
   { path: '/terms', priority: '0.3', changefreq: 'yearly' },
+  { path: '/get-quotes', priority: '0.9', changefreq: 'monthly' },
+  { path: '/vendor-login', priority: '0.5', changefreq: 'monthly' },
   { path: '/suppliers', priority: '0.9', changefreq: 'weekly' },
   { path: '/resources', priority: '0.8', changefreq: 'weekly' },
   // Resource articles
