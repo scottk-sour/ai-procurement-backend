@@ -66,6 +66,7 @@ const vendorSchema = new mongoose.Schema({
   softwareUsed: [{ type: String, trim: true }],
   industrySpecialisms: [{ type: String, trim: true }],
   mtdCompliant: { type: Boolean, default: false },
+  responseTime: { type: String, trim: true },
 
   // Import / Claim
   source: { type: String, trim: true },

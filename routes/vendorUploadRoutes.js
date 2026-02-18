@@ -315,6 +315,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 softwareUsed: vendor.softwareUsed || [],
                 industrySpecialisms: vendor.industrySpecialisms || [],
                 mtdCompliant: vendor.mtdCompliant || false,
+                responseTime: vendor.responseTime || '',
                 // Onboarding
                 onboardingCompleted: vendor.account?.onboardingCompleted || false,
             },
@@ -354,6 +355,7 @@ router.put('/profile', vendorAuth, async (req, res) => {
             softwareUsed,
             industrySpecialisms,
             mtdCompliant,
+            responseTime,
         } = req.body;
 
         // Build update object - only include fields that were provided
@@ -400,6 +402,7 @@ router.put('/profile', vendorAuth, async (req, res) => {
         if (softwareUsed !== undefined) updateFields.softwareUsed = softwareUsed;
         if (industrySpecialisms !== undefined) updateFields.industrySpecialisms = industrySpecialisms;
         if (mtdCompliant !== undefined) updateFields.mtdCompliant = mtdCompliant;
+        if (responseTime !== undefined) updateFields.responseTime = responseTime;
 
         // Update the vendor
         const updatedVendor = await Vendor.findByIdAndUpdate(
@@ -446,6 +449,7 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 softwareUsed: updatedVendor.softwareUsed || [],
                 industrySpecialisms: updatedVendor.industrySpecialisms || [],
                 mtdCompliant: updatedVendor.mtdCompliant || false,
+                responseTime: updatedVendor.responseTime || '',
             }
         });
     } catch (error) {
