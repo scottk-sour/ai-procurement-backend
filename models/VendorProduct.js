@@ -8,7 +8,7 @@ const vendorProductSchema = new mongoose.Schema({
   },
   serviceCategory: {
     type: String,
-    enum: ['Photocopiers', 'Telecoms', 'CCTV', 'IT'],
+    enum: ['Photocopiers', 'Telecoms', 'CCTV', 'IT', 'Solicitor', 'Accountant'],
     required: true,
     default: 'Photocopiers',
     index: true,
@@ -31,6 +31,12 @@ const vendorProductSchema = new mongoose.Schema({
       'Cloud VoIP', 'On-Premise PBX', 'Microsoft Teams', 'Hybrid Phone System',
       'IP Camera System', 'Analogue System', 'Hybrid CCTV', 'Cloud-Based CCTV',
       'Fully Managed IT', 'Co-Managed IT', 'Project-Based IT', 'IT Consultancy',
+      // Solicitor practice areas
+      'Conveyancing', 'Family Law', 'Criminal Law', 'Commercial Law',
+      'Employment Law', 'Wills & Probate', 'Immigration', 'Personal Injury',
+      // Accountant service categories
+      'Annual Accounts', 'Tax Returns', 'Bookkeeping', 'Payroll',
+      'VAT Returns', 'Management Accounts', 'Company Formation', 'Tax Planning',
     ],
     required: true,
   },
@@ -175,6 +181,34 @@ const vendorProductSchema = new mongoose.Schema({
     responseTimeSLA: { type: String, enum: ['1 hour', '2 hours', '4 hours', '8 hours', 'Next business day'] },
     supportHours: { type: String, enum: ['24/7', 'Business hours (8-6)', 'Extended (7-10)', 'Business hours (9-5)'] },
     accreditations: [{ type: String }],
+  },
+
+  // Solicitor pricing
+  solicitorPricing: {
+    practiceArea: { type: String },
+    serviceName: { type: String },
+    feeType: { type: String, enum: ['fixed', 'hourly', 'from'] },
+    feeAmount: { type: Number },
+    turnaroundTime: { type: String },
+    whatsIncluded: [{ type: String }],
+    keyTeamMember: {
+      name: { type: String },
+      role: { type: String },
+    },
+  },
+
+  // Accountant pricing
+  accountantPricing: {
+    serviceCategory: { type: String },
+    serviceName: { type: String },
+    feeType: { type: String, enum: ['fixed', 'monthly-retainer', 'hourly', 'per-transaction'] },
+    feeAmount: { type: Number },
+    softwareUsed: [{ type: String }],
+    whatsIncluded: [{ type: String }],
+    keyTeamMember: {
+      name: { type: String },
+      role: { type: String },
+    },
   },
 
   minimumQuarterlyCharge: {

@@ -1129,7 +1129,16 @@ router.post("/products", async (req, res) => {
         // Validate required fields
         const { manufacturer, model, category, serviceCategory = 'Photocopiers' } = req.body;
 
-        if (!manufacturer || !model || !category) {
+        // Solicitor/Accountant: manufacturer is auto-set, only need model + category
+        if (serviceCategory === 'Solicitor' || serviceCategory === 'Accountant') {
+            if (!model || !category) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Service name and category are required",
+                    errors: ["Missing required fields: model (service name), category"]
+                });
+            }
+        } else if (!manufacturer || !model || !category) {
             return res.status(400).json({
                 success: false,
                 message: "Manufacturer, model, and category are required",
@@ -1138,7 +1147,23 @@ router.post("/products", async (req, res) => {
         }
 
         // Category-specific validation
-        if (serviceCategory === 'Photocopiers') {
+        if (serviceCategory === 'Solicitor') {
+            if (!req.body.solicitorPricing?.feeAmount) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Fee amount is required for solicitor services",
+                    errors: ["Missing solicitorPricing.feeAmount"]
+                });
+            }
+        } else if (serviceCategory === 'Accountant') {
+            if (!req.body.accountantPricing?.feeAmount) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Fee amount is required for accountant services",
+                    errors: ["Missing accountantPricing.feeAmount"]
+                });
+            }
+        } else if (serviceCategory === 'Photocopiers') {
             if (!req.body.costs || req.body.costs.cpcRates?.A4Mono === undefined || req.body.costs.machineCost === undefined) {
                 return res.status(400).json({
                     success: false,
