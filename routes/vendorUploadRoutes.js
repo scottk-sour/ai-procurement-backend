@@ -284,6 +284,7 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 email: vendor.email,
                 company: vendor.company,
                 services: vendor.services,
+                vendorType: vendor.vendorType || 'office-equipment',
                 status: vendor.status || vendor.account?.status,
                 tier: vendor.tier || vendor.account?.tier || 'free',
                 rating: vendor.performance?.rating || 0,
@@ -302,6 +303,18 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 specializations: vendor.businessProfile?.specializations || [],
                 // Brands
                 brands: vendor.brands || [],
+                // Professional fields (solicitors & accountants)
+                sraNumber: vendor.sraNumber || '',
+                icaewFirmNumber: vendor.icaewFirmNumber || '',
+                practiceAreas: vendor.practiceAreas || [],
+                fixedFees: vendor.fixedFees || [],
+                languages: vendor.languages || [],
+                legalAid: vendor.legalAid || false,
+                lenderPanels: vendor.lenderPanels || [],
+                individualSolicitors: vendor.individualSolicitors || [],
+                softwareUsed: vendor.softwareUsed || [],
+                industrySpecialisms: vendor.industrySpecialisms || [],
+                mtdCompliant: vendor.mtdCompliant || false,
                 // Onboarding
                 onboardingCompleted: vendor.account?.onboardingCompleted || false,
             },
@@ -330,7 +343,17 @@ router.put('/profile', vendorAuth, async (req, res) => {
             brands,
             certifications,
             accreditations,
-            specializations
+            specializations,
+            // Professional fields
+            practiceAreas,
+            fixedFees,
+            languages,
+            legalAid,
+            lenderPanels,
+            individualSolicitors,
+            softwareUsed,
+            industrySpecialisms,
+            mtdCompliant,
         } = req.body;
 
         // Build update object - only include fields that were provided
@@ -367,6 +390,17 @@ router.put('/profile', vendorAuth, async (req, res) => {
         if (services !== undefined) updateFields.services = services;
         if (brands !== undefined) updateFields.brands = brands;
 
+        // Professional fields (solicitors & accountants)
+        if (practiceAreas !== undefined) updateFields.practiceAreas = practiceAreas;
+        if (fixedFees !== undefined) updateFields.fixedFees = fixedFees;
+        if (languages !== undefined) updateFields.languages = languages;
+        if (legalAid !== undefined) updateFields.legalAid = legalAid;
+        if (lenderPanels !== undefined) updateFields.lenderPanels = lenderPanels;
+        if (individualSolicitors !== undefined) updateFields.individualSolicitors = individualSolicitors;
+        if (softwareUsed !== undefined) updateFields.softwareUsed = softwareUsed;
+        if (industrySpecialisms !== undefined) updateFields.industrySpecialisms = industrySpecialisms;
+        if (mtdCompliant !== undefined) updateFields.mtdCompliant = mtdCompliant;
+
         // Update the vendor
         const updatedVendor = await Vendor.findByIdAndUpdate(
             vendorId,
@@ -387,6 +421,7 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 email: updatedVendor.email,
                 company: updatedVendor.company,
                 services: updatedVendor.services || [],
+                vendorType: updatedVendor.vendorType || 'office-equipment',
                 tier: updatedVendor.tier || updatedVendor.account?.tier || 'free',
                 phone: updatedVendor.contactInfo?.phone || '',
                 website: updatedVendor.contactInfo?.website || '',
@@ -399,6 +434,18 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 accreditations: updatedVendor.businessProfile?.accreditations || [],
                 specializations: updatedVendor.businessProfile?.specializations || [],
                 brands: updatedVendor.brands || [],
+                // Professional fields
+                sraNumber: updatedVendor.sraNumber || '',
+                icaewFirmNumber: updatedVendor.icaewFirmNumber || '',
+                practiceAreas: updatedVendor.practiceAreas || [],
+                fixedFees: updatedVendor.fixedFees || [],
+                languages: updatedVendor.languages || [],
+                legalAid: updatedVendor.legalAid || false,
+                lenderPanels: updatedVendor.lenderPanels || [],
+                individualSolicitors: updatedVendor.individualSolicitors || [],
+                softwareUsed: updatedVendor.softwareUsed || [],
+                industrySpecialisms: updatedVendor.industrySpecialisms || [],
+                mtdCompliant: updatedVendor.mtdCompliant || false,
             }
         });
     } catch (error) {

@@ -49,6 +49,24 @@ const vendorSchema = new mongoose.Schema({
   companyNumber: { type: String, trim: true },
   officeCount: { type: Number },
 
+  // Professional services fields (solicitors & accountants)
+  fixedFees: [{
+    service: { type: String, trim: true },
+    fee: { type: String, trim: true },
+  }],
+  languages: [{ type: String, trim: true }],
+  legalAid: { type: Boolean, default: false },
+  lenderPanels: [{ type: String, trim: true }],
+  individualSolicitors: [{
+    name: { type: String, trim: true },
+    role: { type: String, trim: true },
+    specialisms: { type: String, trim: true },
+    qualifications: { type: String, trim: true },
+  }],
+  softwareUsed: [{ type: String, trim: true }],
+  industrySpecialisms: [{ type: String, trim: true }],
+  mtdCompliant: { type: Boolean, default: false },
+
   // Import / Claim
   source: { type: String, trim: true },
   claimed: { type: Boolean, default: false },
