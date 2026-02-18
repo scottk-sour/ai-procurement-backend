@@ -732,6 +732,8 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
       'copiers', 'telecoms', 'cctv', 'it',
       'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
       'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
     ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({

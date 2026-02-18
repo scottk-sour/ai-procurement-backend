@@ -49,7 +49,12 @@ const SOLICITOR_SLUGS = [
   'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
 ];
 
-const ALL_CATEGORY_SLUGS = [...EQUIPMENT_SLUGS, ...SOLICITOR_SLUGS];
+const ACCOUNTANT_SLUGS = [
+  'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+  'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+];
+
+const ALL_CATEGORY_SLUGS = [...EQUIPMENT_SLUGS, ...SOLICITOR_SLUGS, ...ACCOUNTANT_SLUGS];
 
 // Solicitor slug → practiceArea value for DB queries
 const SOLICITOR_PRACTICE_MAP = {
@@ -61,6 +66,18 @@ const SOLICITOR_PRACTICE_MAP = {
   'wills-and-probate': 'Wills & Probate',
   immigration: 'Immigration',
   'personal-injury': 'Personal Injury',
+};
+
+// Accountant slug → practiceArea value for DB queries
+const ACCOUNTANT_PRACTICE_MAP = {
+  'tax-advisory': 'Tax Advisory',
+  'audit-assurance': 'Audit & Assurance',
+  bookkeeping: 'Bookkeeping',
+  payroll: 'Payroll',
+  'corporate-finance': 'Corporate Finance',
+  'business-advisory': 'Business Advisory',
+  'vat-services': 'VAT',
+  'financial-planning': 'Financial Planning',
 };
 
 // Equipment slug → service value
@@ -133,6 +150,41 @@ async function buildSitemapUrls() {
 
     for (const item of solicitorLocations) {
       const slug = paToSlug[item._id.practiceArea];
+      const city = item._id.city;
+      if (slug && city) {
+        add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
+      }
+    }
+
+    // Accountant location pages
+    const accountantLocations = await Vendor.aggregate([
+      {
+        $match: {
+          vendorType: 'accountant',
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' },
+          ],
+        },
+      },
+      { $unwind: '$practiceAreas' },
+      {
+        $group: {
+          _id: { practiceArea: '$practiceAreas', city: '$location.city' },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+    ]);
+
+    // Build reverse map: practiceArea → slug for accountants
+    const acctPaToSlug = {};
+    for (const [slug, pa] of Object.entries(ACCOUNTANT_PRACTICE_MAP)) {
+      acctPaToSlug[pa] = slug;
+    }
+
+    for (const item of accountantLocations) {
+      const slug = acctPaToSlug[item._id.practiceArea];
       const city = item._id.city;
       if (slug && city) {
         add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');

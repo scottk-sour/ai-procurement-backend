@@ -18,17 +18,19 @@ import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } f
 
 const router = express.Router();
 
-// Tier priority for sorting (Verified > Visible > Free)
-// Verified tiers: enterprise, managed, verified (£149/mo)
-// Visible tiers: basic, visible, standard (£99/mo)
+// Tier priority for sorting (Pro > Starter > Free)
+// Pro tiers: pro, enterprise, managed, verified (£299/mo)
+// Starter tiers: starter, basic, visible, standard (£149/mo)
 // Free tiers: free, listed
 const TIER_PRIORITY = {
-  enterprise: 100,  // Verified
-  managed: 100,     // Verified
-  verified: 100,    // Verified
-  basic: 50,        // Visible
-  visible: 50,      // Visible
-  standard: 50,     // Visible
+  pro: 100,         // Pro (£299/mo)
+  enterprise: 100,  // Legacy → Pro
+  managed: 100,     // Legacy → Pro
+  verified: 100,    // Legacy → Pro
+  starter: 50,      // Starter (£149/mo)
+  basic: 50,        // Legacy → Starter
+  visible: 50,      // Legacy → Starter
+  standard: 50,     // Legacy → Starter
   free: 0,          // Free
   listed: 0         // Free
 };
@@ -533,8 +535,24 @@ const SOLICITOR_SLUG_MAP = {
   'personal-injury': 'Personal Injury',
 };
 
+// Accountant slug → practiceAreas mapping
+const ACCOUNTANT_SLUG_MAP = {
+  'tax-advisory': 'Tax Advisory',
+  'audit-assurance': 'Audit & Assurance',
+  bookkeeping: 'Bookkeeping',
+  payroll: 'Payroll',
+  'corporate-finance': 'Corporate Finance',
+  'business-advisory': 'Business Advisory',
+  'vat-services': 'VAT',
+  'financial-planning': 'Financial Planning',
+};
+
 function isSolicitorSlug(slug) {
   return slug in SOLICITOR_SLUG_MAP;
+}
+
+function isAccountantSlug(slug) {
+  return slug in ACCOUNTANT_SLUG_MAP;
 }
 
 /**
@@ -558,6 +576,9 @@ router.get('/vendors/locations/:category', async (req, res) => {
     if (isSolicitorSlug(category)) {
       const practiceArea = SOLICITOR_SLUG_MAP[category];
       matchStage = { ...statusFilter, vendorType: 'solicitor', practiceAreas: practiceArea };
+    } else if (isAccountantSlug(category)) {
+      const practiceArea = ACCOUNTANT_SLUG_MAP[category];
+      matchStage = { ...statusFilter, vendorType: 'accountant', practiceAreas: practiceArea };
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
       matchStage = { ...statusFilter, services: { $regex: new RegExp(categoryNorm, 'i') } };
@@ -602,6 +623,8 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
 
     const locationNorm = location.toLowerCase().replace(/-/g, ' ');
     const isSolicitor = isSolicitorSlug(category);
+    const isAccountant = isAccountantSlug(category);
+    const isProfessional = isSolicitor || isAccountant;
 
     // Build category filter
     let categoryFilter;
@@ -609,6 +632,10 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     if (isSolicitor) {
       const practiceArea = SOLICITOR_SLUG_MAP[category];
       categoryFilter = { vendorType: 'solicitor', practiceAreas: practiceArea };
+      categoryLabel = practiceArea;
+    } else if (isAccountant) {
+      const practiceArea = ACCOUNTANT_SLUG_MAP[category];
+      categoryFilter = { vendorType: 'accountant', practiceAreas: practiceArea };
       categoryLabel = practiceArea;
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
@@ -626,8 +653,8 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
           ]
         },
         categoryFilter,
-        // For solicitors match on city; for equipment match on coverage
-        isSolicitor
+        // For professional services match on city; for equipment match on coverage
+        isProfessional
           ? { 'location.city': { $regex: new RegExp(`^${locationNorm}$`, 'i') } }
           : { 'location.coverage': { $regex: new RegExp(locationNorm, 'i') } }
       ]
@@ -688,11 +715,13 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     const publicNationalVendors = nationalVendors.map(v => formatVendorForPublic(v));
 
     // Page metadata for SEO
-    const suffix = isSolicitor ? 'Solicitors' : 'Suppliers';
+    const suffix = isSolicitor ? 'Solicitors' : isAccountant ? 'Accountants' : 'Suppliers';
     const pageTitle = `${capitalize(categoryLabel)} ${suffix} in ${capitalize(locationNorm)}`;
     const pageDescription = isSolicitor
       ? `Find verified ${categoryLabel.toLowerCase()} solicitors in ${capitalize(locationNorm)}. SRA-regulated firms with reviews and accreditations on TendorAI.`
-      : `Find trusted ${categoryLabel} suppliers and installers in ${capitalize(locationNorm)}. Compare ${total} vendors, read reviews, and get quotes.`;
+      : isAccountant
+        ? `Find verified ${categoryLabel.toLowerCase()} accountants in ${capitalize(locationNorm)}. ICAEW-regulated firms with reviews and accreditations on TendorAI.`
+        : `Find trusted ${categoryLabel} suppliers and installers in ${capitalize(locationNorm)}. Compare ${total} vendors, read reviews, and get quotes.`;
 
     res.json({
       success: true,
@@ -713,7 +742,8 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
           title: pageTitle,
           description: pageDescription,
           canonical: `/suppliers/${category}/${location}`,
-          isSolicitor
+          isSolicitor,
+          isAccountant
         }
       }
     });
@@ -983,7 +1013,7 @@ function formatVendorForPublic(v) {
     slug: v.slug || null,
     // Schema.org metadata for AI consumption
     '@context': 'https://schema.org',
-    '@type': v.vendorType === 'solicitor' ? 'LegalService' : 'LocalBusiness',
+    '@type': v.vendorType === 'solicitor' ? 'LegalService' : v.vendorType === 'accountant' ? 'AccountingService' : 'LocalBusiness',
     'areaServed': v.location?.coverage || v.coverageAreas || []
   };
 }
@@ -1107,11 +1137,17 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    const validCategories = ['copiers', 'telecoms', 'cctv', 'it'];
+    const validCategories = [
+      'copiers', 'telecoms', 'cctv', 'it',
+      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+    ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
         success: false,
-        error: 'category must be one of: copiers, telecoms, cctv, it',
+        error: `category must be one of: ${validCategories.join(', ')}`,
       });
     }
 

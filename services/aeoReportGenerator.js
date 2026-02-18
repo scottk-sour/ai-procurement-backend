@@ -26,6 +26,15 @@ const CATEGORY_LABELS = {
   'wills-and-probate': 'wills and probate solicitor',
   immigration: 'immigration solicitor',
   'personal-injury': 'personal injury solicitor',
+  // Accountants
+  'tax-advisory': 'tax advisory accountant',
+  'audit-assurance': 'audit and assurance accountant',
+  bookkeeping: 'bookkeeping accountant',
+  payroll: 'payroll services accountant',
+  'corporate-finance': 'corporate finance accountant',
+  'business-advisory': 'business advisory accountant',
+  'vat-services': 'VAT services accountant',
+  'financial-planning': 'financial planning accountant',
 };
 
 // ─── Category → Vendor service field mapping ─────────────────────────────────
@@ -47,6 +56,15 @@ const CATEGORY_TO_PRACTICE_AREA = {
   'wills-and-probate': 'Wills & Probate',
   immigration: 'Immigration',
   'personal-injury': 'Personal Injury',
+  // Accountants
+  'tax-advisory': 'Tax Advisory',
+  'audit-assurance': 'Audit & Assurance',
+  bookkeeping: 'Bookkeeping',
+  payroll: 'Payroll',
+  'corporate-finance': 'Corporate Finance',
+  'business-advisory': 'Business Advisory',
+  'vat-services': 'VAT',
+  'financial-planning': 'Financial Planning',
 };
 
 // ─── Industry-specific search hints and clarifications ───────────────────────
@@ -132,6 +150,63 @@ const CATEGORY_SEARCH_HINTS = {
     ],
     clarification: `CRITICAL — I am looking for SRA-regulated solicitor firms handling personal injury claims (road traffic accidents, workplace injuries, clinical negligence). NOT claims management companies.`,
   },
+  // Accountants
+  'tax-advisory': {
+    queries: [
+      'tax advisor accountant {city} UK',
+      'corporation tax self-assessment accountant {city}',
+    ],
+    clarification: `CRITICAL — I am looking for ICAEW-regulated accountancy firms providing tax advisory services (personal tax, corporation tax, inheritance tax, self-assessment). NOT tax refund companies or unregulated advisors.`,
+  },
+  'audit-assurance': {
+    queries: [
+      'audit firm {city} UK',
+      'statutory audit accountant {city}',
+    ],
+    clarification: `CRITICAL — I am looking for ICAEW-regulated accountancy firms providing audit and assurance services. NOT financial advisors or consultancy-only firms.`,
+  },
+  bookkeeping: {
+    queries: [
+      'bookkeeping accountant {city} UK',
+      'accounts preparation management accounts {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing bookkeeping, accounts preparation, and management accounts services. Prefer ICAEW-regulated firms.`,
+  },
+  payroll: {
+    queries: [
+      'payroll services accountant {city} UK',
+      'payroll bureau RTI pensions {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing payroll services (payroll processing, RTI, pension auto-enrolment). NOT payroll software companies.`,
+  },
+  'corporate-finance': {
+    queries: [
+      'corporate finance accountant {city} UK',
+      'M&A due diligence business valuation {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing corporate finance services (M&A, due diligence, valuations, fundraising). NOT investment banks or stockbrokers.`,
+  },
+  'business-advisory': {
+    queries: [
+      'business advisory accountant {city} UK',
+      'small business consultancy start-up accountant {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing business advisory services (consultancy, start-ups, growth planning). NOT generic management consultants.`,
+  },
+  'vat-services': {
+    queries: [
+      'VAT accountant {city} UK',
+      'VAT returns MTD compliance accountant {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing VAT services (VAT returns, MTD compliance, cross-border VAT). NOT tax refund companies.`,
+  },
+  'financial-planning': {
+    queries: [
+      'financial planning accountant {city} UK',
+      'wealth management retirement planning {city}',
+    ],
+    clarification: `CRITICAL — I am looking for accountancy firms providing financial planning services (wealth management, retirement planning, estate planning). NOT independent financial advisors who are not accountants.`,
+  },
 };
 
 // ─── Detect vendor type from category ────────────────────────────────────────
@@ -141,8 +216,14 @@ const SOLICITOR_CATEGORIES = new Set([
   'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
 ]);
 
+const ACCOUNTANT_CATEGORIES = new Set([
+  'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+  'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+]);
+
 function getVendorType(category) {
   if (SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
+  if (ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';
   return 'equipment';
 }
 
@@ -157,6 +238,20 @@ function getChecklistPrompt(vendorType) {
     "hasBrands": true/false (SRA regulated, Law Society accredited, Lexcel, CQS, legal aid),
     "hasStructuredData": true/false (schema.org/LegalService markup, JSON-LD),
     "hasDetailedServices": true/false (detailed practice area pages with process info),
+    "hasSocialMedia": true/false (LinkedIn, Facebook, Twitter/X presence),
+    "hasGoogleBusiness": true/false (Google Business Profile with reviews),
+    "summary": "2-3 sentence summary of what you found about the firm online"
+  }`;
+  }
+
+  if (vendorType === 'accountant') {
+    return `  "searchedCompany": {
+    "website": "https://example.com or null if not found",
+    "hasReviews": true/false (Google reviews, Trustpilot, etc.),
+    "hasPricing": true/false (fee estimates, fixed-fee packages, pricing page),
+    "hasBrands": true/false (ICAEW regulated, ACCA, chartered status, QuickBooks/Xero partner),
+    "hasStructuredData": true/false (schema.org/AccountingService markup, JSON-LD),
+    "hasDetailedServices": true/false (detailed service pages for tax, audit, bookkeeping etc.),
     "hasSocialMedia": true/false (LinkedIn, Facebook, Twitter/X presence),
     "hasGoogleBusiness": true/false (Google Business Profile with reviews),
     "summary": "2-3 sentence summary of what you found about the firm online"
@@ -192,6 +287,18 @@ function getScoringHints(vendorType) {
 - competitivePosition: How visible are they vs other solicitors in the area? Would AI recommend them?`;
   }
 
+  if (vendorType === 'accountant') {
+    return `SCORING RULES:
+- score is 0-100 overall AI visibility score
+- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
+- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (AccountingService)?
+- contentAuthority: Does the firm have authoritative content — tax guides, blog posts, case studies, FAQ pages?
+- directoryPresence: Is the firm on the ICAEW directory, ACCA directory, Google Business, accountancy directories?
+- reviewSignals: Google reviews, Trustpilot, client testimonials?
+- structuredData: Schema.org/AccountingService markup, JSON-LD, LocalBusiness structured data?
+- competitivePosition: How visible are they vs other accountants in the area? Would AI recommend them?`;
+  }
+
   // Default: office equipment
   return `SCORING RULES:
 - score is 0-100 overall AI visibility score
@@ -212,6 +319,14 @@ function getGapHints(vendorType) {
 - Return 3-5 specific, actionable gaps
 - Focus on things the firm is missing that competing solicitors have
 - Common solicitor gaps: no SRA-linked website, no legal directory listings, no client testimonials, no detailed practice area pages, no fee transparency, no schema markup, no blog/legal guides
+- Be specific: "No visible client reviews on Google" not "Poor online presence"`;
+  }
+
+  if (vendorType === 'accountant') {
+    return `GAP RULES:
+- Return 3-5 specific, actionable gaps
+- Focus on things the firm is missing that competing accountants have
+- Common accountant gaps: no ICAEW directory link, no client testimonials, no detailed service pages, no fee transparency, no schema markup, no blog/tax guides, no cloud accounting partner badges (Xero/QuickBooks)
 - Be specific: "No visible client reviews on Google" not "Poor online presence"`;
   }
 
@@ -246,8 +361,9 @@ export async function generateFullReport({ companyName, category, city, email })
     .map((q) => q.replace(/\{city\}/g, city));
   const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
 
-  const entityLabel = vendorType === 'solicitor' ? 'firm' : 'company';
-  const entityLabelPlural = vendorType === 'solicitor' ? 'firms' : 'companies';
+  const isProfessional = vendorType === 'solicitor' || vendorType === 'accountant';
+  const entityLabel = isProfessional ? 'firm' : 'company';
+  const entityLabelPlural = isProfessional ? 'firms' : 'companies';
   const checklistPrompt = getChecklistPrompt(vendorType);
   const scoringHints = getScoringHints(vendorType);
   const gapHints = getGapHints(vendorType);
@@ -425,11 +541,11 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
   let competitorsOnTendorAI = 0;
   const cityRegex = new RegExp(city, 'i');
 
-  if (vendorType === 'solicitor') {
+  if (vendorType === 'solicitor' || vendorType === 'accountant') {
     const practiceArea = CATEGORY_TO_PRACTICE_AREA[category];
     if (practiceArea) {
       competitorsOnTendorAI = await Vendor.countDocuments({
-        vendorType: 'solicitor',
+        vendorType,
         practiceAreas: practiceArea,
         'location.city': cityRegex,
       });

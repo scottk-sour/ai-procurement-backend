@@ -67,6 +67,18 @@ const SOLICITOR_CATEGORY_MAP = {
   'Personal Injury': 'personal-injury',
 };
 
+// Accountants: practice area → AEO category
+const ACCOUNTANT_CATEGORY_MAP = {
+  'Tax Advisory': 'tax-advisory',
+  'Audit & Assurance': 'audit-assurance',
+  Bookkeeping: 'bookkeeping',
+  Payroll: 'payroll',
+  'Corporate Finance': 'corporate-finance',
+  'Business Advisory': 'business-advisory',
+  VAT: 'vat-services',
+  'Financial Planning': 'financial-planning',
+};
+
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.tendorai.com';
 const API_URL = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
 
@@ -84,8 +96,10 @@ async function main() {
   // Filter by vendorType
   if (filterVendorType === 'solicitor') {
     query.vendorType = 'solicitor';
+  } else if (filterVendorType === 'accountant') {
+    query.vendorType = 'accountant';
   } else if (filterVendorType === 'equipment') {
-    query.vendorType = { $ne: 'solicitor' };
+    query.vendorType = { $nin: ['solicitor', 'accountant'] };
   }
 
   // Filter by category (maps to service or practiceArea depending on type)
@@ -115,9 +129,9 @@ async function main() {
     ];
   }
 
-  const selectFields = filterVendorType === 'solicitor'
+  const selectFields = (filterVendorType === 'solicitor' || filterVendorType === 'accountant')
     ? 'company email practiceAreas location vendorType'
-    : 'company email services location vendorType';
+    : 'company email services location vendorType practiceAreas';
 
   const vendors = await Vendor.find(query)
     .select(selectFields)
@@ -149,6 +163,9 @@ async function main() {
       // Use first practice area
       const pa = (vendor.practiceAreas || [])[0] || '';
       category = SOLICITOR_CATEGORY_MAP[pa] || filterCategory || 'conveyancing';
+    } else if (vendor.vendorType === 'accountant') {
+      const pa = (vendor.practiceAreas || [])[0] || '';
+      category = ACCOUNTANT_CATEGORY_MAP[pa] || filterCategory || 'tax-advisory';
     } else {
       const service = (vendor.services || [])[0] || '';
       category = EQUIPMENT_CATEGORY_MAP[service] || filterCategory || 'it';

@@ -11,10 +11,14 @@ const aeoReportSchema = new mongoose.Schema({
       // Solicitors
       'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
       'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+      // Accountants
+      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
     ],
   },
   city: { type: String, required: true, trim: true },
   email: { type: String, trim: true, lowercase: true },
+  vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', index: true, default: null },
   aiMentioned: { type: Boolean, required: true },
   aiPosition: { type: Number, default: null },
   aiRecommendations: [

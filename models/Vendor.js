@@ -213,7 +213,7 @@ const vendorSchema = new mongoose.Schema({
   tier: {
     type: String,
     default: 'free',
-    enum: ['free', 'basic', 'managed', 'enterprise', 'listed', 'visible', 'verified']
+    enum: ['free', 'starter', 'pro', 'basic', 'managed', 'enterprise', 'listed', 'visible', 'verified']
   },
   subscriptionStatus: {
     type: String,

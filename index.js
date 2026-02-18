@@ -1426,6 +1426,11 @@ async function startServer() {
       logger.info(`🤖 AI suggestions: /api/suggest-copiers`);
       logger.info(`🌐 Public API: /api/public/vendors`);
       logger.info(`🎉 TendorAI Backend is ready!`);
+
+      // Start scheduled report cron jobs if enabled
+      if (process.env.ENABLE_CRON === 'true') {
+        import('./jobs/scheduledReports.js').then(m => m.startScheduledReports());
+      }
     });
     
     let shuttingDown = false;
