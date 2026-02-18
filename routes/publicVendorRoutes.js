@@ -577,8 +577,8 @@ router.get('/vendors/locations/:category', async (req, res) => {
       const practiceArea = SOLICITOR_SLUG_MAP[category];
       matchStage = { ...statusFilter, vendorType: 'solicitor', practiceAreas: practiceArea };
     } else if (isAccountantSlug(category)) {
-      const practiceArea = ACCOUNTANT_SLUG_MAP[category];
-      matchStage = { ...statusFilter, vendorType: 'accountant', practiceAreas: practiceArea };
+      // practiceAreas not populated yet for accountants — match all accountant vendors
+      matchStage = { ...statusFilter, vendorType: 'accountant' };
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
       matchStage = { ...statusFilter, services: { $regex: new RegExp(categoryNorm, 'i') } };
@@ -634,9 +634,9 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
       categoryFilter = { vendorType: 'solicitor', practiceAreas: practiceArea };
       categoryLabel = practiceArea;
     } else if (isAccountant) {
-      const practiceArea = ACCOUNTANT_SLUG_MAP[category];
-      categoryFilter = { vendorType: 'accountant', practiceAreas: practiceArea };
-      categoryLabel = practiceArea;
+      // practiceAreas not populated yet for accountants — match all accountant vendors
+      categoryFilter = { vendorType: 'accountant' };
+      categoryLabel = ACCOUNTANT_SLUG_MAP[category];
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
       categoryFilter = { services: { $regex: new RegExp(categoryNorm, 'i') } };

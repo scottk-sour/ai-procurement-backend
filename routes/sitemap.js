@@ -156,8 +156,9 @@ async function buildSitemapUrls() {
       }
     }
 
-    // Accountant location pages
-    const accountantLocations = await Vendor.aggregate([
+    // Accountant location pages — practiceAreas not populated yet,
+    // so group by city only and emit all 8 category slugs per city
+    const accountantCities = await Vendor.aggregate([
       {
         $match: {
           vendorType: 'accountant',
@@ -167,27 +168,21 @@ async function buildSitemapUrls() {
           ],
         },
       },
-      { $unwind: '$practiceAreas' },
       {
         $group: {
-          _id: { practiceArea: '$practiceAreas', city: '$location.city' },
+          _id: '$location.city',
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+      { $match: { count: { $gte: 2 }, _id: { $nin: [null, ''] } } },
     ]);
 
-    // Build reverse map: practiceArea → slug for accountants
-    const acctPaToSlug = {};
-    for (const [slug, pa] of Object.entries(ACCOUNTANT_PRACTICE_MAP)) {
-      acctPaToSlug[pa] = slug;
-    }
-
-    for (const item of accountantLocations) {
-      const slug = acctPaToSlug[item._id.practiceArea];
-      const city = item._id.city;
-      if (slug && city) {
-        add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
+    for (const item of accountantCities) {
+      const city = item._id;
+      if (city) {
+        for (const slug of ACCOUNTANT_SLUGS) {
+          add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
+        }
       }
     }
 
@@ -195,7 +190,7 @@ async function buildSitemapUrls() {
     const equipmentLocations = await Vendor.aggregate([
       {
         $match: {
-          vendorType: { $ne: 'solicitor' },
+          vendorType: { $nin: ['solicitor', 'accountant'] },
           $or: [
             { 'account.status': 'active', 'account.verificationStatus': 'verified' },
             { listingStatus: 'unclaimed' },
