@@ -34,6 +34,7 @@ import vendorPostRoutes from './routes/vendorPostRoutes.js';
 import aiMentionRoutes from './routes/aiMentionRoutes.js';
 import aiSearchTestRoutes from './routes/aiSearchTestRoutes.js';
 import geoAuditRoutes from './routes/geoAuditRoutes.js';
+import publicApiRoutes from './routes/publicApiRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
 import requestId from './middleware/requestId.js';
@@ -295,6 +296,7 @@ app.use('/api/posts', vendorPostRoutes);
 app.use('/api/ai-mentions', aiMentionRoutes);
 app.use('/api/ai-search-test', aiSearchTestRoutes);
 app.use('/api/geo-audit', geoAuditRoutes);
+app.use('/api/v1', publicApiRoutes);
 app.use('/', sitemapRoutes);
 
 // AI Copier Suggestions Route - Use enhanced AI controller with real vendor quotes
@@ -307,6 +309,15 @@ app.get('/openapi.json', (req, res) => {
     res.sendFile(openapiPath);
   } else {
     res.status(404).json({ error: 'OpenAPI specification not found' });
+  }
+});
+
+app.get('/api-docs.json', (req, res) => {
+  const apiDocsPath = path.join(__dirname, 'public', 'api-docs.json');
+  if (fs.existsSync(apiDocsPath)) {
+    res.sendFile(apiDocsPath);
+  } else {
+    res.status(404).json({ error: 'API documentation not found' });
   }
 });
 

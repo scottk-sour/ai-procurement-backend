@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tendorai": {
+      "command": "node",
+      "args": ["C:\\Users\\pmeth\\Projects\\ai-procurement-backend\\mcp\\server.js"],
+      "env": {
+        "TENDORAI_API_URL": "https://ai-procurement-backend-q35u.onrender.com"
+      }
+    }
+  }
+}

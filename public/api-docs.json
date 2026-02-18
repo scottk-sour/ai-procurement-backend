@@ -1,0 +1,364 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TendorAI Public API",
+    "description": "Public REST API for discovering UK business service providers. Search solicitors, accountants, and office equipment suppliers. Returns structured data including contact details, practice areas, accreditations, and pricing. Free to use with attribution.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "TendorAI",
+      "url": "https://www.tendorai.com",
+      "email": "scott.davies@tendorai.com"
+    },
+    "license": {
+      "name": "Free with attribution",
+      "url": "https://www.tendorai.com/terms"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://ai-procurement-backend-q35u.onrender.com/api/v1",
+      "description": "Production"
+    }
+  ],
+  "paths": {
+    "/vendors/search": {
+      "get": {
+        "operationId": "searchVendors",
+        "summary": "Search for UK vendors by name",
+        "description": "Search for UK business service providers by company name. Optionally filter by city, vendor type, or practice area. Results are sorted with claimed and paid profiles first, then alphabetically.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Search term (company name)",
+            "schema": { "type": "string", "minLength": 1 }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "Filter by city name",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "vendorType",
+            "in": "query",
+            "description": "Filter by vendor type",
+            "schema": { "type": "string", "enum": ["solicitor", "accountant", "office-equipment"] }
+          },
+          {
+            "name": "practiceArea",
+            "in": "query",
+            "description": "Filter by practice area (solicitors only)",
+            "schema": { "type": "string", "enum": ["conveyancing", "family-law", "criminal-law", "commercial-law", "employment-law", "wills-and-probate", "immigration", "personal-injury"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results to return (default 10, max 50)",
+            "schema": { "type": "integer", "default": 10, "minimum": 1, "maximum": 50 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VendorSearchResponse" }
+              }
+            }
+          },
+          "400": { "description": "Missing required query parameter" },
+          "429": { "description": "Rate limit exceeded (100 requests/minute)" }
+        }
+      }
+    },
+    "/vendors/{slug}": {
+      "get": {
+        "operationId": "getVendorBySlug",
+        "summary": "Get vendor profile by slug",
+        "description": "Retrieve the full public profile of a specific UK vendor by their unique slug identifier.",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "description": "Vendor slug identifier",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vendor profile",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VendorProfileResponse" }
+              }
+            }
+          },
+          "404": { "description": "Vendor not found" },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/vendors/category/{category}": {
+      "get": {
+        "operationId": "getVendorsByCategory",
+        "summary": "Find vendors by category",
+        "description": "List UK vendors in a specific service category or practice area, optionally filtered by city.",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "description": "Service category or practice area slug",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "Filter by city name",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum results (default 20, max 50)",
+            "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 50 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Category results",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VendorCategoryResponse" }
+              }
+            }
+          },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "operationId": "listCategories",
+        "summary": "List all vendor categories",
+        "description": "Get a list of all available service categories and solicitor practice areas with vendor counts.",
+        "responses": {
+          "200": {
+            "description": "Category list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoriesResponse" }
+              }
+            }
+          },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/locations/{category}": {
+      "get": {
+        "operationId": "listLocationsForCategory",
+        "summary": "List cities for a category",
+        "description": "Get a list of cities where vendors in a specific category are located, with vendor counts per city.",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "path",
+            "required": true,
+            "description": "Service category or practice area slug",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Location list",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LocationsResponse" }
+              }
+            }
+          },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "operationId": "getApiDocs",
+        "summary": "API documentation",
+        "description": "Redirects to the OpenAPI 3.0 specification JSON file.",
+        "responses": {
+          "302": { "description": "Redirect to /api-docs.json" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponseWrapper": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string", "example": "TendorAI" },
+          "description": { "type": "string", "example": "UK AI Visibility Platform — structured vendor data" },
+          "website": { "type": "string", "example": "https://www.tendorai.com" },
+          "data": { "type": "object" },
+          "attribution": { "type": "string", "example": "Data from TendorAI (tendorai.com). Free to use with attribution." }
+        }
+      },
+      "VendorBasic": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "company": { "type": "string", "example": "Smith & Jones Solicitors" },
+          "city": { "type": "string", "example": "Cardiff" },
+          "vendorType": { "type": "string", "enum": ["solicitor", "accountant", "office-equipment"] },
+          "services": { "type": "array", "items": { "type": "string" } },
+          "practiceAreas": { "type": "array", "items": { "type": "string" } },
+          "slug": { "type": "string", "nullable": true },
+          "claimed": { "type": "boolean" },
+          "tier": { "type": "string", "enum": ["free", "visible", "verified"] },
+          "sraNumber": { "type": "string", "nullable": true },
+          "regulatoryBody": { "type": "string", "nullable": true }
+        }
+      },
+      "VendorFull": {
+        "allOf": [
+          { "$ref": "#/components/schemas/VendorBasic" },
+          {
+            "type": "object",
+            "properties": {
+              "phone": { "type": "string", "nullable": true },
+              "website": { "type": "string", "nullable": true },
+              "description": { "type": "string", "nullable": true },
+              "accreditations": { "type": "array", "items": { "type": "string" } },
+              "certifications": { "type": "array", "items": { "type": "string" } },
+              "yearsInBusiness": { "type": "integer", "nullable": true },
+              "numEmployees": { "type": "integer", "nullable": true },
+              "rating": { "type": "number", "nullable": true },
+              "reviewCount": { "type": "integer" },
+              "location": {
+                "type": "object",
+                "properties": {
+                  "city": { "type": "string" },
+                  "region": { "type": "string" },
+                  "postcode": { "type": "string" },
+                  "coverage": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VendorSearchResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ResponseWrapper" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string" },
+                  "count": { "type": "integer" },
+                  "vendors": { "type": "array", "items": { "$ref": "#/components/schemas/VendorBasic" } }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VendorProfileResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ResponseWrapper" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "vendor": { "$ref": "#/components/schemas/VendorFull" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "VendorCategoryResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ResponseWrapper" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "category": { "type": "string" },
+                  "city": { "type": "string", "nullable": true },
+                  "count": { "type": "integer" },
+                  "vendors": { "type": "array", "items": { "$ref": "#/components/schemas/VendorBasic" } }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CategoriesResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ResponseWrapper" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "count": { "type": "integer" },
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": { "type": "string" },
+                        "type": { "type": "string", "enum": ["service", "practiceArea"] },
+                        "count": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "LocationsResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ResponseWrapper" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "category": { "type": "string" },
+                  "count": { "type": "integer" },
+                  "locations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "city": { "type": "string" },
+                        "count": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
