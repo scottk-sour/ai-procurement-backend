@@ -1208,6 +1208,10 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
       'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
       'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+      'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+      'equity-release', 'commercial-mortgages', 'protection-insurance',
+      'sales', 'lettings', 'property-management', 'block-management',
+      'auctions', 'commercial-property', 'inventory',
     ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
