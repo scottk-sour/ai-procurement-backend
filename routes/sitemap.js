@@ -28,6 +28,8 @@ const STATIC_PAGES = [
   { path: '/get-quotes', priority: '0.9', changefreq: 'monthly' },
   { path: '/vendor-login', priority: '0.5', changefreq: 'monthly' },
   { path: '/suppliers', priority: '0.9', changefreq: 'weekly' },
+  { path: '/suppliers/mortgage-advisors', priority: '0.9', changefreq: 'weekly' },
+  { path: '/suppliers/estate-agents', priority: '0.9', changefreq: 'weekly' },
   { path: '/resources', priority: '0.8', changefreq: 'weekly' },
   // Resource articles
   { path: '/resources/photocopier-costs-uk-2026', priority: '0.7', changefreq: 'monthly' },
@@ -56,7 +58,20 @@ const ACCOUNTANT_SLUGS = [
   'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
 ];
 
-const ALL_CATEGORY_SLUGS = [...EQUIPMENT_SLUGS, ...SOLICITOR_SLUGS, ...ACCOUNTANT_SLUGS];
+const MORTGAGE_ADVISOR_SLUGS = [
+  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+  'equity-release', 'commercial-mortgages', 'protection-insurance',
+];
+
+const ESTATE_AGENT_SLUGS = [
+  'sales', 'lettings', 'property-management', 'block-management',
+  'auctions', 'commercial-property', 'inventory',
+];
+
+const ALL_CATEGORY_SLUGS = [
+  ...EQUIPMENT_SLUGS, ...SOLICITOR_SLUGS, ...ACCOUNTANT_SLUGS,
+  ...MORTGAGE_ADVISOR_SLUGS, ...ESTATE_AGENT_SLUGS,
+];
 
 // Solicitor slug → practiceArea value for DB queries
 const SOLICITOR_PRACTICE_MAP = {
@@ -80,6 +95,28 @@ const ACCOUNTANT_PRACTICE_MAP = {
   'business-advisory': 'Business Advisory',
   'vat-services': 'VAT',
   'financial-planning': 'Financial Planning',
+};
+
+// Mortgage advisor slug → practiceArea value
+const MORTGAGE_PRACTICE_MAP = {
+  'residential-mortgages': 'Residential Mortgages',
+  'buy-to-let': 'Buy-to-Let',
+  remortgage: 'Remortgage',
+  'first-time-buyer': 'First-Time Buyer',
+  'equity-release': 'Equity Release',
+  'commercial-mortgages': 'Commercial Mortgages',
+  'protection-insurance': 'Protection Insurance',
+};
+
+// Estate agent slug → practiceArea value
+const ESTATE_AGENT_PRACTICE_MAP = {
+  sales: 'Sales',
+  lettings: 'Lettings',
+  'property-management': 'Property Management',
+  'block-management': 'Block Management',
+  auctions: 'Auctions',
+  'commercial-property': 'Commercial Property',
+  inventory: 'Inventory',
 };
 
 // Equipment slug → service value
@@ -188,11 +225,79 @@ async function buildSitemapUrls() {
       }
     }
 
+    // Mortgage advisor location pages
+    const mortgageLocations = await Vendor.aggregate([
+      {
+        $match: {
+          vendorType: 'mortgage-advisor',
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' },
+          ],
+        },
+      },
+      { $unwind: '$practiceAreas' },
+      {
+        $group: {
+          _id: { practiceArea: '$practiceAreas', city: '$location.city' },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+    ]);
+
+    const mortgagePaToSlug = {};
+    for (const [slug, pa] of Object.entries(MORTGAGE_PRACTICE_MAP)) {
+      mortgagePaToSlug[pa] = slug;
+    }
+
+    for (const item of mortgageLocations) {
+      const slug = mortgagePaToSlug[item._id.practiceArea];
+      const city = item._id.city;
+      if (slug && city) {
+        add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
+      }
+    }
+
+    // Estate agent location pages
+    const estateAgentLocations = await Vendor.aggregate([
+      {
+        $match: {
+          vendorType: 'estate-agent',
+          $or: [
+            { 'account.status': 'active', 'account.verificationStatus': 'verified' },
+            { listingStatus: 'unclaimed' },
+          ],
+        },
+      },
+      { $unwind: '$practiceAreas' },
+      {
+        $group: {
+          _id: { practiceArea: '$practiceAreas', city: '$location.city' },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+    ]);
+
+    const estatePaToSlug = {};
+    for (const [slug, pa] of Object.entries(ESTATE_AGENT_PRACTICE_MAP)) {
+      estatePaToSlug[pa] = slug;
+    }
+
+    for (const item of estateAgentLocations) {
+      const slug = estatePaToSlug[item._id.practiceArea];
+      const city = item._id.city;
+      if (slug && city) {
+        add(`/suppliers/${slug}/${toSlug(city)}`, '0.8', 'weekly');
+      }
+    }
+
     // Equipment location pages
     const equipmentLocations = await Vendor.aggregate([
       {
         $match: {
-          vendorType: { $nin: ['solicitor', 'accountant'] },
+          vendorType: { $nin: ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'] },
           $or: [
             { 'account.status': 'active', 'account.verificationStatus': 'verified' },
             { listingStatus: 'unclaimed' },
