@@ -794,19 +794,19 @@ function drawCtaPage(ctx, report) {
   y -= 20;
 
   const plans = [
-    { name: 'Listed', price: 'Free', features: ['Basic AI profile', 'Category listing', 'Location visibility'] },
-    { name: 'Visible', price: '£99/mo', features: ['Full AI profile', 'Contact details shown', 'Up to 10 products', 'Weekly AI scans', 'GEO Audit tool', 'Review collection'] },
-    { name: 'Verified', price: '£149/mo', features: ['Everything in Visible', 'Verified badge', 'Unlimited products', 'Priority AI ranking', 'Competitor reports', 'Dedicated support'] },
+    { name: 'Free', price: '\u00A30/forever', features: ['Basic AI profile', 'Category listing', 'Ranked last in results'], url: 'https://www.tendorai.com/vendor-signup' },
+    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AEO report', 'GEO Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?plan=starter' },
+    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AEO reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?plan=pro' },
   ];
 
   const planW = CONTENT_W / 3;
   for (let i = 0; i < plans.length; i++) {
     const plan = plans[i];
     const px = MARGIN + i * planW;
-    const isHighlight = i === 1;
+    const isHighlight = i === 2; // Pro is highlighted
 
     // Plan card
-    const cardH = 170;
+    const cardH = 190;
     page.drawRectangle({
       x: px + 3,
       y: y - cardH,
@@ -828,24 +828,33 @@ function drawCtaPage(ctx, report) {
     const priceW = bold.widthOfTextAtSize(plan.price, 20);
     page.drawText(plan.price, { x: px + planW / 2 - priceW / 2, y: y - 45, size: 20, font: bold, color: textColor });
 
+    // Early adopter subtext
+    if (plan.subtext) {
+      const stW = font.widthOfTextAtSize(plan.subtext, 7);
+      page.drawText(plan.subtext, { x: px + planW / 2 - stW / 2, y: y - 57, size: 7, font, color: subColor });
+    }
+
     // Features
-    let fy = y - 65;
+    let fy = plan.subtext ? y - 72 : y - 65;
     for (const feat of plan.features) {
       if (fy < y - cardH + 10) break;
-      const featLines = wrapText(`• ${feat}`, font, 8, planW - 24);
+      const featLines = wrapText(`> ${feat}`, font, 8, planW - 24);
       for (const line of featLines) {
         page.drawText(line, { x: px + 12, y: fy, size: 8, font, color: subColor });
         fy -= 12;
       }
     }
+
+    // Make entire card a clickable link
+    addLinkAnnotation(page, px + 3, y - cardH, planW - 6, cardH, plan.url);
   }
 
-  y -= 200;
+  y -= 220;
 
   // CTA
   if (y > 80) {
     page.drawRectangle({ x: MARGIN, y: y - 40, width: CONTENT_W, height: 50, color: BLUE });
-    const ctaText = 'Claim your free profile at www.tendorai.com/vendor-signup';
+    const ctaText = 'Get started free at www.tendorai.com/vendor-signup';
     const ctaW = bold.widthOfTextAtSize(ctaText, 14);
     page.drawText(ctaText, { x: PAGE_W / 2 - ctaW / 2, y: y - 22, size: 14, font: bold, color: WHITE });
     addLinkAnnotation(page, MARGIN, y - 40, CONTENT_W, 50, 'https://www.tendorai.com/vendor-signup');
