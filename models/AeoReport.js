@@ -14,6 +14,12 @@ const aeoReportSchema = new mongoose.Schema({
       // Accountants
       'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
       'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+      // Mortgage Advisors
+      'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+      'equity-release', 'commercial-mortgages', 'protection-insurance',
+      // Estate Agents
+      'sales', 'lettings', 'property-management', 'block-management',
+      'auctions', 'commercial-property', 'inventory',
     ],
   },
   city: { type: String, required: true, trim: true },

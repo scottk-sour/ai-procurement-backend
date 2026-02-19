@@ -303,9 +303,12 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 specializations: vendor.businessProfile?.specializations || [],
                 // Brands
                 brands: vendor.brands || [],
-                // Professional fields (solicitors & accountants)
+                // Professional fields
                 sraNumber: vendor.sraNumber || '',
                 icaewFirmNumber: vendor.icaewFirmNumber || '',
+                fcaNumber: vendor.fcaNumber || '',
+                propertymarkNumber: vendor.propertymarkNumber || '',
+                propertymarkQualification: vendor.propertymarkQualification || '',
                 practiceAreas: vendor.practiceAreas || [],
                 fixedFees: vendor.fixedFees || [],
                 languages: vendor.languages || [],
@@ -356,6 +359,10 @@ router.put('/profile', vendorAuth, async (req, res) => {
             industrySpecialisms,
             mtdCompliant,
             responseTime,
+            // Mortgage advisor / Estate agent
+            fcaNumber,
+            propertymarkNumber,
+            propertymarkQualification,
         } = req.body;
 
         // Build update object - only include fields that were provided
@@ -392,7 +399,7 @@ router.put('/profile', vendorAuth, async (req, res) => {
         if (services !== undefined) updateFields.services = services;
         if (brands !== undefined) updateFields.brands = brands;
 
-        // Professional fields (solicitors & accountants)
+        // Professional fields
         if (practiceAreas !== undefined) updateFields.practiceAreas = practiceAreas;
         if (fixedFees !== undefined) updateFields.fixedFees = fixedFees;
         if (languages !== undefined) updateFields.languages = languages;
@@ -403,6 +410,10 @@ router.put('/profile', vendorAuth, async (req, res) => {
         if (industrySpecialisms !== undefined) updateFields.industrySpecialisms = industrySpecialisms;
         if (mtdCompliant !== undefined) updateFields.mtdCompliant = mtdCompliant;
         if (responseTime !== undefined) updateFields.responseTime = responseTime;
+        // Mortgage advisor / Estate agent fields
+        if (fcaNumber !== undefined) updateFields.fcaNumber = fcaNumber;
+        if (propertymarkNumber !== undefined) updateFields.propertymarkNumber = propertymarkNumber;
+        if (propertymarkQualification !== undefined) updateFields.propertymarkQualification = propertymarkQualification;
 
         // Update the vendor
         const updatedVendor = await Vendor.findByIdAndUpdate(
@@ -440,6 +451,9 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 // Professional fields
                 sraNumber: updatedVendor.sraNumber || '',
                 icaewFirmNumber: updatedVendor.icaewFirmNumber || '',
+                fcaNumber: updatedVendor.fcaNumber || '',
+                propertymarkNumber: updatedVendor.propertymarkNumber || '',
+                propertymarkQualification: updatedVendor.propertymarkQualification || '',
                 practiceAreas: updatedVendor.practiceAreas || [],
                 fixedFees: updatedVendor.fixedFees || [],
                 languages: updatedVendor.languages || [],
@@ -1129,8 +1143,8 @@ router.post("/products", async (req, res) => {
         // Validate required fields
         const { manufacturer, model, category, serviceCategory = 'Photocopiers' } = req.body;
 
-        // Solicitor/Accountant: manufacturer is auto-set, only need model + category
-        if (serviceCategory === 'Solicitor' || serviceCategory === 'Accountant') {
+        // Professional services: manufacturer is auto-set, only need model + category
+        if (serviceCategory === 'Solicitor' || serviceCategory === 'Accountant' || serviceCategory === 'MortgageAdvisor' || serviceCategory === 'EstateAgent') {
             if (!model || !category) {
                 return res.status(400).json({
                     success: false,
@@ -1193,6 +1207,22 @@ router.post("/products", async (req, res) => {
                     success: false,
                     message: "Per-user monthly cost or day rate required for IT products",
                     errors: ["Missing itPricing.perUserMonthly or itPricing.projectDayRate"]
+                });
+            }
+        } else if (serviceCategory === 'MortgageAdvisor') {
+            if (!req.body.mortgageAdvisorPricing?.serviceName) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Service name is required for mortgage advisor services",
+                    errors: ["Missing mortgageAdvisorPricing.serviceName"]
+                });
+            }
+        } else if (serviceCategory === 'EstateAgent') {
+            if (!req.body.estateAgentPricing?.serviceName) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Service name is required for estate agent services",
+                    errors: ["Missing estateAgentPricing.serviceName"]
                 });
             }
         }
@@ -1522,6 +1552,8 @@ const SERVICE_TO_AEO_CATEGORY = {
   'IT Support': 'it',
   'IT': 'it',
   'Managed IT': 'it',
+  'Mortgage Advisors': 'residential-mortgages',
+  'Estate Agents': 'sales',
 };
 
 // Map solicitor practice areas to AEO report categories
@@ -1534,14 +1566,42 @@ const PRACTICE_AREA_TO_AEO_CATEGORY = {
   'Wills & Probate': 'wills-and-probate',
   'Immigration': 'immigration',
   'Personal Injury': 'personal-injury',
+  // Mortgage Advisor practice areas
+  'Residential Mortgages': 'residential-mortgages',
+  'Buy-to-Let': 'buy-to-let',
+  'Remortgage': 'remortgage',
+  'First-Time Buyer': 'first-time-buyer',
+  'Equity Release': 'equity-release',
+  'Commercial Mortgages': 'commercial-mortgages',
+  'Protection Insurance': 'protection-insurance',
+  // Estate Agent practice areas
+  'Sales': 'sales',
+  'Lettings': 'lettings',
+  'Property Management': 'property-management',
+  'Block Management': 'block-management',
+  'Auctions': 'auctions',
+  'Commercial Property': 'commercial-property',
+  'Inventory': 'inventory',
 };
 
 function getAeoCategory(vendor) {
-  // Solicitor: use first practice area
+  // Professional services: use first practice area
   if (vendor.vendorType === 'solicitor' && vendor.practiceAreas?.length) {
     const cat = PRACTICE_AREA_TO_AEO_CATEGORY[vendor.practiceAreas[0]];
     if (cat) return cat;
     return 'conveyancing'; // fallback for solicitors
+  }
+
+  if (vendor.vendorType === 'mortgage-advisor' && vendor.practiceAreas?.length) {
+    const cat = PRACTICE_AREA_TO_AEO_CATEGORY[vendor.practiceAreas[0]];
+    if (cat) return cat;
+    return 'residential-mortgages'; // fallback for mortgage advisors
+  }
+
+  if (vendor.vendorType === 'estate-agent' && vendor.practiceAreas?.length) {
+    const cat = PRACTICE_AREA_TO_AEO_CATEGORY[vendor.practiceAreas[0]];
+    if (cat) return cat;
+    return 'sales'; // fallback for estate agents
   }
 
   // Equipment: use services

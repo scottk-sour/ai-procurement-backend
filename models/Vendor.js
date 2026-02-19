@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto'; // ADDED: ES modules import
 
 const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software',
-  'Solicitors', 'Accountants'];
+  'Solicitors', 'Accountants', 'Mortgage Advisors', 'Estate Agents'];
 
 const vendorSchema = new mongoose.Schema({
   // Core Identity
@@ -36,13 +36,16 @@ const vendorSchema = new mongoose.Schema({
   // Vendor Type
   vendorType: {
     type: String,
-    enum: ['office-equipment', 'solicitor', 'accountant'],
+    enum: ['office-equipment', 'solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'],
     default: 'office-equipment'
   },
 
   // SRA / Regulatory
   sraNumber: { type: String, trim: true, sparse: true },
   icaewFirmNumber: { type: String, trim: true, sparse: true },
+  fcaNumber: { type: String, trim: true, sparse: true },
+  propertymarkNumber: { type: String, trim: true, sparse: true },
+  propertymarkQualification: { type: String, trim: true },
   regulatoryBody: { type: String, trim: true },
   practiceAreas: [{ type: String, trim: true }],
   organisationType: { type: String, trim: true },
@@ -461,6 +464,8 @@ vendorSchema.index({ brands: 1 });
 vendorSchema.index({ vendorType: 1 });
 vendorSchema.index({ sraNumber: 1 }, { sparse: true });
 vendorSchema.index({ icaewFirmNumber: 1 }, { sparse: true });
+vendorSchema.index({ fcaNumber: 1 }, { sparse: true });
+vendorSchema.index({ propertymarkNumber: 1 }, { sparse: true });
 vendorSchema.index({ practiceAreas: 1 });
 vendorSchema.index({ vendorType: 1, 'location.city': 1 });
 

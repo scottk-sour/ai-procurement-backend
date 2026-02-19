@@ -4,7 +4,8 @@
  * Uses Claude with web search to deeply research a target company,
  * find competitors, identify gaps, and produce a scored report.
  *
- * Supports multiple verticals: office equipment, solicitors, accountants.
+ * Supports multiple verticals: office equipment, solicitors, accountants,
+ * mortgage advisors, estate agents.
  */
 
 import Vendor from '../models/Vendor.js';
@@ -35,6 +36,22 @@ const CATEGORY_LABELS = {
   'business-advisory': 'business advisory accountant',
   'vat-services': 'VAT services accountant',
   'financial-planning': 'financial planning accountant',
+  // Mortgage advisors
+  'residential-mortgages': 'Residential Mortgages',
+  'buy-to-let': 'Buy-to-Let Mortgages',
+  'remortgage': 'Remortgage',
+  'first-time-buyer': 'First-Time Buyer Mortgages',
+  'equity-release': 'Equity Release',
+  'commercial-mortgages': 'Commercial Mortgages',
+  'protection-insurance': 'Protection Insurance',
+  // Estate agents
+  'sales': 'Property Sales',
+  'lettings': 'Lettings',
+  'property-management': 'Property Management',
+  'block-management': 'Block Management',
+  'auctions': 'Property Auctions',
+  'commercial-property': 'Commercial Property',
+  'inventory': 'Inventory Services',
 };
 
 // ─── Category → Vendor service field mapping ─────────────────────────────────
@@ -65,6 +82,22 @@ const CATEGORY_TO_PRACTICE_AREA = {
   'business-advisory': 'Business Advisory',
   'vat-services': 'VAT',
   'financial-planning': 'Financial Planning',
+  // Mortgage advisors
+  'residential-mortgages': 'Residential Mortgages',
+  'buy-to-let': 'Buy-to-Let',
+  'remortgage': 'Remortgage',
+  'first-time-buyer': 'First-Time Buyer',
+  'equity-release': 'Equity Release',
+  'commercial-mortgages': 'Commercial Mortgages',
+  'protection-insurance': 'Protection Insurance',
+  // Estate agents
+  'sales': 'Sales',
+  'lettings': 'Lettings',
+  'property-management': 'Property Management',
+  'block-management': 'Block Management',
+  'auctions': 'Auctions',
+  'commercial-property': 'Commercial Property',
+  'inventory': 'Inventory',
 };
 
 // ─── Industry-specific search hints and clarifications ───────────────────────
@@ -207,6 +240,137 @@ const CATEGORY_SEARCH_HINTS = {
     ],
     clarification: `CRITICAL — I am looking for accountancy firms providing financial planning services (wealth management, retirement planning, estate planning). NOT independent financial advisors who are not accountants.`,
   },
+  // Mortgage advisors
+  'residential-mortgages': {
+    queries: [
+      'best mortgage advisor {city} UK',
+      'mortgage broker {city} reviews',
+      'FCA authorised mortgage advisor {city}',
+    ],
+    critical: ['FCA authorisation', 'whole-of-market access', 'Google reviews'],
+    clarification: `CRITICAL — I am looking for FCA-authorised mortgage advisors/brokers who advise on residential mortgages. NOT banks, building societies, or comparison websites. They must be regulated mortgage intermediaries.`,
+  },
+  'buy-to-let': {
+    queries: [
+      'buy to let mortgage advisor {city} UK',
+      'BTL mortgage broker {city} reviews',
+      'investment property mortgage advisor {city}',
+    ],
+    critical: ['FCA authorisation', 'BTL lender panel', 'landlord portfolio experience'],
+    clarification: `CRITICAL — I am looking for FCA-authorised mortgage advisors specialising in buy-to-let and investment property mortgages. NOT estate agents, letting agents, or property investment seminars.`,
+  },
+  'remortgage': {
+    queries: [
+      'remortgage advisor {city} UK',
+      'best remortgage broker {city} reviews',
+      'remortgage deals advisor {city}',
+    ],
+    critical: ['FCA authorisation', 'whole-of-market access', 'rate comparison expertise'],
+    clarification: `CRITICAL — I am looking for FCA-authorised mortgage advisors who help clients remortgage. NOT comparison websites, banks, or unregulated lead generators.`,
+  },
+  'first-time-buyer': {
+    queries: [
+      'first time buyer mortgage advisor {city} UK',
+      'mortgage broker first time buyer {city} reviews',
+      'Help to Buy mortgage advisor {city}',
+    ],
+    critical: ['FCA authorisation', 'first-time buyer scheme knowledge', 'affordability assessment'],
+    clarification: `CRITICAL — I am looking for FCA-authorised mortgage advisors who specialise in helping first-time buyers. NOT comparison websites or government scheme pages.`,
+  },
+  'equity-release': {
+    queries: [
+      'equity release advisor {city} UK',
+      'lifetime mortgage advisor {city} reviews',
+      'Equity Release Council member {city}',
+    ],
+    critical: ['FCA authorisation', 'Equity Release Council membership', 'later-life lending expertise'],
+    clarification: `CRITICAL — I am looking for FCA-authorised equity release advisors (lifetime mortgages, home reversion). They should ideally be members of the Equity Release Council. NOT generic financial advisors or comparison sites.`,
+  },
+  'commercial-mortgages': {
+    queries: [
+      'commercial mortgage broker {city} UK',
+      'business mortgage advisor {city} reviews',
+      'commercial finance broker {city}',
+    ],
+    critical: ['FCA authorisation', 'commercial lender panel', 'deal structuring experience'],
+    clarification: `CRITICAL — I am looking for FCA-authorised mortgage brokers who arrange commercial mortgages (offices, retail, mixed-use, development finance). NOT residential-only brokers or banks.`,
+  },
+  'protection-insurance': {
+    queries: [
+      'protection insurance advisor {city} UK',
+      'life insurance broker {city} reviews',
+      'income protection advisor {city}',
+    ],
+    critical: ['FCA authorisation', 'protection product range', 'underwriting expertise'],
+    clarification: `CRITICAL — I am looking for FCA-authorised advisors who arrange protection insurance (life insurance, income protection, critical illness, mortgage protection). NOT comparison websites or direct insurers.`,
+  },
+  // Estate agents
+  'sales': {
+    queries: [
+      'best estate agent {city} UK',
+      'estate agent {city} reviews',
+      'Propertymark estate agent {city}',
+      'top rated estate agent {city}',
+    ],
+    critical: ['Propertymark/NAEA membership', 'Rightmove/Zoopla listings', 'sold price track record'],
+    clarification: `CRITICAL — I am looking for estate agents who handle residential property sales in {city}. NOT online-only agents (e.g. Purplebricks), property developers, or auction houses. They should have a local office presence.`,
+  },
+  'lettings': {
+    queries: [
+      'letting agent {city} UK',
+      'lettings agent {city} reviews',
+      'ARLA letting agent {city}',
+      'rental property management {city}',
+    ],
+    critical: ['ARLA/Propertymark membership', 'client money protection', 'tenant referencing'],
+    clarification: `CRITICAL — I am looking for letting agents who manage residential lettings in {city}. NOT property portals, tenant referencing companies, or serviced apartment providers. They should have a local office.`,
+  },
+  'property-management': {
+    queries: [
+      'property management company {city} UK',
+      'residential property manager {city} reviews',
+      'Propertymark property management {city}',
+    ],
+    critical: ['ARLA/Propertymark membership', 'client money protection', 'maintenance service'],
+    clarification: `CRITICAL — I am looking for property management companies that manage residential rental properties on behalf of landlords. NOT block management companies or facilities management firms.`,
+  },
+  'block-management': {
+    queries: [
+      'block management company {city} UK',
+      'leasehold management agent {city} reviews',
+      'ARMA block manager {city}',
+    ],
+    critical: ['ARMA/IRPM membership', 'section 20 consultation experience', 'service charge management'],
+    clarification: `CRITICAL — I am looking for block management companies (managing agents for leasehold flats, residential blocks, RTM companies). NOT letting agents or facilities management firms.`,
+  },
+  'auctions': {
+    queries: [
+      'property auction house {city} UK',
+      'house auction {city} reviews',
+      'RICS property auctioneer {city}',
+    ],
+    critical: ['RICS/NAVA membership', 'auction success rate', 'lot volume'],
+    clarification: `CRITICAL — I am looking for property auctioneers who sell residential and commercial property at auction. NOT online auction platforms, art/antique auctioneers, or estate agents who don't run auctions.`,
+  },
+  'commercial-property': {
+    queries: [
+      'commercial estate agent {city} UK',
+      'commercial property agent {city} reviews',
+      'office space agent {city}',
+      'RICS commercial agent {city}',
+    ],
+    critical: ['RICS membership', 'commercial property portal listings', 'sector specialisms'],
+    clarification: `CRITICAL — I am looking for commercial estate agents who handle office, retail, industrial, and mixed-use property sales/lettings. NOT residential estate agents or property developers.`,
+  },
+  'inventory': {
+    queries: [
+      'inventory clerk {city} UK',
+      'property inventory services {city} reviews',
+      'AIIC inventory provider {city}',
+    ],
+    critical: ['AIIC membership', 'report quality', 'turnaround time'],
+    clarification: `CRITICAL — I am looking for inventory service providers who produce check-in/check-out reports, mid-term inspections, and schedules of condition for rental properties. NOT letting agents or cleaning companies.`,
+  },
 };
 
 // ─── Detect vendor type from category ────────────────────────────────────────
@@ -221,9 +385,21 @@ const ACCOUNTANT_CATEGORIES = new Set([
   'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
 ]);
 
+const MORTGAGE_CATEGORIES = new Set([
+  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+  'equity-release', 'commercial-mortgages', 'protection-insurance',
+]);
+
+const ESTATE_AGENT_CATEGORIES = new Set([
+  'sales', 'lettings', 'property-management', 'block-management',
+  'auctions', 'commercial-property', 'inventory',
+]);
+
 function getVendorType(category) {
   if (SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
   if (ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';
+  if (MORTGAGE_CATEGORIES.has(category)) return 'mortgage-advisor';
+  if (ESTATE_AGENT_CATEGORIES.has(category)) return 'estate-agent';
   return 'equipment';
 }
 
@@ -255,6 +431,34 @@ function getChecklistPrompt(vendorType) {
     "hasSocialMedia": true/false (LinkedIn, Facebook, Twitter/X presence),
     "hasGoogleBusiness": true/false (Google Business Profile with reviews),
     "summary": "2-3 sentence summary of what you found about the firm online"
+  }`;
+  }
+
+  if (vendorType === 'mortgage-advisor') {
+    return `  "searchedCompany": {
+    "website": "https://example.com or null if not found",
+    "hasReviews": true/false (Google reviews, Trustpilot, VouchedFor, Unbiased, etc.),
+    "hasPricing": true/false (fee disclosure, broker fee transparency, free vs paid advice),
+    "hasBrands": true/false (FCA authorised, whole-of-market vs restricted, CeMAP/DipFA qualified),
+    "hasStructuredData": true/false (schema.org/FinancialService markup, JSON-LD),
+    "hasDetailedServices": true/false (detailed mortgage service pages, lender panel info, guides),
+    "hasSocialMedia": true/false (LinkedIn, Facebook, Twitter/X presence),
+    "hasGoogleBusiness": true/false (Google Business Profile with reviews),
+    "summary": "2-3 sentence summary of what you found about the firm online"
+  }`;
+  }
+
+  if (vendorType === 'estate-agent') {
+    return `  "searchedCompany": {
+    "website": "https://example.com or null if not found",
+    "hasReviews": true/false (Google reviews, Trustpilot, AllAgents, Rightmove reviews, etc.),
+    "hasPricing": true/false (fee/commission disclosure, valuation booking, transparent pricing),
+    "hasBrands": true/false (Propertymark member, NAEA/ARLA qualified, client money protection),
+    "hasStructuredData": true/false (schema.org/RealEstateAgent markup, JSON-LD),
+    "hasDetailedServices": true/false (detailed service pages, area guides, sold prices, property listings),
+    "hasSocialMedia": true/false (LinkedIn, Facebook, Instagram, Twitter/X presence),
+    "hasGoogleBusiness": true/false (Google Business Profile with reviews),
+    "summary": "2-3 sentence summary of what you found about the agency online"
   }`;
   }
 
@@ -299,6 +503,30 @@ function getScoringHints(vendorType) {
 - competitivePosition: How visible are they vs other accountants in the area? Would AI recommend them?`;
   }
 
+  if (vendorType === 'mortgage-advisor') {
+    return `SCORING RULES:
+- score is 0-100 overall AI visibility score
+- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
+- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (FinancialService)?
+- contentAuthority: Does the firm have authoritative content — mortgage guides, blog posts, calculators, FAQ pages?
+- directoryPresence: Is the firm on the FCA register, VouchedFor, Unbiased, Google Business?
+- reviewSignals: Google reviews, Trustpilot, VouchedFor ratings, client testimonials?
+- structuredData: Schema.org/FinancialService markup, JSON-LD, LocalBusiness structured data?
+- competitivePosition: How visible are they vs other mortgage advisors in the area? Would AI recommend them? Weight FCA authorisation status, lender panel breadth, and review volume heavily.`;
+  }
+
+  if (vendorType === 'estate-agent') {
+    return `SCORING RULES:
+- score is 0-100 overall AI visibility score
+- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
+- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (RealEstateAgent)?
+- contentAuthority: Does the agency have authoritative content — area guides, market reports, blog posts, sold price data?
+- directoryPresence: Is the agency on Rightmove, Zoopla, OnTheMarket, Propertymark directory, Google Business?
+- reviewSignals: Google reviews, Trustpilot, AllAgents, Rightmove reviews, client testimonials?
+- structuredData: Schema.org/RealEstateAgent markup, JSON-LD, LocalBusiness structured data?
+- competitivePosition: How visible are they vs other agents in the area? Would AI recommend them? Weight Propertymark membership, portal listing presence, and sold price track record heavily.`;
+  }
+
   // Default: office equipment
   return `SCORING RULES:
 - score is 0-100 overall AI visibility score
@@ -328,6 +556,22 @@ function getGapHints(vendorType) {
 - Focus on things the firm is missing that competing accountants have
 - Common accountant gaps: no ICAEW directory link, no client testimonials, no detailed service pages, no fee transparency, no schema markup, no blog/tax guides, no cloud accounting partner badges (Xero/QuickBooks)
 - Be specific: "No visible client reviews on Google" not "Poor online presence"`;
+  }
+
+  if (vendorType === 'mortgage-advisor') {
+    return `GAP RULES:
+- Return 3-5 specific, actionable gaps
+- Focus on things the firm is missing that competing mortgage advisors have
+- Common mortgage advisor gaps: no FCA register link on website, no lender panel information, no fee disclosure page, no mortgage calculators, no FinancialService schema markup, no VouchedFor/Unbiased profile, no blog/mortgage guides, no CeMAP/DipFA qualification display, unclear whole-of-market vs restricted status
+- Be specific: "No FCA registration number visible on website" not "Poor compliance"`;
+  }
+
+  if (vendorType === 'estate-agent') {
+    return `GAP RULES:
+- Return 3-5 specific, actionable gaps
+- Focus on things the agency is missing that competing estate agents have
+- Common estate agent gaps: no Propertymark/NAEA membership displayed, no Rightmove/Zoopla presence, no sold price data or track record, no RealEstateAgent schema markup, no area guides, no complaints procedure page, no client money protection details, no Instagram/social media property marketing, no virtual tour capability
+- Be specific: "No sold prices or market track record visible on website" not "Poor online presence"`;
   }
 
   return `GAP RULES:
@@ -361,9 +605,11 @@ export async function generateFullReport({ companyName, category, city, email })
     .map((q) => q.replace(/\{city\}/g, city));
   const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
 
-  const isProfessional = vendorType === 'solicitor' || vendorType === 'accountant';
-  const entityLabel = isProfessional ? 'firm' : 'company';
-  const entityLabelPlural = isProfessional ? 'firms' : 'companies';
+  const isProfessional = vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent';
+  const entityLabel = vendorType === 'estate-agent' ? 'agency'
+    : isProfessional ? 'firm' : 'company';
+  const entityLabelPlural = vendorType === 'estate-agent' ? 'agencies'
+    : isProfessional ? 'firms' : 'companies';
   const checklistPrompt = getChecklistPrompt(vendorType);
   const scoringHints = getScoringHints(vendorType);
   const gapHints = getGapHints(vendorType);
@@ -541,7 +787,7 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
   let competitorsOnTendorAI = 0;
   const cityRegex = new RegExp(city, 'i');
 
-  if (vendorType === 'solicitor' || vendorType === 'accountant') {
+  if (vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent') {
     const practiceArea = CATEGORY_TO_PRACTICE_AREA[category];
     if (practiceArea) {
       competitorsOnTendorAI = await Vendor.countDocuments({

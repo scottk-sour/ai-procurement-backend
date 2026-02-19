@@ -67,6 +67,8 @@ function formatVendor(v) {
     return {
       ...base,
       sraNumber: v.sraNumber || null,
+      fcaNumber: v.fcaNumber || null,
+      propertymarkNumber: v.propertymarkNumber || null,
       regulatoryBody: v.regulatoryBody || null,
     };
   }
@@ -82,6 +84,8 @@ function formatVendor(v) {
     yearsInBusiness: v.businessProfile?.yearsInBusiness || null,
     numEmployees: v.businessProfile?.numEmployees || null,
     sraNumber: v.sraNumber || null,
+    fcaNumber: v.fcaNumber || null,
+    propertymarkNumber: v.propertymarkNumber || null,
     regulatoryBody: v.regulatoryBody || null,
     rating: v.performance?.rating || null,
     reviewCount: v.performance?.reviewCount || 0,
@@ -124,7 +128,7 @@ router.get('/vendors/search', async (req, res) => {
     if (practiceArea) filter.practiceAreas = { $regex: `^${practiceArea.trim()}$`, $options: 'i' };
 
     const vendors = await Vendor.find(filter)
-      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
+      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
       .limit(limit * 2) // fetch extra to sort in memory
       .lean();
 
@@ -176,7 +180,7 @@ router.get('/vendors/category/:category', async (req, res) => {
     if (city) combinedFilter['location.city'] = { $regex: `^${city.trim()}$`, $options: 'i' };
 
     const vendors = await Vendor.find(combinedFilter)
-      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
+      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
       .limit(limit * 2)
       .lean();
 
@@ -206,7 +210,7 @@ router.get('/vendors/:slug', async (req, res) => {
     const { slug } = req.params;
 
     const vendor = await Vendor.findOne({ slug, ...ACTIVE_FILTER })
-      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
+      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
       .lean();
 
     if (!vendor) {

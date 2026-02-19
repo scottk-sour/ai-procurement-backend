@@ -9,6 +9,8 @@ const CATEGORY_MAP = {
   IT: ['IT support company', 'managed IT services provider', 'IT infrastructure company'],
   Security: ['security system installer', 'access control company'],
   Software: ['software provider', 'business software company'],
+  'Mortgage Advisors': ['mortgage advisor', 'mortgage broker', 'FCA authorised mortgage advisor'],
+  'Estate Agents': ['estate agent', 'letting agent', 'property agent'],
 };
 
 function getPrompts(categoryLabel, location) {

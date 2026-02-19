@@ -79,6 +79,28 @@ const ACCOUNTANT_CATEGORY_MAP = {
   'Financial Planning': 'financial-planning',
 };
 
+// Mortgage Advisors: practice area → AEO category
+const MORTGAGE_CATEGORY_MAP = {
+  'Residential Mortgages': 'residential-mortgages',
+  'Buy-to-Let': 'buy-to-let',
+  Remortgage: 'remortgage',
+  'First-Time Buyer': 'first-time-buyer',
+  'Equity Release': 'equity-release',
+  'Commercial Mortgages': 'commercial-mortgages',
+  'Protection Insurance': 'protection-insurance',
+};
+
+// Estate Agents: practice area → AEO category
+const ESTATE_AGENT_CATEGORY_MAP = {
+  Sales: 'sales',
+  Lettings: 'lettings',
+  'Property Management': 'property-management',
+  'Block Management': 'block-management',
+  Auctions: 'auctions',
+  'Commercial Property': 'commercial-property',
+  Inventory: 'inventory',
+};
+
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.tendorai.com';
 const API_URL = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
 
@@ -98,19 +120,43 @@ async function main() {
     query.vendorType = 'solicitor';
   } else if (filterVendorType === 'accountant') {
     query.vendorType = 'accountant';
+  } else if (filterVendorType === 'mortgage-advisor') {
+    query.vendorType = 'mortgage-advisor';
+  } else if (filterVendorType === 'estate-agent') {
+    query.vendorType = 'estate-agent';
   } else if (filterVendorType === 'equipment') {
-    query.vendorType = { $nin: ['solicitor', 'accountant'] };
+    query.vendorType = { $nin: ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'] };
   }
 
   // Filter by category (maps to service or practiceArea depending on type)
   if (filterCategory) {
     if (filterVendorType === 'solicitor') {
-      // Check if it's a slug or a display name
       const paValue = Object.entries(SOLICITOR_CATEGORY_MAP).find(
         ([pa, slug]) => slug === filterCategory.toLowerCase() || pa.toLowerCase() === filterCategory.toLowerCase()
       );
       if (paValue) {
-        query.practiceAreas = paValue[0]; // Use the display name for DB query
+        query.practiceAreas = paValue[0];
+      }
+    } else if (filterVendorType === 'accountant') {
+      const paValue = Object.entries(ACCOUNTANT_CATEGORY_MAP).find(
+        ([pa, slug]) => slug === filterCategory.toLowerCase() || pa.toLowerCase() === filterCategory.toLowerCase()
+      );
+      if (paValue) {
+        query.practiceAreas = paValue[0];
+      }
+    } else if (filterVendorType === 'mortgage-advisor') {
+      const paValue = Object.entries(MORTGAGE_CATEGORY_MAP).find(
+        ([pa, slug]) => slug === filterCategory.toLowerCase() || pa.toLowerCase() === filterCategory.toLowerCase()
+      );
+      if (paValue) {
+        query.practiceAreas = paValue[0];
+      }
+    } else if (filterVendorType === 'estate-agent') {
+      const paValue = Object.entries(ESTATE_AGENT_CATEGORY_MAP).find(
+        ([pa, slug]) => slug === filterCategory.toLowerCase() || pa.toLowerCase() === filterCategory.toLowerCase()
+      );
+      if (paValue) {
+        query.practiceAreas = paValue[0];
       }
     } else {
       const serviceKey = Object.keys(EQUIPMENT_CATEGORY_MAP).find(
@@ -129,7 +175,8 @@ async function main() {
     ];
   }
 
-  const selectFields = (filterVendorType === 'solicitor' || filterVendorType === 'accountant')
+  const isProfType = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'].includes(filterVendorType);
+  const selectFields = isProfType
     ? 'company email practiceAreas location vendorType'
     : 'company email services location vendorType practiceAreas';
 
@@ -160,12 +207,17 @@ async function main() {
     // Determine category based on vendorType
     let category;
     if (vendor.vendorType === 'solicitor') {
-      // Use first practice area
       const pa = (vendor.practiceAreas || [])[0] || '';
       category = SOLICITOR_CATEGORY_MAP[pa] || filterCategory || 'conveyancing';
     } else if (vendor.vendorType === 'accountant') {
       const pa = (vendor.practiceAreas || [])[0] || '';
       category = ACCOUNTANT_CATEGORY_MAP[pa] || filterCategory || 'tax-advisory';
+    } else if (vendor.vendorType === 'mortgage-advisor') {
+      const pa = (vendor.practiceAreas || [])[0] || '';
+      category = MORTGAGE_CATEGORY_MAP[pa] || filterCategory || 'residential-mortgages';
+    } else if (vendor.vendorType === 'estate-agent') {
+      const pa = (vendor.practiceAreas || [])[0] || '';
+      category = ESTATE_AGENT_CATEGORY_MAP[pa] || filterCategory || 'sales';
     } else {
       const service = (vendor.services || [])[0] || '';
       category = EQUIPMENT_CATEGORY_MAP[service] || filterCategory || 'it';

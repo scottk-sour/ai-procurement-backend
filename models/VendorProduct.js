@@ -8,7 +8,7 @@ const vendorProductSchema = new mongoose.Schema({
   },
   serviceCategory: {
     type: String,
-    enum: ['Photocopiers', 'Telecoms', 'CCTV', 'IT', 'Solicitor', 'Accountant'],
+    enum: ['Photocopiers', 'Telecoms', 'CCTV', 'IT', 'Solicitor', 'Accountant', 'MortgageAdvisor', 'EstateAgent'],
     required: true,
     default: 'Photocopiers',
     index: true,
@@ -37,6 +37,12 @@ const vendorProductSchema = new mongoose.Schema({
       // Accountant service categories
       'Annual Accounts', 'Tax Returns', 'Bookkeeping', 'Payroll',
       'VAT Returns', 'Management Accounts', 'Company Formation', 'Tax Planning',
+      // Mortgage advisor service categories
+      'Residential Mortgages', 'Buy-to-Let', 'Remortgage', 'First-Time Buyer',
+      'Equity Release', 'Commercial Mortgages', 'Protection Insurance',
+      // Estate agent service categories
+      'Sales', 'Lettings', 'Property Management', 'Block Management',
+      'Auctions', 'Commercial Property', 'Inventory',
     ],
     required: true,
   },
@@ -209,6 +215,30 @@ const vendorProductSchema = new mongoose.Schema({
       name: { type: String },
       role: { type: String },
     },
+  },
+
+  // Mortgage advisor pricing
+  mortgageAdvisorPricing: {
+    serviceCategory: { type: String },
+    serviceName: { type: String },
+    description: { type: String },
+    feeType: { type: String, enum: ['free', 'fee-based', 'percentage'] },
+    feeAmount: { type: Number },
+    lenderPanel: { type: Boolean, default: false },
+    appointmentType: { type: String, enum: ['in-person', 'phone', 'video', 'hybrid'] },
+  },
+
+  // Estate agent pricing
+  estateAgentPricing: {
+    serviceCategory: { type: String },
+    serviceName: { type: String },
+    description: { type: String },
+    feeType: { type: String, enum: ['percentage', 'fixed', 'hybrid'] },
+    feePercentage: { type: Number },
+    feeAmount: { type: Number },
+    propertyTypes: [{ type: String }],
+    coveragePostcodes: [{ type: String }],
+    portalListings: [{ type: String }],
   },
 
   minimumQuarterlyCharge: {

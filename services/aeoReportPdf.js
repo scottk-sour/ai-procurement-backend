@@ -18,6 +18,60 @@ const WHITE = rgb(1, 1, 1);
 const GREEN = rgb(0.133, 0.545, 0.133);      // #228B22
 const LIGHT_GREY = rgb(0.85, 0.85, 0.85);
 
+// Professional service categories (solicitors, accountants, mortgage advisors, estate agents)
+const PROFESSIONAL_CATEGORIES = new Set([
+  'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+  'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+  'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+  'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+  'equity-release', 'commercial-mortgages', 'protection-insurance',
+  'sales', 'lettings', 'property-management', 'block-management',
+  'auctions', 'commercial-property', 'inventory',
+]);
+
+const MORTGAGE_CATEGORIES = new Set([
+  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+  'equity-release', 'commercial-mortgages', 'protection-insurance',
+]);
+
+const ESTATE_CATEGORIES = new Set([
+  'sales', 'lettings', 'property-management', 'block-management',
+  'auctions', 'commercial-property', 'inventory',
+]);
+
+function isProfessionalCategory(cat) {
+  return PROFESSIONAL_CATEGORIES.has(cat);
+}
+
+function isMortgageCategory(cat) {
+  return MORTGAGE_CATEGORIES.has(cat);
+}
+
+function isEstateCategory(cat) {
+  return ESTATE_CATEGORIES.has(cat);
+}
+
+/**
+ * Return the right entity noun for a category.
+ * solicitor cats -> 'firm' / 'firms' / 'solicitors' / 'clients'
+ * mortgage cats  -> 'firm' / 'firms' / 'advisors'  / 'clients'
+ * estate cats    -> 'agency' / 'agencies' / 'agents' / 'clients'
+ * default        -> 'company' / 'companies' / 'suppliers' / 'buyers'
+ */
+function entityTerms(category) {
+  if (isMortgageCategory(category)) {
+    return { singular: 'firm', plural: 'firms', professional: 'mortgage advisors', customer: 'clients' };
+  }
+  if (isEstateCategory(category)) {
+    return { singular: 'agency', plural: 'agencies', professional: 'estate agents', customer: 'clients' };
+  }
+  if (isProfessionalCategory(category)) {
+    return { singular: 'firm', plural: 'firms', professional: 'solicitors', customer: 'clients' };
+  }
+  return { singular: 'company', plural: 'companies', professional: 'suppliers', customer: 'buyers' };
+}
+
 // A4 dimensions in points
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -192,7 +246,8 @@ function getScoreLabel(score) {
 function drawCoverPage(ctx, report) {
   const page = addPage(ctx);
   const { font, bold } = ctx;
-  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
+  const isProfessional = isProfessionalCategory(report.category);
+  const terms = entityTerms(report.category);
 
   // Full blue header band
   page.drawRectangle({ x: 0, y: PAGE_H - 120, width: PAGE_W, height: 120, color: BLUE });
@@ -248,6 +303,31 @@ function drawCoverPage(ctx, report) {
     'wills-and-probate': 'Wills & Probate',
     immigration: 'Immigration',
     'personal-injury': 'Personal Injury',
+    // Accountants
+    'tax-advisory': 'Tax Advisory',
+    'audit-assurance': 'Audit & Assurance',
+    bookkeeping: 'Bookkeeping',
+    payroll: 'Payroll Services',
+    'corporate-finance': 'Corporate Finance',
+    'business-advisory': 'Business Advisory',
+    'vat-services': 'VAT Services',
+    'financial-planning': 'Financial Planning',
+    // Mortgage advisors
+    'residential-mortgages': 'Residential Mortgages',
+    'buy-to-let': 'Buy-to-Let Mortgages',
+    remortgage: 'Remortgage',
+    'first-time-buyer': 'First-Time Buyer Mortgages',
+    'equity-release': 'Equity Release',
+    'commercial-mortgages': 'Commercial Mortgages',
+    'protection-insurance': 'Protection Insurance',
+    // Estate agents
+    sales: 'Property Sales',
+    lettings: 'Lettings',
+    'property-management': 'Property Management',
+    'block-management': 'Block Management',
+    auctions: 'Property Auctions',
+    'commercial-property': 'Commercial Property',
+    inventory: 'Inventory Services',
   }[report.category] || report.category;
   const catCity = `${categoryLabel} — ${report.city}`;
   const catCityW = font.widthOfTextAtSize(catCity, 12);
@@ -264,7 +344,7 @@ function drawCoverPage(ctx, report) {
   y -= 25;
   const subhead = report.aiMentioned
     ? `You appear at position ${report.aiPosition || '?'}, but ${report.competitors?.length || 0} competitors rank ahead or alongside you.`
-    : `When ${isSolicitor ? 'clients' : 'buyers'} ask AI for ${categoryLabel.toLowerCase()}${isSolicitor ? 's' : ''} in ${report.city}, you don't appear. Here's who does.`;
+    : `When ${terms.customer} ask AI for ${categoryLabel.toLowerCase()} ${terms.professional} in ${report.city}, you don't appear. Here's who does.`;
   drawWrappedText(page, subhead, MARGIN + 20, y, font, 11, GREY, CONTENT_W - 40, 16);
 
   // Key stats bar at bottom
@@ -296,7 +376,8 @@ function drawWhatAiKnowsPage(ctx, report) {
   drawHeader(page, ctx);
   const { font, bold } = ctx;
   const sc = report.searchedCompany || {};
-  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
+  const isProfessional = isProfessionalCategory(report.category);
+  const terms = entityTerms(report.category);
 
   let y = PAGE_H - 75;
   page.drawText('What AI Knows About You', { x: MARGIN, y, size: 20, font: bold, color: DARK });
@@ -305,30 +386,59 @@ function drawWhatAiKnowsPage(ctx, report) {
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: BLUE });
 
   y -= 25;
-  y = drawWrappedText(page, sc.summary || `Limited information was found about your ${isSolicitor ? 'firm' : 'company'} online.`, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
+  y = drawWrappedText(page, sc.summary || `Limited information was found about your ${terms.singular} online.`, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
 
   y -= 20;
   page.drawText('AI Visibility Checklist', { x: MARGIN, y, size: 14, font: bold, color: DARK });
 
-  const checks = isSolicitor ? [
-    { label: 'Firm Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
-    { label: 'Client Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, ReviewSolicitors, etc.' },
-    { label: 'Fee Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Fee estimates or fixed fees visible' : 'No fee information found' },
-    { label: 'Accreditations & Qualifications', value: !!sc.hasBrands, detail: sc.hasBrands ? 'SRA, Law Society, Lexcel, CQS visible' : 'No accreditations or quality marks listed' },
-    { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'LegalService schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
-    { label: 'Detailed Practice Area Pages', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Practice area pages with process detail' : 'Vague or missing practice area descriptions' },
-    { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
-    { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
-  ] : [
-    { label: 'Company Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
-    { label: 'Customer Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, Trustpilot, etc.' },
-    { label: 'Pricing Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Pricing visible on website' : 'No pricing information found' },
-    { label: 'Brand Partnerships Listed', value: !!sc.hasBrands, detail: sc.hasBrands ? 'Manufacturer partnerships visible' : 'No brand partnerships listed' },
-    { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'Schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
-    { label: 'Detailed Service Pages', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Service pages with detail' : 'Vague or missing service descriptions' },
-    { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
-    { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
-  ];
+  let checks;
+  if (isMortgageCategory(report.category)) {
+    checks = [
+      { label: 'Firm Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
+      { label: 'Client Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, VouchedFor, Unbiased, etc.' },
+      { label: 'Fee Transparency', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Broker fees and commission disclosure visible' : 'No fee or commission information found' },
+      { label: 'FCA Register Listing', value: !!sc.hasBrands, detail: sc.hasBrands ? 'FCA registration number visible' : 'No FCA register reference found' },
+      { label: 'CeMAP / CII Qualifications', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Adviser qualifications listed' : 'No adviser qualifications visible on site' },
+      { label: 'Lender Panel Disclosure', value: !!sc.hasBrands, detail: sc.hasBrands ? 'Lender panel details visible' : 'No lender panel information listed (whole of market vs tied)' },
+      { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'FinancialService schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
+      { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
+      { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
+    ];
+  } else if (isEstateCategory(report.category)) {
+    checks = [
+      { label: 'Agency Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
+      { label: 'Client Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, AllAgents, Trustpilot, etc.' },
+      { label: 'Fee / Commission Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Fee or commission structure visible' : 'No fee information found' },
+      { label: 'Propertymark / ARLA / NAEA', value: !!sc.hasBrands, detail: sc.hasBrands ? 'Industry membership visible' : 'No Propertymark, ARLA, or NAEA membership listed' },
+      { label: 'Portal Listings (Rightmove/Zoopla)', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Active portal listings detected' : 'No Rightmove or Zoopla presence found' },
+      { label: 'Client Money Protection', value: !!sc.hasBrands, detail: sc.hasBrands ? 'CMP scheme membership visible' : 'No Client Money Protection information listed' },
+      { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'RealEstateAgent schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
+      { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
+      { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
+    ];
+  } else if (isProfessional) {
+    checks = [
+      { label: 'Firm Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
+      { label: 'Client Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, ReviewSolicitors, etc.' },
+      { label: 'Fee Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Fee estimates or fixed fees visible' : 'No fee information found' },
+      { label: 'Accreditations & Qualifications', value: !!sc.hasBrands, detail: sc.hasBrands ? 'SRA, Law Society, Lexcel, CQS visible' : 'No accreditations or quality marks listed' },
+      { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'LegalService schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
+      { label: 'Detailed Practice Area Pages', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Practice area pages with process detail' : 'Vague or missing practice area descriptions' },
+      { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
+      { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
+    ];
+  } else {
+    checks = [
+      { label: 'Company Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
+      { label: 'Customer Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, Trustpilot, etc.' },
+      { label: 'Pricing Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Pricing visible on website' : 'No pricing information found' },
+      { label: 'Brand Partnerships Listed', value: !!sc.hasBrands, detail: sc.hasBrands ? 'Manufacturer partnerships visible' : 'No brand partnerships listed' },
+      { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'Schema markup detected' : 'No structured data found — AI cannot easily parse your site' },
+      { label: 'Detailed Service Pages', value: !!sc.hasDetailedServices, detail: sc.hasDetailedServices ? 'Service pages with detail' : 'Vague or missing service descriptions' },
+      { label: 'Social Media Presence', value: !!sc.hasSocialMedia, detail: sc.hasSocialMedia ? 'Active social profiles found' : 'No active social media profiles found' },
+      { label: 'Google Business Profile', value: !!sc.hasGoogleBusiness, detail: sc.hasGoogleBusiness ? 'Google Business listing found' : 'No Google Business Profile detected' },
+    ];
+  }
 
   y -= 25;
   for (const check of checks) {
@@ -420,11 +530,10 @@ function drawCompetitorsPage(ctx, report) {
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: RED });
 
   y -= 20;
-  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
-  const entityPlural = isSolicitor ? 'solicitors' : 'suppliers';
+  const terms = entityTerms(report.category);
   const introText = report.aiMentioned
-    ? `When buyers ask AI for ${report.category} ${entityPlural} in ${report.city}, these ${isSolicitor ? 'firms' : 'companies'} appear alongside or ahead of you:`
-    : `When buyers ask AI for ${report.category} ${entityPlural} in ${report.city}, these are the ${isSolicitor ? 'firms' : 'companies'} AI recommends instead of you:`;
+    ? `When ${terms.customer} ask AI for ${report.category} ${terms.professional} in ${report.city}, these ${terms.plural} appear alongside or ahead of you:`
+    : `When ${terms.customer} ask AI for ${report.category} ${terms.professional} in ${report.city}, these are the ${terms.plural} AI recommends instead of you:`;
   y = drawWrappedText(page, introText, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
   y -= 15;
 
@@ -477,7 +586,7 @@ function drawGapsPage(ctx, report) {
   const page = addPage(ctx);
   drawHeader(page, ctx);
   const { font, bold } = ctx;
-  const isSolicitor = ['conveyancing','family-law','criminal-law','commercial-law','employment-law','wills-and-probate','immigration','personal-injury'].includes(report.category);
+  const terms = entityTerms(report.category);
 
   let y = PAGE_H - 75;
   page.drawText('Your Visibility Gaps', { x: MARGIN, y, size: 20, font: bold, color: DARK });
@@ -528,7 +637,7 @@ function drawGapsPage(ctx, report) {
     page.drawText('What This Means', { x: MARGIN + 15, y: y - 2, size: 14, font: bold, color: WHITE });
     drawWrappedText(
       page,
-      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential ${isSolicitor ? 'clients' : 'buyers'} use ChatGPT, Perplexity, or Claude to find ${report.category} ${isSolicitor ? 'solicitors' : 'suppliers'} in ${report.city}, they are being directed to your competitors.`,
+      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential ${terms.customer} use ChatGPT, Perplexity, or Claude to find ${report.category} ${terms.professional} in ${report.city}, they are being directed to your competitors.`,
       MARGIN + 15, y - 22, font, 10, WHITE, CONTENT_W - 30, 14
     );
   }

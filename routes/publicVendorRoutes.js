@@ -436,7 +436,11 @@ router.get('/vendors/:id', async (req, res) => {
 
       // Schema.org
       '@context': 'https://schema.org',
-      '@type': 'LocalBusiness',
+      '@type': vendor.vendorType === 'solicitor' ? 'LegalService'
+        : vendor.vendorType === 'accountant' ? 'AccountingService'
+        : vendor.vendorType === 'mortgage-advisor' ? 'FinancialService'
+        : vendor.vendorType === 'estate-agent' ? 'RealEstateAgent'
+        : 'LocalBusiness',
       'areaServed': vendor.location?.coverage || vendor.coverageAreas || []
     };
 
@@ -547,12 +551,42 @@ const ACCOUNTANT_SLUG_MAP = {
   'financial-planning': 'Financial Planning',
 };
 
+// Mortgage Advisor slug → practiceAreas mapping
+const MORTGAGE_SLUG_MAP = {
+  'residential-mortgages': 'Residential Mortgages',
+  'buy-to-let': 'Buy-to-Let',
+  remortgage: 'Remortgage',
+  'first-time-buyer': 'First-Time Buyer',
+  'equity-release': 'Equity Release',
+  'commercial-mortgages': 'Commercial Mortgages',
+  'protection-insurance': 'Protection Insurance',
+};
+
+// Estate Agent slug → practiceAreas mapping
+const ESTATE_AGENT_SLUG_MAP = {
+  sales: 'Sales',
+  lettings: 'Lettings',
+  'property-management': 'Property Management',
+  'block-management': 'Block Management',
+  auctions: 'Auctions',
+  'commercial-property': 'Commercial Property',
+  inventory: 'Inventory',
+};
+
 function isSolicitorSlug(slug) {
   return slug in SOLICITOR_SLUG_MAP;
 }
 
 function isAccountantSlug(slug) {
   return slug in ACCOUNTANT_SLUG_MAP;
+}
+
+function isMortgageSlug(slug) {
+  return slug in MORTGAGE_SLUG_MAP;
+}
+
+function isEstateAgentSlug(slug) {
+  return slug in ESTATE_AGENT_SLUG_MAP;
 }
 
 /**
@@ -577,8 +611,13 @@ router.get('/vendors/locations/:category', async (req, res) => {
       const practiceArea = SOLICITOR_SLUG_MAP[category];
       matchStage = { ...statusFilter, vendorType: 'solicitor', practiceAreas: practiceArea };
     } else if (isAccountantSlug(category)) {
-      // practiceAreas not populated yet for accountants — match all accountant vendors
       matchStage = { ...statusFilter, vendorType: 'accountant' };
+    } else if (isMortgageSlug(category)) {
+      const practiceArea = MORTGAGE_SLUG_MAP[category];
+      matchStage = { ...statusFilter, vendorType: 'mortgage-advisor', practiceAreas: practiceArea };
+    } else if (isEstateAgentSlug(category)) {
+      const practiceArea = ESTATE_AGENT_SLUG_MAP[category];
+      matchStage = { ...statusFilter, vendorType: 'estate-agent', practiceAreas: practiceArea };
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
       matchStage = { ...statusFilter, services: { $regex: new RegExp(categoryNorm, 'i') } };
@@ -624,7 +663,9 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     const locationNorm = location.toLowerCase().replace(/-/g, ' ');
     const isSolicitor = isSolicitorSlug(category);
     const isAccountant = isAccountantSlug(category);
-    const isProfessional = isSolicitor || isAccountant;
+    const isMortgage = isMortgageSlug(category);
+    const isEstateAgent = isEstateAgentSlug(category);
+    const isProfessional = isSolicitor || isAccountant || isMortgage || isEstateAgent;
 
     // Build category filter
     let categoryFilter;
@@ -634,9 +675,16 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
       categoryFilter = { vendorType: 'solicitor', practiceAreas: practiceArea };
       categoryLabel = practiceArea;
     } else if (isAccountant) {
-      // practiceAreas not populated yet for accountants — match all accountant vendors
       categoryFilter = { vendorType: 'accountant' };
       categoryLabel = ACCOUNTANT_SLUG_MAP[category];
+    } else if (isMortgage) {
+      const practiceArea = MORTGAGE_SLUG_MAP[category];
+      categoryFilter = { vendorType: 'mortgage-advisor', practiceAreas: practiceArea };
+      categoryLabel = practiceArea;
+    } else if (isEstateAgent) {
+      const practiceArea = ESTATE_AGENT_SLUG_MAP[category];
+      categoryFilter = { vendorType: 'estate-agent', practiceAreas: practiceArea };
+      categoryLabel = practiceArea;
     } else {
       const categoryNorm = category.toLowerCase().replace(/-/g, ' ');
       categoryFilter = { services: { $regex: new RegExp(categoryNorm, 'i') } };
@@ -673,6 +721,10 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
         'vendorType': 1,
         'practiceAreas': 1,
         'sraNumber': 1,
+        'icaewFirmNumber': 1,
+        'fcaNumber': 1,
+        'propertymarkNumber': 1,
+        'propertymarkQualification': 1,
         'regulatoryBody': 1,
         'claimed': 1,
         'location.city': 1,
@@ -715,13 +767,17 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
     const publicNationalVendors = nationalVendors.map(v => formatVendorForPublic(v));
 
     // Page metadata for SEO
-    const suffix = isSolicitor ? 'Solicitors' : isAccountant ? 'Accountants' : 'Suppliers';
+    const suffix = isSolicitor ? 'Solicitors' : isAccountant ? 'Accountants' : isMortgage ? 'Mortgage Advisors' : isEstateAgent ? 'Estate Agents' : 'Suppliers';
     const pageTitle = `${capitalize(categoryLabel)} ${suffix} in ${capitalize(locationNorm)}`;
     const pageDescription = isSolicitor
       ? `Find verified ${categoryLabel.toLowerCase()} solicitors in ${capitalize(locationNorm)}. SRA-regulated firms with reviews and accreditations on TendorAI.`
       : isAccountant
         ? `Find verified ${categoryLabel.toLowerCase()} accountants in ${capitalize(locationNorm)}. ICAEW-regulated firms with reviews and accreditations on TendorAI.`
-        : `Find trusted ${categoryLabel} suppliers and installers in ${capitalize(locationNorm)}. Compare ${total} vendors, read reviews, and get quotes.`;
+        : isMortgage
+          ? `Find FCA-authorised ${categoryLabel.toLowerCase()} mortgage advisors in ${capitalize(locationNorm)}. Compare fees, lender panels and reviews on TendorAI.`
+          : isEstateAgent
+            ? `Find Propertymark-registered ${categoryLabel.toLowerCase()} estate agents in ${capitalize(locationNorm)}. Compare fees, coverage and reviews on TendorAI.`
+            : `Find trusted ${categoryLabel} suppliers and installers in ${capitalize(locationNorm)}. Compare ${total} vendors, read reviews, and get quotes.`;
 
     res.json({
       success: true,
@@ -743,7 +799,9 @@ router.get('/vendors/category/:category/location/:location', async (req, res) =>
           description: pageDescription,
           canonical: `/suppliers/${category}/${location}`,
           isSolicitor,
-          isAccountant
+          isAccountant,
+          isMortgage,
+          isEstateAgent
         }
       }
     });
@@ -1005,15 +1063,22 @@ function formatVendorForPublic(v) {
     website: v.contactInfo?.website || v.website,
     showPricing: showPricing,
     accountClaimed: isVendorClaimed(v),
-    // Solicitor-specific fields
+    // Professional fields
     vendorType: v.vendorType || 'office-equipment',
     practiceAreas: v.practiceAreas || [],
     sraNumber: v.sraNumber || null,
+    icaewFirmNumber: v.icaewFirmNumber || null,
+    fcaNumber: v.fcaNumber || null,
+    propertymarkNumber: v.propertymarkNumber || null,
     regulatoryBody: v.regulatoryBody || null,
     slug: v.slug || null,
     // Schema.org metadata for AI consumption
     '@context': 'https://schema.org',
-    '@type': v.vendorType === 'solicitor' ? 'LegalService' : v.vendorType === 'accountant' ? 'AccountingService' : 'LocalBusiness',
+    '@type': v.vendorType === 'solicitor' ? 'LegalService'
+      : v.vendorType === 'accountant' ? 'AccountingService'
+      : v.vendorType === 'mortgage-advisor' ? 'FinancialService'
+      : v.vendorType === 'estate-agent' ? 'RealEstateAgent'
+      : 'LocalBusiness',
     'areaServed': v.location?.coverage || v.coverageAreas || []
   };
 }
