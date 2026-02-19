@@ -502,8 +502,8 @@ router.get('/vendors/:id', async (req, res) => {
       profileData.showPricing = false;
       profileData.upgradePrompt = {
         message: 'Upgrade to see full profile and request quotes',
-        tier: 'basic',
-        price: '£99/mo'
+        tier: 'starter',
+        price: '£149/mo'
       };
     }
 
