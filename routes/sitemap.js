@@ -25,7 +25,6 @@ const STATIC_PAGES = [
   { path: '/aeo-report', priority: '0.9', changefreq: 'weekly' },
   { path: '/privacy', priority: '0.3', changefreq: 'yearly' },
   { path: '/terms', priority: '0.3', changefreq: 'yearly' },
-  { path: '/get-quotes', priority: '0.9', changefreq: 'monthly' },
   { path: '/vendor-login', priority: '0.5', changefreq: 'monthly' },
   { path: '/suppliers', priority: '0.9', changefreq: 'weekly' },
   { path: '/suppliers/mortgage-advisors', priority: '0.9', changefreq: 'weekly' },
@@ -178,7 +177,7 @@ async function buildSitemapUrls() {
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+      { $match: { count: { $gte: 3 }, '_id.city': { $nin: [null, ''] } } },
     ]);
 
     // Build reverse map: practiceArea → slug
@@ -213,7 +212,7 @@ async function buildSitemapUrls() {
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 }, _id: { $nin: [null, ''] } } },
+      { $match: { count: { $gte: 3 }, _id: { $nin: [null, ''] } } },
     ]);
 
     for (const item of accountantCities) {
@@ -243,7 +242,7 @@ async function buildSitemapUrls() {
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+      { $match: { count: { $gte: 3 }, '_id.city': { $nin: [null, ''] } } },
     ]);
 
     const mortgagePaToSlug = {};
@@ -277,7 +276,7 @@ async function buildSitemapUrls() {
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 }, '_id.city': { $nin: [null, ''] } } },
+      { $match: { count: { $gte: 3 }, '_id.city': { $nin: [null, ''] } } },
     ]);
 
     const estatePaToSlug = {};
@@ -312,7 +311,7 @@ async function buildSitemapUrls() {
           count: { $sum: 1 },
         },
       },
-      { $match: { count: { $gte: 2 } } },
+      { $match: { count: { $gte: 3 } } },
     ]);
 
     // Build reverse map: service → slug
