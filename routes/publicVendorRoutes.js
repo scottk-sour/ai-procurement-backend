@@ -70,9 +70,25 @@ router.get('/vendors', async (req, res) => {
       ]
     };
 
-    // Filter by service category
+    // Filter by service category — use vendorType for professional services
     if (category) {
-      query.services = { $regex: new RegExp(category, 'i') };
+      if (isSolicitorSlug(category)) {
+        query.vendorType = 'solicitor';
+        const practiceArea = SOLICITOR_SLUG_MAP[category];
+        if (practiceArea) query.practiceAreas = practiceArea;
+      } else if (isAccountantSlug(category)) {
+        query.vendorType = 'accountant';
+      } else if (isMortgageSlug(category)) {
+        query.vendorType = 'mortgage-advisor';
+        const practiceArea = MORTGAGE_SLUG_MAP[category];
+        if (practiceArea) query.practiceAreas = practiceArea;
+      } else if (isEstateAgentSlug(category)) {
+        query.vendorType = 'estate-agent';
+        const practiceArea = ESTATE_AGENT_SLUG_MAP[category];
+        if (practiceArea) query.practiceAreas = practiceArea;
+      } else {
+        query.services = { $regex: new RegExp(category, 'i') };
+      }
     }
 
     // Filter by coverage location (text-based)
@@ -883,18 +899,34 @@ router.get('/locations', async (req, res) => {
     };
 
     if (category) {
-      matchStage.services = { $regex: new RegExp(category, 'i') };
+      if (isSolicitorSlug(category)) {
+        matchStage.vendorType = 'solicitor';
+        const practiceArea = SOLICITOR_SLUG_MAP[category];
+        if (practiceArea) matchStage.practiceAreas = practiceArea;
+      } else if (isAccountantSlug(category)) {
+        matchStage.vendorType = 'accountant';
+      } else if (isMortgageSlug(category)) {
+        matchStage.vendorType = 'mortgage-advisor';
+        const practiceArea = MORTGAGE_SLUG_MAP[category];
+        if (practiceArea) matchStage.practiceAreas = practiceArea;
+      } else if (isEstateAgentSlug(category)) {
+        matchStage.vendorType = 'estate-agent';
+        const practiceArea = ESTATE_AGENT_SLUG_MAP[category];
+        if (practiceArea) matchStage.practiceAreas = practiceArea;
+      } else {
+        matchStage.services = { $regex: new RegExp(category, 'i') };
+      }
     }
+
+    // For professional services, group by city instead of coverage
+    const isProfessional = category && (isSolicitorSlug(category) || isAccountantSlug(category) || isMortgageSlug(category) || isEstateAgentSlug(category));
 
     const locations = await Vendor.aggregate([
       { $match: matchStage },
-      { $unwind: '$location.coverage' },
-      { 
-        $group: { 
-          _id: '$location.coverage', 
-          count: { $sum: 1 } 
-        } 
-      },
+      ...(isProfessional
+        ? [{ $group: { _id: '$location.city', count: { $sum: 1 } } }]
+        : [{ $unwind: '$location.coverage' }, { $group: { _id: '$location.coverage', count: { $sum: 1 } } }]),
+      { $match: { _id: { $nin: [null, ''] } } },
       { $sort: { count: -1 } },
       { $limit: 100 },
       {
