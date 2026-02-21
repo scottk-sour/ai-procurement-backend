@@ -30,6 +30,7 @@ const STATIC_PAGES = [
   { path: '/suppliers/mortgage-advisors', priority: '0.9', changefreq: 'weekly' },
   { path: '/suppliers/estate-agents', priority: '0.9', changefreq: 'weekly' },
   { path: '/resources', priority: '0.8', changefreq: 'weekly' },
+  { path: '/llm.txt', priority: '0.5', changefreq: 'monthly' },
   // Resource articles
   { path: '/resources/photocopier-costs-uk-2026', priority: '0.7', changefreq: 'monthly' },
   { path: '/resources/copier-lease-vs-buy-uk', priority: '0.7', changefreq: 'monthly' },
