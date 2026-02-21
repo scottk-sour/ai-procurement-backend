@@ -1,9 +1,28 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import adminAuth from '../middleware/adminAuth.js';
+import jwt from 'jsonwebtoken';
 import OutreachLog from '../models/OutreachLog.js';
 
 const router = express.Router();
+
+const { ADMIN_JWT_SECRET } = process.env;
+
+const adminAuth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+  }
+  try {
+    const decoded = jwt.verify(token, ADMIN_JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Not authorized.' });
+    }
+    req.admin = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+};
 
 router.use(adminAuth);
 
