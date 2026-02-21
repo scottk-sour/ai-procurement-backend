@@ -34,6 +34,7 @@ import vendorPostRoutes from './routes/vendorPostRoutes.js';
 import aiMentionRoutes from './routes/aiMentionRoutes.js';
 import aiSearchTestRoutes from './routes/aiSearchTestRoutes.js';
 import geoAuditRoutes from './routes/geoAuditRoutes.js';
+import outreachRoutes from './routes/outreachRoutes.js';
 import publicApiRoutes from './routes/publicApiRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -296,6 +297,7 @@ app.use('/api/posts', vendorPostRoutes);
 app.use('/api/ai-mentions', aiMentionRoutes);
 app.use('/api/ai-search-test', aiSearchTestRoutes);
 app.use('/api/geo-audit', geoAuditRoutes);
+app.use('/api/outreach', outreachRoutes);
 app.use('/api/v1', publicApiRoutes);
 app.use('/', sitemapRoutes);
 
