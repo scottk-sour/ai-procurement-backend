@@ -1,5 +1,5 @@
 import MachineMatrix from '../models/MachineMatrix.js';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import csv from 'csv-parser';
 import fs from 'fs';
 
@@ -20,9 +20,26 @@ export const uploadMatrix = async (req, res) => {
 
     if (fileExtension === 'xlsx') {
       // Process Excel File
-      const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0]; // Assumes the first sheet
-      const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.worksheets[0];
+      const headers = [];
+      const sheetData = [];
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        const values = row.values.slice(1).map(cell => {
+          if (cell === undefined || cell === null) return null;
+          if (typeof cell === 'object' && cell.richText) return cell.richText.map(r => r.text).join('');
+          if (typeof cell === 'object' && cell.result !== undefined) return cell.result;
+          return cell;
+        });
+        if (rowNumber === 1) {
+          values.forEach(v => headers.push(v ? String(v).trim() : ''));
+        } else {
+          const obj = {};
+          headers.forEach((h, i) => { if (h) obj[h] = values[i] !== undefined ? values[i] : null; });
+          sheetData.push(obj);
+        }
+      });
 
       matrixEntries = sheetData.map(row => ({
         vendorId: req.vendorId, // Must be attached by your auth middleware

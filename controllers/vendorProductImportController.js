@@ -394,7 +394,7 @@ export async function importVendorProducts(filePath, vendorId) {
     let rows = [];
     
     if (ext === 'xlsx' || ext === 'xls') {
-      rows = readExcelFile(filePath);
+      rows = await readExcelFile(filePath);
     } else if (ext === 'csv') {
       // Use Papa Parse for better CSV handling
       const fileContent = fs.readFileSync(filePath, 'utf8');

@@ -10,7 +10,7 @@
  */
 
 import mongoose from 'mongoose';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -372,30 +372,41 @@ async function importVendors(filePath, options = {}) {
 
   // Read Excel file
   console.log('Reading Excel file...');
-  const workbook = XLSX.readFile(filePath);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
 
   // Find the right sheet
   const sheetNames = ['Vendors', 'vendors', 'Sheet1', 'Data', 'All Vendors'];
-  let sheet = null;
+  let worksheet = null;
   let usedSheet = '';
 
   for (const name of sheetNames) {
-    if (workbook.Sheets[name]) {
-      sheet = workbook.Sheets[name];
+    const ws = workbook.getWorksheet(name);
+    if (ws) {
+      worksheet = ws;
       usedSheet = name;
       break;
     }
   }
 
-  if (!sheet) {
-    sheet = workbook.Sheets[workbook.SheetNames[0]];
-    usedSheet = workbook.SheetNames[0];
+  if (!worksheet) {
+    worksheet = workbook.worksheets[0];
+    usedSheet = worksheet.name;
   }
 
   console.log(`✓ Using sheet: "${usedSheet}"`);
 
   // Convert to array of arrays
-  const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  const rawData = [];
+  worksheet.eachRow({ includeEmpty: true }, (row) => {
+    const values = row.values.slice(1).map(cell => {
+      if (cell === undefined || cell === null) return '';
+      if (typeof cell === 'object' && cell.richText) return cell.richText.map(r => r.text).join('');
+      if (typeof cell === 'object' && cell.result !== undefined) return cell.result;
+      return cell;
+    });
+    rawData.push(values);
+  });
 
   // Spreadsheet structure:
   // Row 0: Tier labels (FREE TIER / PAID TIER)

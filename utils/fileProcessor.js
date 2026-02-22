@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PDFExtract } from 'pdf.js-extract';
-import xlsx from 'xlsx';
+import ExcelJS from 'exceljs';
 import csv from 'csv-parser';
 import OpenAI from 'openai';  // Add this import for LLM extraction
 
@@ -33,11 +33,28 @@ export const extractFromCSV = (filePath) => {
 /**
  * Parse an Excel file and extract rows
  */
-export const extractFromExcel = (filePath) => {
-  const workbook = xlsx.readFile(filePath);
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  return xlsx.utils.sheet_to_json(worksheet);
+export const extractFromExcel = async (filePath) => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const worksheet = workbook.worksheets[0];
+  const rows = [];
+  const headers = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const values = row.values.slice(1).map(cell => {
+      if (cell === undefined || cell === null) return null;
+      if (typeof cell === 'object' && cell.richText) return cell.richText.map(r => r.text).join('');
+      if (typeof cell === 'object' && cell.result !== undefined) return cell.result;
+      return cell;
+    });
+    if (rowNumber === 1) {
+      values.forEach(v => headers.push(v ? String(v).trim() : ''));
+    } else {
+      const obj = {};
+      headers.forEach((h, i) => { if (h) obj[h] = values[i] !== undefined ? values[i] : null; });
+      rows.push(obj);
+    }
+  });
+  return rows;
 };
 
 /**
@@ -48,7 +65,7 @@ export class FileProcessor {
     return extractFromPDF(filePath);
   }
 
-  static parseExcel(filePath) {
+  static async parseExcel(filePath) {
     return extractFromExcel(filePath);
   }
 
@@ -136,7 +153,7 @@ export class FileProcessor {
       if (ext === '.pdf') {
         content = await this.parsePdf(filePath);
       } else if (ext === '.xlsx' || ext === '.xls') {
-        const data = this.parseExcel(filePath);
+        const data = await this.parseExcel(filePath);
         content = JSON.stringify(data);
       } else if (ext === '.csv') {
         const data = await this.parseCSV(filePath);

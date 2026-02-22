@@ -1,68 +1,109 @@
 // utils/readExcel.js
 import fs from 'fs';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+
+/**
+ * Helper: convert an ExcelJS worksheet to an array of arrays (like xlsx sheet_to_json with header:1)
+ */
+function worksheetToArrays(worksheet, options = {}) {
+  const rows = [];
+  worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    // row.values is 1-indexed (index 0 is undefined), so slice from 1
+    const values = row.values.slice(1).map(cell => {
+      if (cell === undefined || cell === null) return options.defval !== undefined ? options.defval : null;
+      // Handle ExcelJS rich text objects
+      if (typeof cell === 'object' && cell.richText) {
+        return cell.richText.map(r => r.text).join('');
+      }
+      // Handle ExcelJS cell error objects
+      if (typeof cell === 'object' && cell.error) return null;
+      // Handle formulas - return the result
+      if (typeof cell === 'object' && cell.result !== undefined) return cell.result;
+      return cell;
+    });
+    rows.push(values);
+  });
+  return rows;
+}
+
+/**
+ * Helper: convert an ExcelJS worksheet to array of objects (like xlsx sheet_to_json without header:1)
+ */
+function worksheetToObjects(worksheet) {
+  const rows = [];
+  const headers = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const values = row.values.slice(1).map(cell => {
+      if (cell === undefined || cell === null) return null;
+      if (typeof cell === 'object' && cell.richText) return cell.richText.map(r => r.text).join('');
+      if (typeof cell === 'object' && cell.result !== undefined) return cell.result;
+      return cell;
+    });
+    if (rowNumber === 1) {
+      values.forEach(v => headers.push(v ? String(v).trim() : ''));
+    } else {
+      const obj = {};
+      headers.forEach((h, i) => {
+        if (h) obj[h] = values[i] !== undefined ? values[i] : null;
+      });
+      rows.push(obj);
+    }
+  });
+  return rows;
+}
+
+/**
+ * Helper: encode cell reference from row/col (0-indexed) e.g. {r:0, c:0} → "A1"
+ */
+function encodeCell(row, col) {
+  let colStr = '';
+  let c = col;
+  do {
+    colStr = String.fromCharCode(65 + (c % 26)) + colStr;
+    c = Math.floor(c / 26) - 1;
+  } while (c >= 0);
+  return colStr + (row + 1);
+}
 
 /**
  * Read and parse Excel file
  * @param {string} filePath - Path to the Excel file
  * @param {object} options - Excel reading options
- * @returns {Array} Array of rows (first row is headers)
+ * @returns {Promise<Array>} Array of rows (first row is headers)
  */
-export function readExcelFile(filePath, options = {}) {
+export async function readExcelFile(filePath, options = {}) {
   try {
     console.log(`📊 Reading Excel file: ${filePath}`);
-    
-    // Check if file exists
+
     if (!fs.existsSync(filePath)) {
       throw new Error(`Excel file not found: ${filePath}`);
     }
 
     const defaultOptions = {
-      sheetName: null, // null = first sheet
-      headerRow: 1, // 1-indexed
-      range: null, // null = entire sheet
-      raw: false, // false = formatted values, true = raw values
-      dateNF: 'yyyy-mm-dd', // Date format
-      cellDates: true, // Parse dates
-      cellFormulas: false, // Don't include formulas
-      cellStyles: false, // Don't include styles
+      sheetName: null,
       ...options
     };
 
-    // Read the workbook
-    const workbook = XLSX.readFile(filePath, {
-      cellDates: defaultOptions.cellDates,
-      cellFormulas: defaultOptions.cellFormulas,
-      cellStyles: defaultOptions.cellStyles,
-      dateNF: defaultOptions.dateNF
-    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
 
-    // Get sheet name
-    const sheetName = defaultOptions.sheetName || workbook.SheetNames[0];
-    
-    if (!workbook.Sheets[sheetName]) {
-      throw new Error(`Sheet '${sheetName}' not found. Available sheets: ${workbook.SheetNames.join(', ')}`);
+    const sheetName = defaultOptions.sheetName || workbook.worksheets[0]?.name;
+    const worksheet = workbook.getWorksheet(sheetName);
+
+    if (!worksheet) {
+      const available = workbook.worksheets.map(ws => ws.name).join(', ');
+      throw new Error(`Sheet '${sheetName}' not found. Available sheets: ${available}`);
     }
 
-    const worksheet = workbook.Sheets[sheetName];
-    
-    // Convert to JSON with options
-    const jsonOptions = {
-      header: 1, // Return array of arrays
-      raw: defaultOptions.raw,
-      range: defaultOptions.range,
-      defval: null // Default value for empty cells
-    };
+    const rows = worksheetToArrays(worksheet, { defval: null });
 
-    const rows = XLSX.utils.sheet_to_json(worksheet, jsonOptions);
-    
     // Filter out completely empty rows
-    const filteredRows = rows.filter(row => 
+    const filteredRows = rows.filter(row =>
       Array.isArray(row) && row.some(cell => cell !== null && cell !== undefined && cell !== '')
     );
 
     console.log(`✅ Excel file parsed successfully: ${filteredRows.length} rows from sheet '${sheetName}'`);
-    
+
     return filteredRows;
 
   } catch (error) {
@@ -74,28 +115,29 @@ export function readExcelFile(filePath, options = {}) {
 /**
  * Get information about Excel workbook
  * @param {string} filePath - Path to the Excel file
- * @returns {object} Workbook information
+ * @returns {Promise<object>} Workbook information
  */
-export function getExcelInfo(filePath) {
+export async function getExcelInfo(filePath) {
   try {
-    const workbook = XLSX.readFile(filePath, { bookSheets: true });
-    
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+
+    const sheetNames = workbook.worksheets.map(ws => ws.name);
     const info = {
-      sheetNames: workbook.SheetNames,
-      sheetCount: workbook.SheetNames.length,
+      sheetNames,
+      sheetCount: sheetNames.length,
       sheets: {}
     };
 
-    // Get basic info for each sheet
-    workbook.SheetNames.forEach(sheetName => {
-      const worksheet = workbook.Sheets[sheetName];
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:A1');
-      
-      info.sheets[sheetName] = {
-        range: worksheet['!ref'],
-        rowCount: range.e.r + 1,
-        columnCount: range.e.c + 1,
-        lastCell: XLSX.utils.encode_cell(range.e)
+    workbook.worksheets.forEach(worksheet => {
+      const rowCount = worksheet.rowCount;
+      const colCount = worksheet.columnCount;
+
+      info.sheets[worksheet.name] = {
+        range: rowCount > 0 ? `A1:${encodeCell(rowCount - 1, colCount - 1)}` : 'A1:A1',
+        rowCount,
+        columnCount: colCount,
+        lastCell: encodeCell(Math.max(0, rowCount - 1), Math.max(0, colCount - 1))
       };
     });
 
@@ -110,22 +152,18 @@ export function getExcelInfo(filePath) {
 /**
  * Read specific range from Excel
  * @param {string} filePath - Path to the Excel file
- * @param {string} range - Excel range (e.g., 'A1:D10')
+ * @param {string} range - Excel range (e.g., 'A1:D10') — note: currently reads full sheet
  * @param {string} sheetName - Sheet name (optional)
- * @returns {Array} Array of rows in the specified range
+ * @returns {Promise<Array>} Array of rows in the specified range
  */
-export function readExcelRange(filePath, range, sheetName = null) {
+export async function readExcelRange(filePath, range, sheetName = null) {
   try {
-    const workbook = XLSX.readFile(filePath);
-    const sheet = sheetName || workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheet];
-    
-    const rows = XLSX.utils.sheet_to_json(worksheet, {
-      header: 1,
-      range: range,
-      defval: null
-    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const sheet = sheetName || workbook.worksheets[0]?.name;
+    const worksheet = workbook.getWorksheet(sheet);
 
+    const rows = worksheetToArrays(worksheet, { defval: null });
     return rows;
 
   } catch (error) {
@@ -138,15 +176,24 @@ export function readExcelRange(filePath, range, sheetName = null) {
  * Convert Excel to CSV format
  * @param {string} filePath - Path to the Excel file
  * @param {string} sheetName - Sheet name (optional)
- * @returns {string} CSV formatted string
+ * @returns {Promise<string>} CSV formatted string
  */
-export function excelToCSV(filePath, sheetName = null) {
+export async function excelToCSV(filePath, sheetName = null) {
   try {
-    const workbook = XLSX.readFile(filePath);
-    const sheet = sheetName || workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheet];
-    
-    return XLSX.utils.sheet_to_csv(worksheet);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const sheet = sheetName || workbook.worksheets[0]?.name;
+    const worksheet = workbook.getWorksheet(sheet);
+
+    const rows = worksheetToArrays(worksheet, { defval: '' });
+    return rows.map(row =>
+      row.map(cell => {
+        const val = cell === null || cell === undefined ? '' : String(cell);
+        return val.includes(',') || val.includes('"') || val.includes('\n')
+          ? `"${val.replace(/"/g, '""')}"`
+          : val;
+      }).join(',')
+    ).join('\n');
 
   } catch (error) {
     console.error('❌ Error converting Excel to CSV:', error);
@@ -159,9 +206,9 @@ export function excelToCSV(filePath, sheetName = null) {
  * @param {string} filePath - Path to the Excel file
  * @param {Array} requiredHeaders - Required headers for validation
  * @param {object} options - Validation options
- * @returns {object} Validation result
+ * @returns {Promise<object>} Validation result
  */
-export function validateExcelFile(filePath, requiredHeaders = [], options = {}) {
+export async function validateExcelFile(filePath, requiredHeaders = [], options = {}) {
   try {
     const defaultOptions = {
       sheetName: null,
@@ -170,8 +217,8 @@ export function validateExcelFile(filePath, requiredHeaders = [], options = {}) 
       ...options
     };
 
-    const rows = readExcelFile(filePath, defaultOptions);
-    
+    const rows = await readExcelFile(filePath, defaultOptions);
+
     if (rows.length === 0) {
       return {
         isValid: false,
@@ -183,31 +230,31 @@ export function validateExcelFile(filePath, requiredHeaders = [], options = {}) 
     }
 
     const headers = rows[0] || [];
-    const normalizedHeaders = defaultOptions.caseSensitive ? 
-      headers : 
+    const normalizedHeaders = defaultOptions.caseSensitive ?
+      headers :
       headers.map(h => String(h || '').toLowerCase().trim());
-    
-    const normalizedRequired = defaultOptions.caseSensitive ? 
-      requiredHeaders : 
+
+    const normalizedRequired = defaultOptions.caseSensitive ?
+      requiredHeaders :
       requiredHeaders.map(h => h.toLowerCase());
 
-    const missing = normalizedRequired.filter(req => 
+    const missing = normalizedRequired.filter(req =>
       !normalizedHeaders.includes(req)
     );
 
-    const extra = normalizedHeaders.filter(header => 
+    const extra = normalizedHeaders.filter(header =>
       header !== '' && !normalizedRequired.includes(header)
     );
 
     return {
       isValid: missing.length === 0,
-      message: missing.length === 0 ? 
-        'All required headers found' : 
+      message: missing.length === 0 ?
+        'All required headers found' :
         `Missing headers: ${missing.join(', ')}`,
       headers: headers,
       missing,
       extra,
-      rowCount: rows.length - 1 // Exclude header row
+      rowCount: rows.length - 1
     };
 
   } catch (error) {
@@ -234,37 +281,31 @@ export function cleanExcelData(rows) {
     if (!Array.isArray(row)) return row;
 
     return row.map((cell, cellIndex) => {
-      // Handle different cell types
       if (cell === null || cell === undefined) return null;
-      
-      // Handle dates
+
       if (cell instanceof Date) {
-        return cell.toISOString().split('T')[0]; // YYYY-MM-DD format
+        return cell.toISOString().split('T')[0];
       }
-      
-      // Handle strings
+
       if (typeof cell === 'string') {
         const cleaned = cell.trim();
-        
-        // Convert common string representations
+
         if (cleaned === '' || cleaned.toLowerCase() === 'null') return null;
         if (cleaned.toLowerCase() === 'true') return true;
         if (cleaned.toLowerCase() === 'false') return false;
-        
-        // Try to convert to number if it looks like one
+
         if (/^\d+\.?\d*$/.test(cleaned)) {
           const num = parseFloat(cleaned);
           if (!isNaN(num)) return num;
         }
-        
+
         return cleaned;
       }
-      
+
       return cell;
     });
-  }).filter(row => 
-    // Remove completely empty rows
-    Array.isArray(row) && row.some(cell => 
+  }).filter(row =>
+    Array.isArray(row) && row.some(cell =>
       cell !== null && cell !== undefined && cell !== ''
     )
   );
@@ -275,34 +316,30 @@ export function cleanExcelData(rows) {
  * @param {string} filePath - Path to Excel file
  * @param {Array} requiredHeaders - Required headers for validation
  * @param {object} options - Processing options
- * @returns {object} Processing result
+ * @returns {Promise<object>} Processing result
  */
 export async function processExcelFile(filePath, requiredHeaders = [], options = {}) {
   try {
     console.log(`📊 Processing Excel file: ${filePath}`);
-    
-    // Get file info first
-    const info = getExcelInfo(filePath);
+
+    const info = await getExcelInfo(filePath);
     console.log(`📋 Found ${info.sheetCount} sheets: ${info.sheetNames.join(', ')}`);
-    
-    // Read the data
-    const rawRows = readExcelFile(filePath, options);
-    
+
+    const rawRows = await readExcelFile(filePath, options);
+
     if (rawRows.length === 0) {
       throw new Error('Excel file contains no data');
     }
-    
-    // Clean the data
+
     const cleanedRows = cleanExcelData(rawRows);
     const headers = cleanedRows[0] || [];
     const dataRows = cleanedRows.slice(1);
-    
-    // Validate headers if required
+
     let validation = { isValid: true, missing: [], extra: [] };
     if (requiredHeaders.length > 0) {
-      validation = validateExcelFile(filePath, requiredHeaders, options);
+      validation = await validateExcelFile(filePath, requiredHeaders, options);
     }
-    
+
     const result = {
       success: validation.isValid,
       headers,
@@ -310,20 +347,20 @@ export async function processExcelFile(filePath, requiredHeaders = [], options =
       rowCount: dataRows.length,
       validation,
       info,
-      message: validation.isValid ? 
-        `Successfully processed ${dataRows.length} rows from ${info.sheetNames[0]}` : 
+      message: validation.isValid ?
+        `Successfully processed ${dataRows.length} rows from ${info.sheetNames[0]}` :
         validation.message
     };
-    
+
     console.log(`✅ Excel processing complete:`, {
       rows: result.rowCount,
       headers: result.headers.length,
       valid: result.success,
       sheet: info.sheetNames[0]
     });
-    
+
     return result;
-    
+
   } catch (error) {
     console.error('❌ Excel processing failed:', error);
     return {
