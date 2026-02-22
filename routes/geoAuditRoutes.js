@@ -183,7 +183,20 @@ function analyseGeoSignals(html, url) {
 
   const overallScore = checks.reduce((sum, c) => sum + c.score, 0);
 
-  return { overallScore, checks, recommendations };
+  // Detect TendorAI schema — scan JSON-LD blocks for tendorai.com and check for script tag
+  let tendoraiSchemaDetected = false;
+  for (const match of ldJsonMatches) {
+    if (/tendorai\.com/i.test(match)) {
+      tendoraiSchemaDetected = true;
+      break;
+    }
+  }
+  if (!tendoraiSchemaDetected) {
+    tendoraiSchemaDetected = /api\.tendorai\.com\/api\/schema\//i.test(html) ||
+      /src=["'][^"']*tendorai\.com[^"']*schema/i.test(html);
+  }
+
+  return { overallScore, checks, recommendations, tendoraiSchemaDetected };
 }
 
 /**
@@ -274,7 +287,7 @@ router.post('/', vendorAuth, async (req, res) => {
     }
 
     // Run analysis
-    const { overallScore, checks, recommendations } = analyseGeoSignals(html, websiteUrl);
+    const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseGeoSignals(html, websiteUrl);
 
     // Save audit
     const audit = await GeoAudit.create({
@@ -283,6 +296,7 @@ router.post('/', vendorAuth, async (req, res) => {
       overallScore,
       checks,
       recommendations,
+      tendoraiSchemaDetected,
     });
 
     res.json({
@@ -293,6 +307,7 @@ router.post('/', vendorAuth, async (req, res) => {
         overallScore: audit.overallScore,
         checks: audit.checks,
         recommendations: audit.recommendations,
+        tendoraiSchemaDetected: audit.tendoraiSchemaDetected,
         createdAt: audit.createdAt,
       },
     });
@@ -342,6 +357,7 @@ router.get('/latest', vendorAuth, async (req, res) => {
         overallScore: audit.overallScore,
         checks: audit.checks,
         recommendations: audit.recommendations,
+        tendoraiSchemaDetected: audit.tendoraiSchemaDetected || false,
         createdAt: audit.createdAt,
       },
       canRunAgain,

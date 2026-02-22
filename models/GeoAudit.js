@@ -21,6 +21,7 @@ const geoAuditSchema = new mongoose.Schema({
   overallScore: { type: Number, min: 0, max: 100, default: 0 },
   checks: [geoCheckSchema],
   recommendations: [String],
+  tendoraiSchemaDetected: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 
