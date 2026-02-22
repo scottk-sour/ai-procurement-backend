@@ -3,7 +3,7 @@ import Vendor from '../models/Vendor.js';
 import AeoReport from '../models/AeoReport.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '../services/emailService.js';
 import logger from '../services/logger.js';
 
 // ============================================================
@@ -52,33 +52,17 @@ function deriveCategory(vendor) {
     return PRACTICE_AREA_TO_SLUG[area] || null;
   }
 
-  // office-equipment
+  // office-equipment, mortgage-advisor, estate-agent
   const service = (vendor.services || [])[0];
   if (!service) return null;
   return SERVICE_TO_SLUG[service] || null;
 }
 
 /**
- * Create a nodemailer transporter using IONOS SMTP.
+ * Send the report notification email via Resend.
  */
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.ionos.co.uk',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-}
-
-/**
- * Send the report notification email.
- */
-async function sendReportEmail(transporter, vendor, reportUrl, periodLabel) {
-  const mailOptions = {
-    from: `"TendorAI Reports" <${process.env.SMTP_USER || 'reports@tendorai.com'}>`,
+async function sendReportEmail(vendor, reportUrl, periodLabel) {
+  await sendEmail({
     to: vendor.email,
     subject: `Your AI Visibility Report for ${periodLabel} is ready`,
     html: `
@@ -99,9 +83,8 @@ async function sendReportEmail(transporter, vendor, reportUrl, periodLabel) {
         </p>
       </div>
     `,
-  };
-
-  await transporter.sendMail(mailOptions);
+    text: `Hi ${vendor.name || vendor.company}, your latest AI Visibility Report for ${periodLabel} is ready. View it here: ${reportUrl}`,
+  });
 }
 
 /**
@@ -133,7 +116,6 @@ async function generateVendorReports(tier) {
 
   logger.info(`[ScheduledReports] Found ${vendors.length} ${tier} vendor(s) to process.`);
 
-  const transporter = createTransporter();
   const frontendUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
 
   // Period label for email subject
@@ -177,12 +159,14 @@ async function generateVendorReports(tier) {
 
       const reportUrl = `${frontendUrl}/aeo-report/results/${report._id}`;
 
-      // Send email notification
-      try {
-        await sendReportEmail(transporter, vendor, reportUrl, periodLabel);
-        logger.info(`[ScheduledReports] Sent report email to ${vendor.email} for ${vendor.company}`);
-      } catch (emailErr) {
-        logger.error(`[ScheduledReports] Email failed for ${vendor.company}:`, emailErr.message);
+      // Send email notification via Resend
+      if (vendor.email) {
+        try {
+          await sendReportEmail(vendor, reportUrl, periodLabel);
+          logger.info(`[ScheduledReports] Sent report email to ${vendor.email} for ${vendor.company}`);
+        } catch (emailErr) {
+          logger.error(`[ScheduledReports] Email failed for ${vendor.company}:`, emailErr.message);
+        }
       }
 
       successCount++;
