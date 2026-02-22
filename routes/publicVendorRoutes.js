@@ -1225,7 +1225,7 @@ const aeoRateLimiter = rateLimit({
  */
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
-    const { companyName, category, city, email } = req.body;
+    const { companyName, category, city, email, name, source } = req.body;
 
     if (!companyName || !category || !city) {
       return res.status(400).json({
@@ -1265,6 +1265,8 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       ...reportData,
       pdfBuffer,
       ipAddress: req.ip,
+      ...(name && { name }),
+      ...(source && { source }),
     });
 
     const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';

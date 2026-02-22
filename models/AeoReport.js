@@ -24,6 +24,8 @@ const aeoReportSchema = new mongoose.Schema({
   },
   city: { type: String, required: true, trim: true },
   email: { type: String, trim: true, lowercase: true },
+  name: { type: String, trim: true },
+  source: { type: String, trim: true },
   vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', index: true, default: null },
   aiMentioned: { type: Boolean, required: true },
   aiPosition: { type: Number, default: null },
