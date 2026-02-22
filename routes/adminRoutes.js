@@ -15,8 +15,10 @@ import Review from '../models/Review.js';
 import VendorPost from '../models/VendorPost.js';
 import GeoAudit from '../models/GeoAudit.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import SchemaInstallRequest from '../models/SchemaInstallRequest.js';
+import { decrypt } from '../models/SchemaInstallRequest.js';
 import Stripe from 'stripe';
-import { sendEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
+import { sendEmail, sendVendorWelcomeEmail, sendSchemaInstallCompleteNotification } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import 'dotenv/config';
@@ -850,6 +852,129 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('[Admin Batch] Error:', error.message);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ============================================================
+// SCHEMA INSTALL REQUESTS — Admin management
+// ============================================================
+
+/**
+ * GET /api/admin/schema-requests
+ * List all schema install requests with vendor info.
+ */
+router.get('/schema-requests', adminAuth, async (req, res) => {
+  try {
+    const query = {};
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
+    const requests = await SchemaInstallRequest.find(query)
+      .populate('vendorId', 'company email contactInfo tier')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const data = requests.map(r => ({
+      id: r._id,
+      vendor: r.vendorId ? {
+        id: r.vendorId._id,
+        company: r.vendorId.company,
+        email: r.vendorId.email,
+        website: r.vendorId.contactInfo?.website,
+        tier: r.vendorId.tier,
+      } : null,
+      websiteUrl: r.websiteUrl,
+      cmsPlatform: r.cmsPlatform,
+      status: r.status,
+      adminNotes: r.adminNotes,
+      completedAt: r.completedAt,
+      completedBy: r.completedBy,
+      createdAt: r.createdAt,
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching schema requests:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching schema requests.' });
+  }
+});
+
+/**
+ * PATCH /api/admin/schema-requests/:id
+ * Update status/notes on a schema install request.
+ */
+router.patch('/schema-requests/:id', adminAuth, async (req, res) => {
+  try {
+    const { status, adminNotes } = req.body;
+    const validStatuses = ['in_progress', 'completed', 'failed'];
+
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    }
+
+    const request = await SchemaInstallRequest.findById(req.params.id).populate('vendorId', 'company email');
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Schema install request not found.' });
+    }
+
+    if (status) request.status = status;
+    if (adminNotes !== undefined) request.adminNotes = adminNotes;
+
+    if (status === 'completed') {
+      request.completedAt = new Date();
+      request.completedBy = req.admin?.email || 'admin';
+
+      // Send completion email to vendor
+      if (request.vendorId?.email) {
+        sendSchemaInstallCompleteNotification(request.vendorId.email, {
+          vendorName: request.vendorId.company,
+          websiteUrl: request.websiteUrl,
+        }).catch(err => console.error('Schema install complete email failed:', err.message));
+      }
+    }
+
+    await request.save();
+
+    res.json({
+      success: true,
+      data: {
+        id: request._id,
+        status: request.status,
+        adminNotes: request.adminNotes,
+        completedAt: request.completedAt,
+        completedBy: request.completedBy,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating schema request:', error.message);
+    res.status(500).json({ success: false, message: 'Error updating schema request.' });
+  }
+});
+
+/**
+ * GET /api/admin/schema-requests/:id/credentials
+ * Decrypt and return CMS credentials for a schema install request.
+ */
+router.get('/schema-requests/:id/credentials', adminAuth, async (req, res) => {
+  try {
+    const request = await SchemaInstallRequest.findById(req.params.id).lean();
+    if (!request) {
+      return res.status(404).json({ success: false, message: 'Schema install request not found.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        cmsLoginUrl: request.cmsLoginUrl,
+        cmsUsername: decrypt(request.cmsUsername),
+        cmsPassword: decrypt(request.cmsPassword),
+        cmsPlatform: request.cmsPlatform,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching schema credentials:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching credentials.' });
   }
 });
 

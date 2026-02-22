@@ -320,6 +320,58 @@ export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, c
   return { success: true, simulated: true };
 };
 
+// =====================================================
+// SCHEMA INSTALL REQUEST NOTIFICATIONS
+// =====================================================
+
+export const sendSchemaInstallAdminNotification = async ({ vendorName, vendorEmail, websiteUrl, cmsPlatform }) => {
+  const adminEmail = process.env.ADMIN_EMAIL || 'support@tendorai.com';
+  const dashboardUrl = 'https://www.tendorai.com/admin/schema-requests';
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `New Schema Install Request — ${vendorName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">New Schema Install Request</h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tr><td style="padding: 8px 0; color: #6b7280; width: 120px;">Vendor</td><td style="padding: 8px 0; font-weight: 600;">${vendorName}</td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280;">Email</td><td style="padding: 8px 0;">${vendorEmail}</td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280;">Website</td><td style="padding: 8px 0;">${websiteUrl}</td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280;">CMS</td><td style="padding: 8px 0;">${cmsPlatform}</td></tr>
+        </table>
+        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">View in Admin Dashboard</a>
+      </div>
+    `,
+    text: `New schema install request from ${vendorName} (${vendorEmail}). Website: ${websiteUrl}, CMS: ${cmsPlatform}. View at ${dashboardUrl}`
+  });
+};
+
+export const sendSchemaInstallCompleteNotification = async (vendorEmail, { vendorName, websiteUrl }) => {
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+
+  return sendEmail({
+    to: vendorEmail,
+    subject: `Your TendorAI Schema is Live — ${vendorName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">Your Schema is Live!</h2>
+        <p style="color: #374151; line-height: 1.6;">
+          Great news — we've successfully installed your TendorAI Schema.org markup on <strong>${websiteUrl}</strong>.
+        </p>
+        <p style="color: #374151; line-height: 1.6;">
+          AI assistants like ChatGPT, Claude, and Perplexity can now read your structured data, which helps them recommend your business with confidence.
+        </p>
+        <p style="color: #374151; line-height: 1.6;">
+          You can verify it's working by running the Schema Test from your dashboard.
+        </p>
+        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px;">Go to Dashboard</a>
+      </div>
+    `,
+    text: `Your TendorAI Schema is now live on ${websiteUrl}. You can verify it's working by running the Schema Test from your dashboard at ${dashboardUrl}.`
+  });
+};
+
 // Default export for compatibility
 export default {
   sendEmail,
@@ -336,5 +388,7 @@ export default {
   sendAeoReportEmail,
   sendVendorContactRequest,
   sendQuoteAcceptedNotification,
-  sendQuoteDeclinedNotification
+  sendQuoteDeclinedNotification,
+  sendSchemaInstallAdminNotification,
+  sendSchemaInstallCompleteNotification
 };

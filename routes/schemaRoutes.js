@@ -5,7 +5,9 @@ import vendorAuth from '../middleware/vendorAuth.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import Review from '../models/Review.js';
+import SchemaInstallRequest from '../models/SchemaInstallRequest.js';
 import { generateVendorSchema } from '../utils/generateVendorSchema.js';
+import { sendSchemaInstallAdminNotification } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -237,6 +239,93 @@ router.get('/:vendorId/validate', vendorAuth, async (req, res) => {
   } catch (error) {
     console.error('Schema validate error:', error);
     res.status(500).json({ success: false, error: 'Validation failed.' });
+  }
+});
+
+/**
+ * POST /api/schema/install-request
+ * Submit a schema installation request (pro tier only).
+ */
+router.post('/install-request', vendorAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendor.id).select('company email tier account contactInfo').lean();
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    if (!isProTier(vendor)) {
+      return res.status(403).json({ success: false, error: 'Schema installation requires Pro tier' });
+    }
+
+    const { websiteUrl, cmsPlatform, cmsLoginUrl, cmsUsername, cmsPassword, additionalNotes } = req.body;
+
+    if (!websiteUrl || !cmsPlatform || !cmsUsername || !cmsPassword) {
+      return res.status(400).json({ success: false, error: 'websiteUrl, cmsPlatform, cmsUsername, and cmsPassword are required' });
+    }
+
+    const request = await SchemaInstallRequest.create({
+      vendorId: req.vendor.id,
+      websiteUrl,
+      cmsPlatform,
+      cmsLoginUrl,
+      cmsUsername,
+      cmsPassword,
+      additionalNotes,
+    });
+
+    // Fire-and-forget admin notification
+    sendSchemaInstallAdminNotification({
+      vendorName: vendor.company || vendor.name,
+      vendorEmail: vendor.email,
+      websiteUrl,
+      cmsPlatform,
+    }).catch(err => console.error('Schema install admin email failed:', err.message));
+
+    res.json({
+      success: true,
+      data: { id: request._id, status: request.status, createdAt: request.createdAt },
+    });
+  } catch (error) {
+    console.error('Schema install-request error:', error);
+    res.status(500).json({ success: false, error: 'Failed to submit install request' });
+  }
+});
+
+/**
+ * GET /api/schema/install-request/latest
+ * Get the most recent install request for the current vendor (pro tier only).
+ */
+router.get('/install-request/latest', vendorAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendor.id).select('tier account').lean();
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    if (!isProTier(vendor)) {
+      return res.status(403).json({ success: false, error: 'Schema installation requires Pro tier' });
+    }
+
+    const request = await SchemaInstallRequest.findOne({ vendorId: req.vendor.id })
+      .sort({ createdAt: -1 })
+      .select('status createdAt completedAt cmsPlatform websiteUrl')
+      .lean();
+
+    res.json({
+      success: true,
+      data: request
+        ? {
+            status: request.status,
+            createdAt: request.createdAt,
+            completedAt: request.completedAt,
+            cmsPlatform: request.cmsPlatform,
+            websiteUrl: request.websiteUrl,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error('Schema install-request/latest error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch install request status' });
   }
 });
 
