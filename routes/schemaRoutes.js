@@ -7,6 +7,7 @@ import VendorProduct from '../models/VendorProduct.js';
 import Review from '../models/Review.js';
 import SchemaInstallRequest from '../models/SchemaInstallRequest.js';
 import { generateVendorSchema } from '../utils/generateVendorSchema.js';
+import { generateBadgeScript } from '../utils/generateBadgeScript.js';
 import { sendSchemaInstallAdminNotification } from '../services/emailService.js';
 
 const router = express.Router();
@@ -44,8 +45,61 @@ function isProTier(vendor) {
 }
 
 /**
+ * Check if vendor is on starter or above tier.
+ */
+function isStarterOrAbove(vendor) {
+  const tier = vendor?.tier || vendor?.account?.tier || 'free';
+  return ['starter', 'pro', 'verified'].includes(tier);
+}
+
+/**
+ * GET /api/schema/:vendorId.badge.js
+ * Returns badge-only script (no JSON-LD). For starter + verified tiers.
+ * Registered BEFORE .js route so Express matches it first.
+ */
+router.get('/:file([a-f0-9]{24}\\.badge\\.js)', async (req, res) => {
+  try {
+    const vendorId = req.params.file.replace('.badge.js', '');
+    const vendor = await Vendor.findById(vendorId).select('-password').lean();
+
+    if (!vendor) {
+      res.set('Content-Type', 'application/javascript');
+      return res.status(404).send('// TendorAI: Vendor not found');
+    }
+
+    if (!isStarterOrAbove(vendor)) {
+      res.set('Content-Type', 'application/javascript');
+      res.set('Cache-Control', 'public, max-age=3600');
+      return res.send("console.log('TendorAI Badge requires Starter tier or above. Upgrade at tendorai.com');");
+    }
+
+    const tier = vendor.tier || vendor.account?.tier || 'free';
+    const badgeType = tier === 'verified' ? 'verified' : 'starter';
+    const vendorIdStr = vendor._id.toString();
+    const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
+
+    const script = generateBadgeScript({
+      vendorId: vendorIdStr,
+      vendorName: vendor.company,
+      profileUrl,
+      badgeType,
+      includeSchema: false,
+    });
+
+    res.set('Content-Type', 'application/javascript');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(script);
+  } catch (error) {
+    console.error('Schema .badge.js error:', error);
+    res.set('Content-Type', 'application/javascript');
+    res.status(500).send('// TendorAI Badge: internal error');
+  }
+});
+
+/**
  * GET /api/schema/:vendorId.js
- * Returns a self-executing script that injects JSON-LD into the page.
+ * Returns a self-executing script that injects JSON-LD + badge into the page.
+ * Verified tier: schema + green badge. Others: upgrade message.
  */
 router.get('/:file([a-f0-9]{24}\\.js)', async (req, res) => {
   try {
@@ -65,8 +119,17 @@ router.get('/:file([a-f0-9]{24}\\.js)', async (req, res) => {
 
     const schema = generateVendorSchema(vendor, products, reviews);
     const jsonString = JSON.stringify(schema);
+    const vendorIdStr = vendor._id.toString();
+    const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
 
-    const script = `(function(){try{var s=document.createElement('script');s.type='application/ld+json';s.textContent=${JSON.stringify(jsonString)};document.head.appendChild(s);}catch(e){console.warn('TendorAI Schema: ',e);}})();`;
+    const script = generateBadgeScript({
+      vendorId: vendorIdStr,
+      vendorName: vendor.company,
+      profileUrl,
+      badgeType: 'verified',
+      includeSchema: true,
+      schemaJson: jsonString,
+    });
 
     res.set('Content-Type', 'application/javascript');
     res.set('Cache-Control', 'public, max-age=3600');
