@@ -103,9 +103,13 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
   const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorId}`;
   const schemaType = mapSchemaType(vendor.vendorType);
 
+  // Ensure website URL has a protocol
+  const rawWebsite = vendor.contactInfo?.website || '';
+  const website = rawWebsite && !rawWebsite.startsWith('http') ? `https://${rawWebsite}` : rawWebsite;
+
   // Build sameAs links
   const sameAs = [profileUrl];
-  if (vendor.contactInfo?.website) sameAs.push(vendor.contactInfo.website);
+  if (website) sameAs.push(website);
   if (vendor.contactInfo?.linkedIn) sameAs.push(vendor.contactInfo.linkedIn);
 
   // Build knowsAbout from services, practiceAreas, specializations
@@ -162,7 +166,7 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
     '@id': profileUrl,
     name: vendor.company,
     description: vendor.businessProfile?.description || `${vendor.company} - Professional services`,
-    url: vendor.contactInfo?.website || profileUrl,
+    url: website || profileUrl,
     telephone: vendor.contactInfo?.phone || undefined,
     address: {
       '@type': 'PostalAddress',
@@ -178,7 +182,7 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
       '@type': 'Organization',
       name: 'TendorAI',
       url: 'https://www.tendorai.com',
-      description: 'The UK\'s AI Visibility Platform — verified business profiles optimised for AI recommendations',
+      description: 'The UK\u2019s AI Visibility Platform \u2014 verified business profiles optimised for AI recommendations',
     },
     knowsAbout: knowsAbout.length > 0 ? knowsAbout : undefined,
     ...(vendor.businessProfile?.yearsInBusiness && {
