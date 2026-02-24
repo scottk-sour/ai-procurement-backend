@@ -80,7 +80,7 @@ async function sendReportEmail(vendor, reportUrl, periodLabel) {
           and what you can do to improve your ranking.
         </p>
         <p style="color: #999; font-size: 12px;">
-          You're receiving this because you have an active ${vendor.tier === 'pro' ? 'Pro' : 'Starter'} subscription on TendorAI.
+          You're receiving this because you have an active ${PRO_TIER_VALUES.includes(vendor.tier) || PRO_ACCOUNT_TIERS.includes(vendor.account?.tier) ? 'Pro' : 'Starter'} subscription on TendorAI.
         </p>
       </div>
     `,
@@ -95,6 +95,12 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// All tier aliases that map to Pro or Starter (covers Stripe values + legacy)
+const PRO_TIER_VALUES = ['pro', 'managed', 'verified', 'enterprise'];
+const PRO_ACCOUNT_TIERS = ['gold', 'platinum'];
+const STARTER_TIER_VALUES = ['starter', 'basic', 'visible'];
+const STARTER_ACCOUNT_TIERS = ['silver', 'bronze'];
+
 /**
  * Generate AEO reports for all vendors on a given tier.
  */
@@ -102,9 +108,17 @@ async function generateVendorReports(tier) {
   const tierLabel = tier === 'pro' ? 'Pro (weekly)' : 'Starter (monthly)';
   logger.info(`[ScheduledReports] Starting ${tierLabel} report generation...`);
 
+  const tierValues = tier === 'pro' ? PRO_TIER_VALUES : STARTER_TIER_VALUES;
+  const accountTierValues = tier === 'pro' ? PRO_ACCOUNT_TIERS : STARTER_ACCOUNT_TIERS;
+
   let vendors;
   try {
-    vendors = await Vendor.find({ tier }).lean();
+    vendors = await Vendor.find({
+      $or: [
+        { tier: { $in: tierValues } },
+        { 'account.tier': { $in: accountTierValues } },
+      ],
+    }).lean();
   } catch (err) {
     logger.error(`[ScheduledReports] Failed to query vendors for tier=${tier}:`, err);
     return;

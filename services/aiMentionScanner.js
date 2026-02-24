@@ -187,17 +187,26 @@ export async function runWeeklyMentionScan() {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // 2. Pull all active vendors with profile data for context
+  // 2. Pull only PAID vendors (Starter + Pro tier aliases)
+  const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
+  const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum'];
+
   const vendors = await Vendor.find({
     company: { $exists: true, $ne: '' },
     services: { $exists: true, $not: { $size: 0 } },
-    $or: [
-      { 'location.city': { $exists: true, $ne: '' } },
-      { 'location.coverage': { $exists: true, $not: { $size: 0 } } },
+    $and: [
+      { $or: [
+        { tier: { $in: PAID_TIERS } },
+        { 'account.tier': { $in: PAID_ACCOUNT_TIERS } },
+      ] },
+      { $or: [
+        { 'location.city': { $exists: true, $ne: '' } },
+        { 'location.coverage': { $exists: true, $not: { $size: 0 } } },
+      ] },
     ],
   }).select('_id company services location tier businessProfile performance').lean();
 
-  console.log(`Found ${vendors.length} vendors to scan`);
+  console.log(`Found ${vendors.length} paid vendors to scan (free vendors excluded)`);
 
   // 3. Get product counts per vendor
   const productAgg = await VendorProduct.aggregate([
