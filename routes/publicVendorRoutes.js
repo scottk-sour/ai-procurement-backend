@@ -1163,6 +1163,38 @@ function capitalize(str) {
 // ============================================================
 
 /**
+ * GET /api/public/aeo-report/average
+ * Return the industry average AEO score for a given category's vendor type
+ * NOTE: Must be registered BEFORE /aeo-report/:reportId to avoid param capture
+ */
+router.get('/aeo-report/average', async (req, res) => {
+  try {
+    const { category } = req.query;
+    const validCategories = [
+      'copiers', 'telecoms', 'cctv', 'it',
+      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+      'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+      'equity-release', 'commercial-mortgages', 'protection-insurance',
+      'sales', 'lettings', 'property-management', 'block-management',
+      'auctions', 'commercial-property', 'inventory',
+    ];
+
+    if (!category || !validCategories.includes(category)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing category' });
+    }
+
+    const data = await getIndustryAverage(category);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error('AEO average error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch industry average' });
+  }
+});
+
+/**
  * GET /api/public/aeo-report/:reportId
  * Return full report JSON (excludes pdfBuffer and ipAddress)
  */
@@ -1287,37 +1319,6 @@ async function getIndustryAverage(category) {
   averageCache[vendorType] = { value: average, count, expiry: Date.now() + 24 * 60 * 60 * 1000 };
   return { vendorType, vendorTypeLabel, average, count };
 }
-
-/**
- * GET /api/public/aeo-report/average
- * Return the industry average AEO score for a given category's vendor type
- */
-router.get('/aeo-report/average', async (req, res) => {
-  try {
-    const { category } = req.query;
-    const validCategories = [
-      'copiers', 'telecoms', 'cctv', 'it',
-      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
-      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
-      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
-      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
-      'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
-      'equity-release', 'commercial-mortgages', 'protection-insurance',
-      'sales', 'lettings', 'property-management', 'block-management',
-      'auctions', 'commercial-property', 'inventory',
-    ];
-
-    if (!category || !validCategories.includes(category)) {
-      return res.status(400).json({ success: false, error: 'Invalid or missing category' });
-    }
-
-    const data = await getIndustryAverage(category);
-    res.json({ success: true, ...data });
-  } catch (error) {
-    console.error('AEO average error:', error.message);
-    res.status(500).json({ success: false, error: 'Failed to fetch industry average' });
-  }
-});
 
 // ============================================================
 // AEO REPORT — Public generation (full report with PDF)
