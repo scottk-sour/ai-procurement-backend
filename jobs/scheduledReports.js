@@ -4,6 +4,7 @@ import AeoReport from '../models/AeoReport.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { sendEmail } from '../services/emailService.js';
+import { runWeeklyMentionScan } from '../services/aiMentionScanner.js';
 import logger from '../services/logger.js';
 
 // ============================================================
@@ -187,6 +188,17 @@ async function generateVendorReports(tier) {
  * Register cron jobs and start the scheduler.
  */
 export function startScheduledReports() {
+  // AI Mention scan: every Sunday at 3am UTC (before Monday Pro reports)
+  cron.schedule('0 3 * * 0', async () => {
+    logger.info('[ScheduledReports] Triggering weekly AI mention scan...');
+    try {
+      await runWeeklyMentionScan();
+      logger.info('[ScheduledReports] AI mention scan complete.');
+    } catch (err) {
+      logger.error('[ScheduledReports] AI mention scan failed:', err.message);
+    }
+  });
+
   // Starter: 1st of every month at 6am UTC
   cron.schedule('0 6 1 * *', () => {
     logger.info('[ScheduledReports] Triggering monthly Starter reports...');
@@ -200,6 +212,7 @@ export function startScheduledReports() {
   });
 
   logger.info('[ScheduledReports] Cron jobs registered:');
+  logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
   logger.info('  - Starter (monthly): 1st of every month at 06:00 UTC');
   logger.info('  - Pro (weekly): every Monday at 06:00 UTC');
 }
