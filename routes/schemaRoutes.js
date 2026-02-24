@@ -36,20 +36,27 @@ async function loadVendorData(vendorId) {
   return { vendor, products, reviews };
 }
 
+const PRO_TIERS = ['pro', 'managed', 'verified', 'enterprise'];
+const PRO_ACCOUNT_TIERS = ['gold', 'platinum', 'pro', 'verified'];
+const STARTER_OR_ABOVE_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
+const STARTER_OR_ABOVE_ACCOUNT_TIERS = ['silver', 'bronze', 'starter', 'gold', 'platinum', 'pro', 'verified'];
+
 /**
  * Check if vendor is on pro/verified tier.
  */
 function isProTier(vendor) {
-  const tier = vendor?.tier || vendor?.account?.tier || 'free';
-  return tier === 'verified';
+  const tier = (vendor?.tier || '').toLowerCase();
+  const accountTier = (vendor?.account?.tier || '').toLowerCase();
+  return PRO_TIERS.includes(tier) || PRO_ACCOUNT_TIERS.includes(accountTier);
 }
 
 /**
  * Check if vendor is on starter or above tier.
  */
 function isStarterOrAbove(vendor) {
-  const tier = vendor?.tier || vendor?.account?.tier || 'free';
-  return ['starter', 'pro', 'verified'].includes(tier);
+  const tier = (vendor?.tier || '').toLowerCase();
+  const accountTier = (vendor?.account?.tier || '').toLowerCase();
+  return STARTER_OR_ABOVE_TIERS.includes(tier) || STARTER_OR_ABOVE_ACCOUNT_TIERS.includes(accountTier);
 }
 
 /**

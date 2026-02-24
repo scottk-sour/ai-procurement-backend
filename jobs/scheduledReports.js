@@ -97,9 +97,9 @@ function sleep(ms) {
 
 // All tier aliases that map to Pro or Starter (covers Stripe values + legacy)
 const PRO_TIER_VALUES = ['pro', 'managed', 'verified', 'enterprise'];
-const PRO_ACCOUNT_TIERS = ['gold', 'platinum'];
+const PRO_ACCOUNT_TIERS = ['gold', 'platinum', 'pro', 'verified'];
 const STARTER_TIER_VALUES = ['starter', 'basic', 'visible'];
-const STARTER_ACCOUNT_TIERS = ['silver', 'bronze'];
+const STARTER_ACCOUNT_TIERS = ['silver', 'bronze', 'starter'];
 
 /**
  * Generate AEO reports for all vendors on a given tier.

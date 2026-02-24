@@ -6,11 +6,13 @@ import Vendor from '../models/Vendor.js';
 
 const router = express.Router();
 
-const PAID_TIERS = ['basic', 'visible', 'managed', 'enterprise', 'verified'];
+const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
+const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum', 'starter', 'pro', 'verified'];
 
 function isPaidTier(vendor) {
-  const tier = (vendor.tier || 'free').toLowerCase();
-  return PAID_TIERS.includes(tier);
+  const tier = (vendor?.tier || 'free').toLowerCase();
+  const accountTier = (vendor?.account?.tier || '').toLowerCase();
+  return PAID_TIERS.includes(tier) || PAID_ACCOUNT_TIERS.includes(accountTier);
 }
 
 /**
@@ -20,7 +22,7 @@ function isPaidTier(vendor) {
 router.get('/summary', vendorAuth, async (req, res) => {
   try {
     const vendorId = req.vendorId;
-    const vendor = await Vendor.findById(vendorId).select('tier').lean();
+    const vendor = await Vendor.findById(vendorId).select('tier account.tier').lean();
     const paid = vendor && isPaidTier(vendor);
 
     const now = new Date();
@@ -130,7 +132,7 @@ router.get('/summary', vendorAuth, async (req, res) => {
 router.get('/competitors', vendorAuth, async (req, res) => {
   try {
     const vendorId = req.vendorId;
-    const vendor = await Vendor.findById(vendorId).select('tier company services location').lean();
+    const vendor = await Vendor.findById(vendorId).select('tier account.tier company services location').lean();
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });

@@ -189,7 +189,7 @@ export async function runWeeklyMentionScan() {
 
   // 2. Pull only PAID vendors (Starter + Pro tier aliases)
   const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
-  const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum'];
+  const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum', 'starter', 'pro', 'verified'];
 
   const vendors = await Vendor.find({
     company: { $exists: true, $ne: '' },
