@@ -281,8 +281,15 @@ function drawCoverPage(ctx, report) {
   const labelW = bold.widthOfTextAtSize(label, 14);
   page.drawText(label, { x: cx - labelW / 2, y: cy - radius - 25, size: 14, font: bold, color: scoreColor });
 
+  // Industry average context
+  if (report.industryAverage) {
+    const avgText = `The average UK ${report.industryTypeLabel} scores ${report.industryAverage}. Top-performing businesses score 70+.`;
+    const avgW = font.widthOfTextAtSize(avgText, 10);
+    page.drawText(avgText, { x: cx - avgW / 2, y: cy - radius - 45, size: 10, font, color: GREY });
+  }
+
   // Company info
-  let y = cy - radius - 65;
+  let y = cy - radius - (report.industryAverage ? 90 : 65);
   const companyNameStr = sanitize(report.companyName || 'Unknown Company');
   const nameW = bold.widthOfTextAtSize(companyNameStr, 22);
   page.drawText(companyNameStr, { x: cx - nameW / 2, y, size: 22, font: bold, color: DARK });
@@ -467,6 +474,30 @@ function drawWhatAiKnowsPage(ctx, report) {
     page.drawText(sanitize(check.detail), { x: MARGIN + 46, y: y, size: 9, font, color: GREY });
 
     y -= 25;
+  }
+
+  // SEO vs AEO education section
+  if (y > 350) {
+    y -= 10;
+    const eduBoxH = 170;
+    page.drawRectangle({ x: MARGIN, y: y - eduBoxH + 15, width: CONTENT_W, height: eduBoxH, color: LIGHT_BG });
+
+    page.drawText('Why Your SEO Score Doesn\'t Tell the Full Story', { x: MARGIN + 12, y, size: 12, font: bold, color: DARK });
+    y -= 18;
+
+    const eduParagraphs = [
+      'Your website may perform well on traditional SEO audits -- but that no longer guarantees visibility. SEO measures how Google indexes your site. AEO (Answer Engine Optimisation) measures whether AI actually recommends you.',
+      'AI recommendation engines like ChatGPT, Perplexity, and Claude don\'t just crawl your site -- they evaluate structured data, authority signals, verified profiles, and review sentiment to decide who to recommend.',
+      'A business can score 70+ on a website SEO audit and still score under 20 on AI visibility, because the signals AI uses are fundamentally different from what traditional SEO tools measure.',
+    ];
+    for (const para of eduParagraphs) {
+      y = drawWrappedText(page, para, MARGIN + 12, y, font, 9, GREY, CONTENT_W - 24, 13);
+      y -= 6;
+    }
+
+    const emphText = 'This report measures what matters now: whether AI recommends you.';
+    y = drawWrappedText(page, emphText, MARGIN + 12, y, bold, 9, DARK, CONTENT_W - 24, 13);
+    y -= 15;
   }
 
   // Score breakdown

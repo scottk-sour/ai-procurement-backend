@@ -1205,6 +1205,120 @@ router.get('/aeo-report/:reportId/pdf', async (req, res) => {
   }
 });
 
+// ─── Industry average helper ────────────────────────────────────────────────
+
+const AEO_SOLICITOR_CATEGORIES = new Set([
+  'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+  'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+]);
+const AEO_ACCOUNTANT_CATEGORIES = new Set([
+  'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+  'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+]);
+const AEO_MORTGAGE_CATEGORIES = new Set([
+  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+  'equity-release', 'commercial-mortgages', 'protection-insurance',
+]);
+const AEO_ESTATE_AGENT_CATEGORIES = new Set([
+  'sales', 'lettings', 'property-management', 'block-management',
+  'auctions', 'commercial-property', 'inventory',
+]);
+const AEO_EQUIPMENT_CATEGORIES = new Set(['copiers', 'telecoms', 'cctv', 'it']);
+
+function getAeoVendorType(category) {
+  if (AEO_SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
+  if (AEO_ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';
+  if (AEO_MORTGAGE_CATEGORIES.has(category)) return 'mortgage-advisor';
+  if (AEO_ESTATE_AGENT_CATEGORIES.has(category)) return 'estate-agent';
+  return 'equipment';
+}
+
+const VENDOR_TYPE_CATEGORIES = {
+  solicitor: AEO_SOLICITOR_CATEGORIES,
+  accountant: AEO_ACCOUNTANT_CATEGORIES,
+  'mortgage-advisor': AEO_MORTGAGE_CATEGORIES,
+  'estate-agent': AEO_ESTATE_AGENT_CATEGORIES,
+  equipment: AEO_EQUIPMENT_CATEGORIES,
+};
+
+const VENDOR_TYPE_LABELS = {
+  solicitor: 'solicitor firm',
+  accountant: 'accountancy practice',
+  'mortgage-advisor': 'mortgage advisory firm',
+  'estate-agent': 'estate agency',
+  equipment: 'office equipment vendor',
+};
+
+const FALLBACK_AVERAGES = {
+  solicitor: 22,
+  accountant: 20,
+  'mortgage-advisor': 18,
+  'estate-agent': 21,
+  equipment: 24,
+};
+
+const averageCache = {};
+
+async function getIndustryAverage(category) {
+  const vendorType = getAeoVendorType(category);
+  const vendorTypeLabel = VENDOR_TYPE_LABELS[vendorType];
+
+  // Check cache (24h TTL)
+  const cached = averageCache[vendorType];
+  if (cached && cached.expiry > Date.now()) {
+    return { vendorType, vendorTypeLabel, average: cached.value, count: cached.count };
+  }
+
+  const categoriesForType = [...VENDOR_TYPE_CATEGORIES[vendorType]];
+  const result = await AeoReport.aggregate([
+    { $match: { category: { $in: categoriesForType }, score: { $ne: null } } },
+    { $group: { _id: null, avg: { $avg: '$score' }, count: { $sum: 1 } } },
+  ]);
+
+  let average, count;
+  if (!result.length || result[0].count < 10) {
+    average = FALLBACK_AVERAGES[vendorType];
+    count = result.length ? result[0].count : 0;
+  } else {
+    average = Math.round(result[0].avg);
+    count = result[0].count;
+  }
+
+  averageCache[vendorType] = { value: average, count, expiry: Date.now() + 24 * 60 * 60 * 1000 };
+  return { vendorType, vendorTypeLabel, average, count };
+}
+
+/**
+ * GET /api/public/aeo-report/average
+ * Return the industry average AEO score for a given category's vendor type
+ */
+router.get('/aeo-report/average', async (req, res) => {
+  try {
+    const { category } = req.query;
+    const validCategories = [
+      'copiers', 'telecoms', 'cctv', 'it',
+      'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+      'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+      'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+      'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+      'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+      'equity-release', 'commercial-mortgages', 'protection-insurance',
+      'sales', 'lettings', 'property-management', 'block-management',
+      'auctions', 'commercial-property', 'inventory',
+    ];
+
+    if (!category || !validCategories.includes(category)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing category' });
+    }
+
+    const data = await getIndustryAverage(category);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error('AEO average error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch industry average' });
+  }
+});
+
 // ============================================================
 // AEO REPORT — Public generation (full report with PDF)
 // ============================================================
@@ -1256,6 +1370,15 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     // 1. Generate full report via Claude with web search
     const reportData = await generateFullReport({ companyName, category, city, email });
+
+    // 1b. Compute industry average for PDF context
+    try {
+      const avg = await getIndustryAverage(category);
+      reportData.industryAverage = avg.average;
+      reportData.industryTypeLabel = avg.vendorTypeLabel;
+    } catch (e) {
+      console.error('Failed to fetch industry average for PDF:', e.message);
+    }
 
     // 2. Generate PDF
     const pdfBuffer = await generateReportPdf(reportData);
