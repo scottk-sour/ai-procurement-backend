@@ -20,8 +20,10 @@ const aeoReportSchema = new mongoose.Schema({
       // Estate Agents
       'sales', 'lettings', 'property-management', 'block-management',
       'auctions', 'commercial-property', 'inventory',
+      'other',
     ],
   },
+  customIndustry: { type: String, trim: true, default: null },
   city: { type: String, required: true, trim: true },
   email: { type: String, trim: true, lowercase: true },
   name: { type: String, trim: true },

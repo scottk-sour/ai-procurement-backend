@@ -1180,6 +1180,7 @@ router.get('/aeo-report/average', async (req, res) => {
       'equity-release', 'commercial-mortgages', 'protection-insurance',
       'sales', 'lettings', 'property-management', 'block-management',
       'auctions', 'commercial-property', 'inventory',
+      'other',
     ];
 
     if (!category || !validCategories.includes(category)) {
@@ -1258,6 +1259,7 @@ const AEO_ESTATE_AGENT_CATEGORIES = new Set([
 const AEO_EQUIPMENT_CATEGORIES = new Set(['copiers', 'telecoms', 'cctv', 'it']);
 
 function getAeoVendorType(category) {
+  if (category === 'other') return 'other';
   if (AEO_SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
   if (AEO_ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';
   if (AEO_MORTGAGE_CATEGORIES.has(category)) return 'mortgage-advisor';
@@ -1279,6 +1281,7 @@ const VENDOR_TYPE_LABELS = {
   'mortgage-advisor': 'mortgage advisory firm',
   'estate-agent': 'estate agency',
   equipment: 'office equipment vendor',
+  other: 'business',
 };
 
 const FALLBACK_AVERAGES = {
@@ -1287,6 +1290,7 @@ const FALLBACK_AVERAGES = {
   'mortgage-advisor': 18,
   'estate-agent': 21,
   equipment: 24,
+  other: 20,
 };
 
 const averageCache = {};
@@ -1294,6 +1298,11 @@ const averageCache = {};
 async function getIndustryAverage(category) {
   const vendorType = getAeoVendorType(category);
   const vendorTypeLabel = VENDOR_TYPE_LABELS[vendorType];
+
+  // 'other' has no aggregation data — return fallback directly
+  if (vendorType === 'other') {
+    return { vendorType, vendorTypeLabel, average: FALLBACK_AVERAGES.other, count: 0 };
+  }
 
   // Check cache (24h TTL)
   const cached = averageCache[vendorType];
@@ -1340,7 +1349,7 @@ const aeoRateLimiter = rateLimit({
  */
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
-    const { companyName, category, city, email, name, source } = req.body;
+    const { companyName, category, city, email, name, source, customIndustry } = req.body;
 
     if (!companyName || !category || !city) {
       return res.status(400).json({
@@ -1359,6 +1368,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       'equity-release', 'commercial-mortgages', 'protection-insurance',
       'sales', 'lettings', 'property-management', 'block-management',
       'auctions', 'commercial-property', 'inventory',
+      'other',
     ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
@@ -1370,7 +1380,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city})`);
 
     // 1. Generate full report via Claude with web search
-    const reportData = await generateFullReport({ companyName, category, city, email });
+    const reportData = await generateFullReport({ companyName, category, city, email, customIndustry });
 
     // 1b. Compute industry average for PDF context
     try {

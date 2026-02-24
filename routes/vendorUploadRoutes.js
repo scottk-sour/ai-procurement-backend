@@ -1095,8 +1095,8 @@ router.get("/products", async (req, res) => {
 const TIER_PRODUCT_LIMITS = {
   free: 3,
   listed: 3,
-  visible: 10,
-  basic: 10,
+  visible: Infinity,
+  basic: Infinity,
   verified: Infinity,
   managed: Infinity,
 };

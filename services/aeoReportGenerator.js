@@ -590,7 +590,7 @@ function getGapHints(vendorType) {
  * @param {string} [params.email]
  * @returns {Object} Full report data ready for saving
  */
-export async function generateFullReport({ companyName, category, city, email }) {
+export async function generateFullReport({ companyName, category, city, email, customIndustry }) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
@@ -598,12 +598,21 @@ export async function generateFullReport({ companyName, category, city, email })
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const vendorType = getVendorType(category);
-  const categoryLabel = CATEGORY_LABELS[category] || category;
-  const hints = CATEGORY_SEARCH_HINTS[category] || {};
-  const searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
-    .map((q) => q.replace(/\{city\}/g, city));
-  const clarification = (hints.clarification || '').replace(/\{city\}/g, city);
+  let vendorType, categoryLabel, hints, searchQueries, clarification;
+  if (category === 'other') {
+    vendorType = 'other';
+    categoryLabel = customIndustry || 'business';
+    hints = {};
+    searchQueries = [`${categoryLabel} companies in ${city} UK`];
+    clarification = `I am looking for ${categoryLabel} businesses. Only return real companies that match this industry.`;
+  } else {
+    vendorType = getVendorType(category);
+    categoryLabel = CATEGORY_LABELS[category] || category;
+    hints = CATEGORY_SEARCH_HINTS[category] || {};
+    searchQueries = (hints.queries || [`${categoryLabel} companies in {city} UK`])
+      .map((q) => q.replace(/\{city\}/g, city));
+    clarification = (hints.clarification || '').replace(/\{city\}/g, city);
+  }
 
   const isProfessional = vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent';
   const entityLabel = vendorType === 'estate-agent' ? 'agency'
@@ -787,7 +796,10 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
   let competitorsOnTendorAI = 0;
   const cityRegex = new RegExp(city, 'i');
 
-  if (vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent') {
+  if (category === 'other') {
+    // No TendorAI directory for 'other' categories
+    competitorsOnTendorAI = 0;
+  } else if (vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent') {
     const practiceArea = CATEGORY_TO_PRACTICE_AREA[category];
     if (practiceArea) {
       competitorsOnTendorAI = await Vendor.countDocuments({
@@ -808,6 +820,7 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
   return {
     companyName,
     category,
+    customIndustry: customIndustry || null,
     city,
     email: email || undefined,
     reportType: 'full',

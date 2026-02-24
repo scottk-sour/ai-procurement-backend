@@ -336,6 +336,7 @@ function drawCoverPage(ctx, report) {
     'commercial-property': 'Commercial Property',
     inventory: 'Inventory Services',
   }[report.category] || report.category;
+  if (report.category === 'other' && report.customIndustry) categoryLabel = report.customIndustry;
   const catCity = `${categoryLabel} — ${report.city}`;
   const catCityW = font.widthOfTextAtSize(catCity, 12);
   page.drawText(catCity, { x: cx - catCityW / 2, y, size: 12, font, color: GREY });
