@@ -3,7 +3,7 @@
 
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import { authRateLimiter } from '../middleware/authRateLimiter.js';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
@@ -87,7 +87,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
 });
 
 // One-time hash generation:
-// node -e "import('bcryptjs').then(b => b.default.hash('YOUR_PASSWORD', 12).then(console.log))"
+// node -e "import('bcrypt').then(b => b.default.hash('YOUR_PASSWORD', 12).then(console.log))"
 
 // Dashboard overview stats
 router.get('/stats', adminAuth, async (req, res) => {
