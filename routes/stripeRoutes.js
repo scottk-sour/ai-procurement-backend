@@ -31,40 +31,41 @@ const requireStripe = (req, res, next) => {
 };
 
 // Price IDs from environment variables
+// Env vars still use old names (STRIPE_VISIBLE_PRICE_ID / STRIPE_VERIFIED_PRICE_ID)
 const PRICE_IDS = {
-  visible: process.env.STRIPE_VISIBLE_PRICE_ID,   // Starter — £149/mo
-  verified: process.env.STRIPE_VERIFIED_PRICE_ID  // Pro — £299/mo
+  starter: process.env.STRIPE_VISIBLE_PRICE_ID,   // Starter — £149/mo
+  pro: process.env.STRIPE_VERIFIED_PRICE_ID,       // Pro — £299/mo
 };
 
-// Subscription plan configurations - AI Visibility focused
+// Subscription plan configurations
 const SUBSCRIPTION_PLANS = {
-  visible: {
-    name: 'Visible',
-    priceId: PRICE_IDS.visible,
-    price: 99,
+  starter: {
+    name: 'Starter',
+    priceId: PRICE_IDS.starter,
+    price: 149,
     internalTier: 'basic',
     features: [
-      'Full company profile',
-      'Upload product catalog',
-      'AI Visibility Score up to 85',
-      'Appear in AI recommendations',
-      'Receive customer enquiries',
-      'Email notifications',
+      'Pricing visible to AI',
+      'Ranked above free profiles',
+      'AI Visibility Score + breakdown',
+      'AI Mention Tracking',
+      'Unlimited products/services',
+      'Monthly AEO report',
+      'Full analytics dashboard',
     ],
   },
-  verified: {
-    name: 'Verified',
-    priceId: PRICE_IDS.verified,
-    price: 149,
+  pro: {
+    name: 'Pro',
+    priceId: PRICE_IDS.pro,
+    price: 299,
     internalTier: 'managed',
     features: [
-      'Everything in Visible',
-      'Verified Supplier badge',
-      'Priority in search results',
-      'Priority in AI recommendations',
-      'AI Visibility Score up to 100',
-      'We optimise your profile for AI',
-      'Analytics dashboard',
+      'Everything in Starter',
+      'We install AI visibility code on your website',
+      'Weekly AEO reports',
+      'TendorAI Verified badge',
+      'AEO audit of your website',
+      'Google Business Profile optimisation checklist',
       'Priority support',
     ],
   },
@@ -129,12 +130,14 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
     const { planId } = req.body;
     const vendor = req.vendor;
 
-    // Map old tier names to new ones
+    // Map old/alias plan names to current keys
     const planMapping = {
-      basic: 'visible',
-      visible: 'visible',
-      managed: 'verified',
-      verified: 'verified'
+      starter: 'starter',
+      basic: 'starter',
+      visible: 'starter',
+      pro: 'pro',
+      managed: 'pro',
+      verified: 'pro',
     };
 
     const normalizedPlanId = planMapping[planId] || planId;
@@ -143,7 +146,7 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
     if (!plan) {
       return res.status(400).json({
         success: false,
-        message: `Invalid plan: ${planId}. Available plans: visible, verified`
+        message: `Invalid plan: ${planId}. Available plans: starter, pro`
       });
     }
 
@@ -263,22 +266,27 @@ router.get('/subscription-status', requireStripe, authenticateVendor, async (req
   try {
     const vendor = req.vendor;
 
-    // Map internal tiers to display names
+    // Map internal tiers to display plan names
     const tierDisplayNames = {
-      free: 'listed',
-      basic: 'visible',
-      managed: 'verified',
-      enterprise: 'verified',
-      listed: 'listed',
-      visible: 'visible',
-      verified: 'verified'
+      free: 'free',
+      listed: 'free',
+      standard: 'free',
+      basic: 'starter',
+      visible: 'starter',
+      starter: 'starter',
+      silver: 'starter',
+      managed: 'pro',
+      verified: 'pro',
+      pro: 'pro',
+      gold: 'pro',
+      enterprise: 'pro',
     };
 
     if (!vendor.stripeCustomerId || vendor.subscriptionStatus !== 'active') {
       return res.json({
         success: true,
         subscription: null,
-        plan: tierDisplayNames[vendor.tier] || 'listed',
+        plan: tierDisplayNames[vendor.tier] || 'free',
         internalTier: vendor.tier || 'free',
       });
     }
@@ -295,13 +303,13 @@ router.get('/subscription-status', requireStripe, authenticateVendor, async (req
         return res.json({
           success: true,
           subscription: null,
-          plan: tierDisplayNames[vendor.tier] || 'listed',
+          plan: tierDisplayNames[vendor.tier] || 'free',
           internalTier: vendor.tier || 'free',
         });
       }
 
       const subscription = subscriptions.data[0];
-      const planId = subscription.metadata.planId || 'visible';
+      const planId = subscription.metadata.planId || 'starter';
 
       res.json({
         success: true,
@@ -328,7 +336,7 @@ router.get('/subscription-status', requireStripe, authenticateVendor, async (req
           id: vendor.stripeSubscriptionId,
           status: vendor.subscriptionStatus
         } : null,
-        plan: tierDisplayNames[vendor.tier] || 'listed',
+        plan: tierDisplayNames[vendor.tier] || 'free',
         internalTier: vendor.tier || 'free',
       });
     }
@@ -423,7 +431,7 @@ async function handleCheckoutComplete(session) {
     }
 
     // Update vendor with subscription info
-    vendor.tier = internalTier || (planId === 'verified' ? 'managed' : 'basic');
+    vendor.tier = internalTier || (planId === 'pro' || planId === 'verified' ? 'managed' : 'basic');
     vendor.subscriptionStatus = 'active';
     vendor.stripeSubscriptionId = session.subscription;
 
