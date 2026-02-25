@@ -12,6 +12,7 @@ import {
 } from '../controllers/copierQuoteController.js';
 import userAuth from '../middleware/userAuth.js';
 import vendorAuth from '../middleware/vendorAuth.js';
+import adminAuth from '../middleware/adminAuth.js';
 
 const router = express.Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +57,6 @@ router.get('/user-quotes', userAuth, getUserCopierQuotes);
 router.get('/vendor-quotes', vendorAuth, getVendorQuoteRequests);
 router.get('/supplier-quotes', vendorAuth, getVendorQuoteRequests); // ✅ This is what fixes the 404
 
-router.put('/status/:requestId', updateQuoteStatus);
+router.put('/status/:requestId', adminAuth, updateQuoteStatus);
 
 export default router;

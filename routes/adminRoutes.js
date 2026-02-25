@@ -3,6 +3,8 @@
 
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { authRateLimiter } from '../middleware/authRateLimiter.js';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
 import QuoteRequest from '../models/QuoteRequest.js';
@@ -33,7 +35,7 @@ if (process.env.STRIPE_SECRET_KEY) {
 
 const router = express.Router();
 
-const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_JWT_SECRET } = process.env;
+const { ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_SECRET } = process.env;
 
 // Middleware for admin authentication
 const adminAuth = (req, res, next) => {
@@ -56,8 +58,8 @@ const adminAuth = (req, res, next) => {
   }
 };
 
-// Admin Login
-router.post('/login', (req, res) => {
+// Admin Login (bcrypt-hashed password, rate limited)
+router.post('/login', authRateLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -67,12 +69,12 @@ router.post('/login', (req, res) => {
 
     console.log('[Admin Login] Env check:', {
       hasEmail: !!ADMIN_EMAIL,
-      hasPassword: !!ADMIN_PASSWORD,
+      hasHash: !!ADMIN_PASSWORD_HASH,
       hasSecret: !!ADMIN_JWT_SECRET,
       secretLength: ADMIN_JWT_SECRET?.length,
     });
 
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    if (email === ADMIN_EMAIL && ADMIN_PASSWORD_HASH && await bcrypt.compare(password, ADMIN_PASSWORD_HASH)) {
       const token = jwt.sign({ role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '8h' });
       return res.status(200).json({ status: 'success', token, message: 'Login successful.' });
     } else {
@@ -83,6 +85,9 @@ router.post('/login', (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Login failed: ' + error.message });
   }
 });
+
+// One-time hash generation:
+// node -e "import('bcryptjs').then(b => b.default.hash('YOUR_PASSWORD', 12).then(console.log))"
 
 // Dashboard overview stats
 router.get('/stats', adminAuth, async (req, res) => {

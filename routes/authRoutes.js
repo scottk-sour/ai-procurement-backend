@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
 import { sendPasswordResetEmail, sendVendorWelcomeEmail } from '../services/emailService.js';
+import { validatePassword } from '../utils/passwordValidator.js';
 import 'dotenv/config';
 
 const router = express.Router();
@@ -24,8 +25,9 @@ const validateRequestBody = (fields) => {
     if (fields.includes('email') && !/\S+@\S+\.\S+/.test(req.body.email)) {
       return res.status(400).json({ message: 'Invalid email format' });
     }
-    if (fields.includes('password') && req.body.password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    if (fields.includes('password')) {
+      const pwError = validatePassword(req.body.password);
+      if (pwError) return res.status(400).json({ message: pwError });
     }
     next();
   };
@@ -46,7 +48,7 @@ router.post(
       if (await User.findOne({ email })) {
         return res.status(400).json({ message: 'User already exists' });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 12);
       const newUser = new User({ name, email, password: hashedPassword, role: 'user' });
       await newUser.save();
       res.status(201).json({ message: 'User registered successfully' });
@@ -107,7 +109,7 @@ router.post(
       const token = jwt.sign(
         { userId: user._id, role: user.role || 'user', name: user.name },
         JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
       );
       res.status(200).json({
         message: 'Login successful',
@@ -138,7 +140,7 @@ router.post(
       const token = jwt.sign(
         { vendorId: vendor._id, role: vendor.role || 'vendor', name: vendor.name },
         JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
       );
       res.status(200).json({
         message: 'Login successful',
@@ -261,8 +263,9 @@ router.post('/vendor-reset-password', async (req, res) => {
     return res.status(400).json({ message: 'Token and new password are required' });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  const pwError = validatePassword(password);
+  if (pwError) {
+    return res.status(400).json({ message: pwError });
   }
 
   try {
@@ -290,7 +293,7 @@ router.post('/vendor-reset-password', async (req, res) => {
     const jwtToken = jwt.sign(
       { vendorId: vendor._id, role: 'vendor', name: vendor.name },
       JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     res.status(200).json({

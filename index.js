@@ -72,8 +72,6 @@ const ALLOWED_ORIGINS = [
 function isAllowedOrigin(origin) {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  // Allow all Vercel preview deployments
-  if (origin.endsWith('.vercel.app')) return true;
   return false;
 }
 

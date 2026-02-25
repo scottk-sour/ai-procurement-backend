@@ -8,6 +8,9 @@ import rateLimit from 'express-rate-limit';
 import { isValidObjectId } from 'mongoose';
 import vendorAuth from "../middleware/vendorAuth.js";
 import userAuth from '../middleware/userAuth.js';
+import adminAuth from '../middleware/adminAuth.js';
+import { authRateLimiter } from '../middleware/authRateLimiter.js';
+import { validatePassword } from '../utils/passwordValidator.js';
 import { csvUpload } from "../middleware/secureUpload.js";
 import { vendorUploadRateLimiter } from "../middleware/uploadRateLimiter.js";
 import Vendor from "../models/Vendor.js";
@@ -728,8 +731,8 @@ router.get('/recommend', userAuth, async (req, res) => {
     }
 });
 
-// Additional endpoint for getting all vendors with filtering
-router.get('/all', async (req, res) => {
+// Additional endpoint for getting all vendors with filtering (admin only)
+router.get('/all', adminAuth, async (req, res) => {
     try {
         const {
             serviceType,
@@ -818,9 +821,9 @@ router.get('/all', async (req, res) => {
     }
 });
 
-// ===== VENDOR CLAIM ROUTE (public) =====
+// ===== VENDOR CLAIM ROUTE (public, rate limited) =====
 
-router.post('/claim', async (req, res) => {
+router.post('/claim', authRateLimiter, async (req, res) => {
     try {
         const { vendorId, name, email, password, role } = req.body;
 
@@ -828,8 +831,9 @@ router.post('/claim', async (req, res) => {
             return res.status(400).json({ message: 'All fields are required.' });
         }
 
-        if (password.length < 8) {
-            return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+        const pwError = validatePassword(password);
+        if (pwError) {
+            return res.status(400).json({ message: pwError });
         }
 
         if (!isValidObjectId(vendorId)) {
