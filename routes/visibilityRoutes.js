@@ -11,17 +11,17 @@ import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Review from '../models/Review.js';
-import GeoAudit from '../models/GeoAudit.js';
+import AeoAudit from '../models/AeoAudit.js';
 import VendorActivity from '../models/VendorActivity.js';
 
 const router = express.Router();
 
 /**
- * Fetch the latest GEO Audit score for visibility calculation
+ * Fetch the latest AEO Audit score for visibility calculation
  */
-async function getGeoAuditScore(vendorId) {
+async function getAeoAuditScore(vendorId) {
   try {
-    const audit = await GeoAudit.findOne({ vendorId })
+    const audit = await AeoAudit.findOne({ vendorId })
       .sort({ createdAt: -1 })
       .select('overallScore')
       .lean();
@@ -173,17 +173,17 @@ async function getEngagementData(vendorId) {
  */
 async function getVerifiedFeaturesData(vendorId) {
   try {
-    const [geoAudit, competitorScans] = await Promise.all([
-      GeoAudit.findOne({ vendorId }).sort({ createdAt: -1 }).lean(),
+    const [aeoAudit, competitorScans] = await Promise.all([
+      AeoAudit.findOne({ vendorId }).sort({ createdAt: -1 }).lean(),
       AIMentionScan.countDocuments({ vendorId, source: 'weekly_scan' }).catch(() => 0),
     ]);
 
-    const schemaCheck = geoAudit?.checks?.find(
+    const schemaCheck = aeoAudit?.checks?.find(
       c => c.name && c.name.toLowerCase().includes('schema')
     );
 
     return {
-      geoAuditCompleted: !!geoAudit,
+      aeoAuditCompleted: !!aeoAudit,
       schemaVerified: schemaCheck ? schemaCheck.score >= 7 : false,
       priorityPlacement: false,
       competitorTracking: competitorScans > 0,
@@ -346,8 +346,8 @@ function getActionUrl(action) {
   if (actionLower.includes('product') || actionLower.includes('catalog')) {
     return '/vendor-dashboard?tab=products';
   }
-  if (actionLower.includes('geo') || actionLower.includes('audit')) {
-    return '/vendor-dashboard/geo-audit';
+  if (actionLower.includes('aeo') || actionLower.includes('geo') || actionLower.includes('audit')) {
+    return '/vendor-dashboard/analytics';
   }
   if (actionLower.includes('profile') || actionLower.includes('settings')) {
     return '/vendor-dashboard?tab=profile';

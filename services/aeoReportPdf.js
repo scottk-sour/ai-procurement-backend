@@ -805,7 +805,7 @@ function drawCtaPage(ctx, report) {
   const features = [
     'AI-Optimised Vendor Profile — structured data that AI tools can read and recommend',
     'Weekly AI Mention Scanning — track whether AI recommends you and your position',
-    'GEO Audit Tool — check your website\'s AI readiness with 10-point analysis',
+    'AEO Audit Tool — check your website\'s AI readiness with 10-point analysis',
     'Competitor Intelligence — see who AI recommends in your area',
     'Review Collection — gather verified reviews that boost AI trust signals',
     'Visibility Score Dashboard — track your AI visibility score over time',
@@ -827,8 +827,8 @@ function drawCtaPage(ctx, report) {
 
   const plans = [
     { name: 'Free', price: '\u00A30/forever', features: ['Basic AI profile', 'Category listing', 'Ranked last in results'], url: 'https://www.tendorai.com/vendor-signup' },
-    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AEO report', 'GEO Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?plan=starter' },
-    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AEO reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?plan=pro' },
+    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AEO report', 'AEO Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?tier=starter' },
+    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AEO reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
   ];
 
   const planW = CONTENT_W / 3;

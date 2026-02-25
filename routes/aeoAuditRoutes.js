@@ -1,16 +1,19 @@
 import express from 'express';
 import axios from 'axios';
 import vendorAuth from '../middleware/vendorAuth.js';
-import GeoAudit from '../models/GeoAudit.js';
+import AeoAudit from '../models/AeoAudit.js';
 import Vendor from '../models/Vendor.js';
 
 const router = express.Router();
 
+/** Paid tier names (Starter + Pro and all aliases) */
+const PAID_TIERS = ['basic', 'starter', 'silver', 'visible', 'managed', 'pro', 'verified', 'gold', 'enterprise'];
+
 /**
- * Analyse a webpage for GEO (Generative Engine Optimisation) signals.
+ * Analyse a webpage for AEO (Answer Engine Optimisation) signals.
  * Returns 10 checks, each scored 0-10, totalling 0-100.
  */
-function analyseGeoSignals(html, url) {
+function analyseAeoSignals(html, url) {
   const checks = [];
   const recommendations = [];
 
@@ -200,8 +203,8 @@ function analyseGeoSignals(html, url) {
 }
 
 /**
- * POST /api/geo-audit
- * Run a GEO audit on the vendor's website
+ * POST /api/aeo-audit
+ * Run an AEO audit on the vendor's website
  */
 router.post('/', vendorAuth, async (req, res) => {
   try {
@@ -228,12 +231,12 @@ router.post('/', vendorAuth, async (req, res) => {
     }
 
     const vendorTier = vendor.tier || vendor.account?.tier || 'free';
-    const isPaid = vendorTier === 'visible' || vendorTier === 'verified';
+    const isPaid = PAID_TIERS.includes(vendorTier.toLowerCase());
 
     if (isPaid) {
       // Paid: 1 audit per 7 days
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const recent = await GeoAudit.findOne({
+      const recent = await AeoAudit.findOne({
         vendorId: req.vendor.id,
         createdAt: { $gte: sevenDaysAgo },
       }).lean();
@@ -243,18 +246,18 @@ router.post('/', vendorAuth, async (req, res) => {
         return res.status(429).json({
           success: false,
           limited: true,
-          message: 'You can run one GEO audit per week.',
+          message: 'You can run one AEO audit per week.',
           nextAvailable: nextAvailable.toISOString(),
         });
       }
     } else {
       // Free: 1 audit ever
-      const existing = await GeoAudit.findOne({ vendorId: req.vendor.id }).lean();
+      const existing = await AeoAudit.findOne({ vendorId: req.vendor.id }).lean();
       if (existing) {
         return res.status(429).json({
           success: false,
           limited: true,
-          message: 'Free accounts can run one GEO audit. Upgrade to run weekly audits.',
+          message: 'Free accounts can run one AEO audit. Upgrade to run weekly audits.',
           upgradeUrl: '/vendor-dashboard/settings?tab=subscription',
         });
       }
@@ -266,7 +269,7 @@ router.post('/', vendorAuth, async (req, res) => {
       const response = await axios.get(websiteUrl, {
         timeout: 15000,
         headers: {
-          'User-Agent': 'TendorAI-GEO-Audit/1.0',
+          'User-Agent': 'TendorAI-AEO-Audit/1.0',
           'Accept': 'text/html',
         },
         maxRedirects: 5,
@@ -287,10 +290,10 @@ router.post('/', vendorAuth, async (req, res) => {
     }
 
     // Run analysis
-    const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseGeoSignals(html, websiteUrl);
+    const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseAeoSignals(html, websiteUrl);
 
     // Save audit
-    const audit = await GeoAudit.create({
+    const audit = await AeoAudit.create({
       vendorId: req.vendor.id,
       websiteUrl,
       overallScore,
@@ -312,18 +315,18 @@ router.post('/', vendorAuth, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GEO Audit error:', error);
-    res.status(500).json({ success: false, error: 'Failed to run GEO audit.' });
+    console.error('AEO Audit error:', error);
+    res.status(500).json({ success: false, error: 'Failed to run AEO audit.' });
   }
 });
 
 /**
- * GET /api/geo-audit/latest
+ * GET /api/aeo-audit/latest
  * Fetch the most recent audit for the vendor, plus a canRunAgain flag
  */
 router.get('/latest', vendorAuth, async (req, res) => {
   try {
-    const audit = await GeoAudit.findOne({ vendorId: req.vendor.id })
+    const audit = await AeoAudit.findOne({ vendorId: req.vendor.id })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -334,7 +337,7 @@ router.get('/latest', vendorAuth, async (req, res) => {
     // Determine if vendor can run again
     const vendor = await Vendor.findById(req.vendor.id).select('tier account').lean();
     const vendorTier = vendor?.tier || vendor?.account?.tier || 'free';
-    const isPaid = vendorTier === 'visible' || vendorTier === 'verified';
+    const isPaid = PAID_TIERS.includes(vendorTier.toLowerCase());
 
     let canRunAgain = false;
     let nextAvailable = null;
@@ -365,18 +368,18 @@ router.get('/latest', vendorAuth, async (req, res) => {
       tier: vendorTier,
     });
   } catch (error) {
-    console.error('GEO Audit latest error:', error);
+    console.error('AEO Audit latest error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch latest audit.' });
   }
 });
 
 /**
- * GET /api/geo-audit/history
+ * GET /api/aeo-audit/history
  * Last 10 audits (id, url, score, date)
  */
 router.get('/history', vendorAuth, async (req, res) => {
   try {
-    const audits = await GeoAudit.find({ vendorId: req.vendor.id })
+    const audits = await AeoAudit.find({ vendorId: req.vendor.id })
       .sort({ createdAt: -1 })
       .limit(10)
       .select('websiteUrl overallScore createdAt')
@@ -392,7 +395,7 @@ router.get('/history', vendorAuth, async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error('GEO Audit history error:', error);
+    console.error('AEO Audit history error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch audit history.' });
   }
 });

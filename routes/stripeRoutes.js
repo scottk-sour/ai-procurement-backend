@@ -32,8 +32,8 @@ const requireStripe = (req, res, next) => {
 
 // Price IDs from environment variables
 const PRICE_IDS = {
-  visible: process.env.STRIPE_VISIBLE_PRICE_ID,   // £99/mo
-  verified: process.env.STRIPE_VERIFIED_PRICE_ID  // £149/mo
+  visible: process.env.STRIPE_VISIBLE_PRICE_ID,   // Starter — £149/mo
+  verified: process.env.STRIPE_VERIFIED_PRICE_ID  // Pro — £299/mo
 };
 
 // Subscription plan configurations - AI Visibility focused

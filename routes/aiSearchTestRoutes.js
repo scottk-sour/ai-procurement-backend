@@ -163,7 +163,7 @@ router.post('/', vendorAuth, async (req, res) => {
           limited: true,
           message: usage.isPaid
             ? `You've used all ${usage.limit} tests this month. Tests reset on ${new Date(usage.resetDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.`
-            : `You've used all ${usage.limit} free tests. Upgrade to Visible for ${PAID_MONTHLY_LIMIT} monthly tests.`,
+            : `You've used all ${usage.limit} free tests. Upgrade to Starter for ${PAID_MONTHLY_LIMIT} monthly tests.`,
           testsRemaining: 0,
           isPaid: usage.isPaid,
           resetDate: usage.resetDate,

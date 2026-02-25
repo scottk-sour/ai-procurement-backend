@@ -37,7 +37,7 @@ router.post('/:vendorId/posts', vendorAuth, async (req, res) => {
     if (monthlyLimit === 0) {
       return res.status(403).json({
         success: false,
-        error: 'Your tier does not allow posting. Upgrade to Visible or Verified.',
+        error: 'Your tier does not allow posting. Upgrade to Starter or Pro.',
         upgradeUrl: 'https://www.tendorai.com/vendor-pricing',
       });
     }

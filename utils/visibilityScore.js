@@ -212,7 +212,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   // VERIFIED-ONLY FEATURES (max 20 pts — £149 only)
   // ============================================
   const {
-    geoAuditCompleted = false,
+    aeoAuditCompleted = false,
     schemaVerified = false,
     priorityPlacement = false,
     competitorTracking = false,
@@ -220,7 +220,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   } = verifiedFeatures;
 
   const verifiedChecks = [
-    { name: 'GEO audit completed on website', points: 4, completed: isVerified && geoAuditCompleted },
+    { name: 'AEO audit completed on website', points: 4, completed: isVerified && aeoAuditCompleted },
     { name: 'Schema.org data verified', points: 4, completed: isVerified && schemaVerified },
     { name: 'Priority placement on location pages', points: 4, completed: isVerified && priorityPlacement },
     { name: 'Competitor tracking enabled', points: 4, completed: isVerified && competitorTracking },

@@ -223,7 +223,7 @@ export async function generateWeeklyEmail(vendorId) {
                     <p style="margin:0;font-size:14px;color:#991b1b;font-weight:600;">You weren't mentioned by any AI tools this week.</p>
                     <p style="margin:8px 0 0;font-size:13px;color:#b91c1c;">Paid vendors are 3x more likely to be recommended by AI assistants.</p>
                     <p style="margin:12px 0 0;">
-                      <a href="${upgradeUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Upgrade to Visible &mdash; &pound;99/mo</a>
+                      <a href="${upgradeUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Upgrade to Starter &mdash; &pound;149/mo</a>
                     </p>
                   </td>
                 </tr>
@@ -283,9 +283,9 @@ export async function generateWeeklyEmail(vendorId) {
                 <tr>
                   <td style="padding:16px 20px;">
                     <p style="margin:0;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Quick Win</p>
-                    <p style="margin:8px 0 0;font-size:14px;color:#1e40af;">Run your free GEO Audit to find out what's holding your score back.</p>
+                    <p style="margin:8px 0 0;font-size:14px;color:#1e40af;">Run your free AEO Audit to find out what's holding your score back.</p>
                     <p style="margin:12px 0 0;">
-                      <a href="${dashboardUrl}/geo-audit" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Run GEO Audit</a>
+                      <a href="${dashboardUrl}/analytics" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Run AEO Audit</a>
                     </p>
                   </td>
                 </tr>
@@ -300,7 +300,7 @@ export async function generateWeeklyEmail(vendorId) {
               <a href="${dashboardUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">View Your Dashboard &rarr;</a>
               ${!isPaid ? `
               <p style="margin:12px 0 0;">
-                <a href="${upgradeUrl}" style="font-size:13px;color:#7c3aed;text-decoration:underline;">Upgrade to Visible &mdash; &pound;99/mo</a>
+                <a href="${upgradeUrl}" style="font-size:13px;color:#7c3aed;text-decoration:underline;">Upgrade to Starter &mdash; &pound;149/mo</a>
               </p>
               ` : ''}
             </td>

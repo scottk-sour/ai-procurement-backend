@@ -15,7 +15,7 @@ import AeoReport from '../models/AeoReport.js';
 import VendorLead from '../models/VendorLead.js';
 import Review from '../models/Review.js';
 import VendorPost from '../models/VendorPost.js';
-import GeoAudit from '../models/GeoAudit.js';
+import AeoAudit from '../models/AeoAudit.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import SchemaInstallRequest from '../models/SchemaInstallRequest.js';
 import { decrypt } from '../models/SchemaInstallRequest.js';
@@ -427,7 +427,7 @@ router.delete('/vendors/:id', adminAuth, async (req, res) => {
       VendorLead.deleteMany({ vendor: id }),
       Review.deleteMany({ vendor: id }),
       VendorPost.deleteMany({ vendor: id }),
-      GeoAudit.deleteMany({ vendorId: id }),
+      AeoAudit.deleteMany({ vendorId: id }),
       AIMentionScan.deleteMany({ vendorId: id }),
     ]);
 
@@ -455,7 +455,7 @@ router.post('/vendors/bulk-delete', adminAuth, async (req, res) => {
       VendorLead.deleteMany({ vendor: { $in: ids } }),
       Review.deleteMany({ vendor: { $in: ids } }),
       VendorPost.deleteMany({ vendor: { $in: ids } }),
-      GeoAudit.deleteMany({ vendorId: { $in: ids } }),
+      AeoAudit.deleteMany({ vendorId: { $in: ids } }),
       AIMentionScan.deleteMany({ vendorId: { $in: ids } }),
     ]);
 
