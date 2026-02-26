@@ -220,7 +220,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   } = verifiedFeatures;
 
   const verifiedChecks = [
-    { name: 'AEO audit completed on website', points: 4, completed: isVerified && aeoAuditCompleted },
+    { name: 'AI Visibility (AEO) audit completed on website', points: 4, completed: isVerified && aeoAuditCompleted },
     { name: 'Schema.org data verified', points: 4, completed: isVerified && schemaVerified },
     { name: 'Priority placement on location pages', points: 4, completed: isVerified && priorityPlacement },
     { name: 'Competitor tracking enabled', points: 4, completed: isVerified && competitorTracking },

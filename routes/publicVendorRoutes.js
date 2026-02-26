@@ -1228,7 +1228,7 @@ router.get('/aeo-report/:reportId/pdf', async (req, res) => {
       return res.status(404).json({ success: false, error: 'PDF not found' });
     }
 
-    const filename = `AEO-Report-${(report.companyName || 'Company').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+    const filename = `AI-Visibility-AEO-Report-${(report.companyName || 'Company').replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(report.pdfBuffer);
@@ -1432,7 +1432,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     console.error('AEO Report error:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate AEO report. Please try again.',
+      error: 'Failed to generate AI Visibility (AEO) report. Please try again.',
     });
   }
 });

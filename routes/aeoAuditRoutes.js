@@ -246,7 +246,7 @@ router.post('/', vendorAuth, async (req, res) => {
         return res.status(429).json({
           success: false,
           limited: true,
-          message: 'You can run one AEO audit per week.',
+          message: 'You can run one AI Visibility (AEO) audit per week.',
           nextAvailable: nextAvailable.toISOString(),
         });
       }
@@ -257,7 +257,7 @@ router.post('/', vendorAuth, async (req, res) => {
         return res.status(429).json({
           success: false,
           limited: true,
-          message: 'Free accounts can run one AEO audit. Upgrade to run weekly audits.',
+          message: 'Free accounts can run one AI Visibility (AEO) audit. Upgrade to run weekly audits.',
           upgradeUrl: '/vendor-dashboard/settings?tab=subscription',
         });
       }
@@ -316,7 +316,7 @@ router.post('/', vendorAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('AEO Audit error:', error);
-    res.status(500).json({ success: false, error: 'Failed to run AEO audit.' });
+    res.status(500).json({ success: false, error: 'Failed to run AI Visibility (AEO) audit.' });
   }
 });
 

@@ -283,9 +283,9 @@ export async function generateWeeklyEmail(vendorId) {
                 <tr>
                   <td style="padding:16px 20px;">
                     <p style="margin:0;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Quick Win</p>
-                    <p style="margin:8px 0 0;font-size:14px;color:#1e40af;">Run your free AEO Audit to find out what's holding your score back.</p>
+                    <p style="margin:8px 0 0;font-size:14px;color:#1e40af;">Run your free AI Visibility (AEO) Audit to find out what's holding your score back.</p>
                     <p style="margin:12px 0 0;">
-                      <a href="${dashboardUrl}/analytics" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Run AEO Audit</a>
+                      <a href="${dashboardUrl}/analytics" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Run AI Visibility (AEO) Audit</a>
                     </p>
                   </td>
                 </tr>

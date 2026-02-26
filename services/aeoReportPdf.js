@@ -487,7 +487,7 @@ function drawWhatAiKnowsPage(ctx, report) {
     y -= 18;
 
     const eduParagraphs = [
-      'Your website may perform well on traditional SEO audits -- but that no longer guarantees visibility. SEO measures how Google indexes your site. AEO (Answer Engine Optimisation) measures whether AI actually recommends you.',
+      'Your website may perform well on traditional SEO audits -- but that no longer guarantees visibility. SEO measures how Google indexes your site. AI Visibility (AEO — Answer Engine Optimisation) measures whether AI actually recommends you.',
       'AI recommendation engines like ChatGPT, Perplexity, and Claude don\'t just crawl your site -- they evaluate structured data, authority signals, verified profiles, and review sentiment to decide who to recommend.',
       'A business can score 70+ on a website SEO audit and still score under 20 on AI visibility, because the signals AI uses are fundamentally different from what traditional SEO tools measure.',
     ];
@@ -685,7 +685,7 @@ function drawTheShiftPage(ctx, report) {
   const { font, bold } = ctx;
 
   let y = PAGE_H - 75;
-  page.drawText('The Shift: SEO to AEO', { x: MARGIN, y, size: 20, font: bold, color: DARK });
+  page.drawText('The Shift: SEO to AI Visibility (AEO)', { x: MARGIN, y, size: 20, font: bold, color: DARK });
 
   y -= 15;
   page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: BLUE });
@@ -697,11 +697,11 @@ function drawTheShiftPage(ctx, report) {
       text: 'According to Gartner, by 2026, traditional search engine volume will drop 25% as consumers shift to AI assistants. Forrester reports that 60% of B2B buyers now use AI tools to research suppliers before making contact. If your business isn\'t visible to AI, you\'re losing leads you\'ll never know about.',
     },
     {
-      title: 'What is AEO?',
-      text: 'Answer Engine Optimisation (AEO) is the process of making your business visible to AI recommendation engines like ChatGPT, Perplexity, Claude, and Google AI Overviews. Unlike SEO which optimises for search engine rankings, AEO focuses on structured data, authority signals, and verified profiles that AI tools use to make recommendations.',
+      title: 'What is AI Visibility (AEO)?',
+      text: 'AI Visibility (AEO — Answer Engine Optimisation) is the process of making your business visible to AI recommendation engines like ChatGPT, Perplexity, Claude, and Google AI Overviews. Unlike SEO which optimises for search engine rankings, AI Visibility (AEO) focuses on structured data, authority signals, and verified profiles that AI tools use to make recommendations.',
     },
     {
-      title: 'SEO vs AEO',
+      title: 'SEO vs AI Visibility (AEO)',
       text: '',
     },
   ];
@@ -729,7 +729,7 @@ function drawTheShiftPage(ctx, report) {
     page.drawRectangle({ x: tableX, y: y - rowH + 10, width: CONTENT_W, height: rowH, color: BLUE });
     page.drawText('', { x: tableX + 10, y: y - 5, size: 9, font: bold, color: WHITE });
     page.drawText('Traditional SEO', { x: tableX + col1W + 10, y: y - 5, size: 9, font: bold, color: WHITE });
-    page.drawText('AEO (AI Optimisation)', { x: tableX + col1W + col2W + 10, y: y - 5, size: 9, font: bold, color: WHITE });
+    page.drawText('AI Visibility (AEO)', { x: tableX + col1W + col2W + 10, y: y - 5, size: 9, font: bold, color: WHITE });
     y -= rowH;
 
     const rows = [
@@ -805,7 +805,7 @@ function drawCtaPage(ctx, report) {
   const features = [
     'AI-Optimised Vendor Profile — structured data that AI tools can read and recommend',
     'Weekly AI Mention Scanning — track whether AI recommends you and your position',
-    'AEO Audit Tool — check your website\'s AI readiness with 10-point analysis',
+    'AI Visibility (AEO) Audit Tool — check your website\'s AI readiness with 10-point analysis',
     'Competitor Intelligence — see who AI recommends in your area',
     'Review Collection — gather verified reviews that boost AI trust signals',
     'Visibility Score Dashboard — track your AI visibility score over time',
@@ -827,8 +827,8 @@ function drawCtaPage(ctx, report) {
 
   const plans = [
     { name: 'Free', price: '\u00A30/forever', features: ['Basic AI profile', 'Category listing', 'Ranked last in results'], url: 'https://www.tendorai.com/vendor-signup' },
-    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AEO report', 'AEO Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?tier=starter' },
-    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AEO reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
+    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AI Visibility (AEO) report', 'AI Visibility (AEO) Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?tier=starter' },
+    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AI Visibility (AEO) reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
   ];
 
   const planW = CONTENT_W / 3;
