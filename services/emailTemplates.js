@@ -332,6 +332,20 @@ export const verifiedReviewNotificationTemplate = ({ vendorName, reviewerName, r
 // AEO REPORT (to lead)
 // =====================================================
 
+function getEmailRegulatoryBody(category) {
+  const lower = (category || '').toLowerCase();
+  const legal = ['conveyancing', 'family law', 'criminal law', 'commercial law', 'employment law', 'wills and probate', 'wills-and-probate', 'immigration', 'personal injury', 'personal-injury', 'family-law', 'criminal-law', 'commercial-law', 'employment-law'];
+  const accountants = ['tax advisory', 'tax-advisory', 'audit', 'audit-assurance', 'audit & assurance', 'bookkeeping', 'payroll', 'corporate finance', 'corporate-finance', 'business advisory', 'business-advisory', 'vat', 'vat-services', 'financial planning', 'financial-planning'];
+  const mortgage = ['mortgage', 'mortgages', 'residential-mortgages', 'residential mortgages', 'buy-to-let', 'buy to let', 'remortgage', 'first-time-buyer', 'first time buyer', 'equity-release', 'equity release', 'commercial-mortgages', 'commercial mortgages', 'protection-insurance', 'protection insurance'];
+  const estate = ['sales', 'lettings', 'property-management', 'property management', 'block-management', 'block management', 'auctions', 'commercial-property', 'commercial property', 'inventory', 'estate agent'];
+
+  if (legal.some(k => lower.includes(k))) return 'the SRA Solicitors Register';
+  if (accountants.some(k => lower.includes(k))) return 'the ICAEW directory';
+  if (mortgage.some(k => lower.includes(k))) return 'the FCA Financial Services Register';
+  if (estate.some(k => lower.includes(k))) return 'public property directories';
+  return 'publicly available business data';
+}
+
 export const aeoReportTemplate = ({ companyName, category, city, score, aiMentioned, reportUrl }) => {
   const scoreColor = score <= 30 ? '#ef4444' : score <= 60 ? '#f59e0b' : '#1B4F72';
   const scoreLabel = score <= 20 ? 'Critical' : score <= 35 ? 'Poor' : score <= 50 ? 'Below Average' : score <= 65 ? 'Average' : 'Good';
@@ -353,6 +367,8 @@ export const aeoReportTemplate = ({ companyName, category, city, score, aiMentio
     <div class="content">
       <h2>Hi,</h2>
       ${verdictMessage}
+
+      <p style="color:#6b7280;font-size:13px;margin:16px 0 0;text-align:center;">This report was generated using data from ${getEmailRegulatoryBody(category)} and AI analysis of your online presence across ChatGPT, Claude, Perplexity, and Google AI Overviews.</p>
 
       <div style="text-align:center;margin:30px 0;">
         <div style="display:inline-block;width:120px;height:120px;border-radius:50%;border:6px solid ${scoreColor};text-align:center;line-height:108px;">
