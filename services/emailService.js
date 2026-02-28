@@ -10,6 +10,9 @@ import {
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
   aeoReportTemplate,
+  getEmailVendorType,
+  formatCompanyName,
+  getIndustryContent,
   newLeadNotificationTemplate
 } from './emailTemplates.js';
 
@@ -223,7 +226,7 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
 };
 
 // =====================================================
-// AEO REPORT (to lead)
+// AI VISIBILITY REPORT (to lead)
 // =====================================================
 
 export const sendAeoReportEmail = async (email, reportData) => {
@@ -232,24 +235,67 @@ export const sendAeoReportEmail = async (email, reportData) => {
     telecoms: 'telecoms and VoIP',
     cctv: 'CCTV and security',
     it: 'IT support',
+    conveyancing: 'conveyancing',
+    'family-law': 'family law',
+    'criminal-law': 'criminal law',
+    'commercial-law': 'commercial law',
+    'employment-law': 'employment law',
+    'wills-and-probate': 'wills and probate',
+    immigration: 'immigration',
+    'personal-injury': 'personal injury',
+    'tax-advisory': 'tax advisory',
+    'audit-assurance': 'audit and assurance',
+    bookkeeping: 'bookkeeping',
+    payroll: 'payroll',
+    'corporate-finance': 'corporate finance',
+    'business-advisory': 'business advisory',
+    'vat-services': 'VAT services',
+    'financial-planning': 'financial planning',
+    'residential-mortgages': 'residential mortgage',
+    'buy-to-let': 'buy-to-let mortgage',
+    remortgage: 'remortgage',
+    'first-time-buyer': 'first-time buyer mortgage',
+    'equity-release': 'equity release',
+    'commercial-mortgages': 'commercial mortgage',
+    'protection-insurance': 'protection insurance',
+    sales: 'property sales',
+    lettings: 'lettings',
+    'property-management': 'property management',
+    'block-management': 'block management',
+    auctions: 'property auction',
+    'commercial-property': 'commercial property',
+    inventory: 'inventory services',
   };
 
   const categoryLabel = categoryLabels[reportData.category] || reportData.category;
+  const displayName = formatCompanyName(reportData.companyName);
+  const { subject } = getIndustryContent(
+    getEmailVendorType(reportData.category),
+    displayName,
+    categoryLabel,
+    reportData.city,
+    reportData.score,
+    reportData.aiMentioned,
+    reportData.aiPosition
+  );
 
   return sendEmail({
     to: email,
-    subject: `Your AI Visibility Report — ${reportData.companyName} (Score: ${reportData.score}/100)`,
+    subject,
     html: aeoReportTemplate({
+      name: reportData.name,
       companyName: reportData.companyName,
-      category: categoryLabel,
+      category: reportData.category,
+      categoryLabel,
       city: reportData.city,
       score: reportData.score,
       aiMentioned: reportData.aiMentioned,
+      aiPosition: reportData.aiPosition,
       reportUrl: reportData.reportUrl,
     }),
     text: reportData.aiMentioned
-      ? `AI Visibility Report for ${reportData.companyName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`
-      : `AI Visibility Report for ${reportData.companyName}: Score ${reportData.score}/100. AI does NOT recommend you for ${categoryLabel} in ${reportData.city}. View your full report: ${reportData.reportUrl}`
+      ? `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`
+      : `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI does NOT recommend you for ${categoryLabel} in ${reportData.city}. View your full report: ${reportData.reportUrl}`
   });
 };
 

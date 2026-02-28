@@ -1493,14 +1493,16 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     // 4. Send email with link to full report (not inline data)
     if (email) {
       sendAeoReportEmail(email, {
+        name,
         companyName,
         category,
         city,
         score: report.score,
         aiMentioned: report.aiMentioned,
+        aiPosition: report.aiPosition || null,
         reportUrl,
       }).catch((err) =>
-        console.error('Failed to send AEO report email:', err.message)
+        console.error('Failed to send AI Visibility report email:', err.message)
       );
     }
 
