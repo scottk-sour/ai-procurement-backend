@@ -17,16 +17,13 @@ const vendorSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    index: true
   },
   email: {
     type: String,
     required: true,
-    unique: true,
     trim: true,
     lowercase: true,
     match: [/.+@.+\..+/, 'Please provide a valid email address'],
-    index: true,
   },
   password: {
     type: String,
@@ -41,10 +38,10 @@ const vendorSchema = new mongoose.Schema({
   },
 
   // SRA / Regulatory
-  sraNumber: { type: String, trim: true, sparse: true },
-  icaewFirmNumber: { type: String, trim: true, sparse: true },
-  fcaNumber: { type: String, trim: true, sparse: true },
-  propertymarkNumber: { type: String, trim: true, sparse: true },
+  sraNumber: { type: String, trim: true },
+  icaewFirmNumber: { type: String, trim: true },
+  fcaNumber: { type: String, trim: true },
+  propertymarkNumber: { type: String, trim: true },
   propertymarkQualification: { type: String, trim: true },
   regulatoryBody: { type: String, trim: true },
   practiceAreas: [{ type: String, trim: true }],
@@ -247,7 +244,7 @@ const vendorSchema = new mongoose.Schema({
 
   // Platform Integration
   integration: {
-    apiKey: { type: String, unique: true, sparse: true },
+    apiKey: { type: String },
     webhookUrl: { type: String, trim: true },
     autoQuoteGeneration: { type: Boolean, default: false },
     productCatalogUrl: { type: String, trim: true },
