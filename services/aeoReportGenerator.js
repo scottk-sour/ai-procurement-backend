@@ -580,24 +580,9 @@ function getGapHints(vendorType) {
 - Be specific: "No visible Google reviews" not "Poor online presence"`;
 }
 
-/**
- * Generate a full AEO visibility report for a company.
- *
- * @param {Object} params
- * @param {string} params.companyName
- * @param {string} params.category - copiers|telecoms|cctv|it|conveyancing|family-law|...
- * @param {string} params.city
- * @param {string} [params.email]
- * @returns {Object} Full report data ready for saving
- */
-export async function generateFullReport({ companyName, category, city, email, customIndustry }) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY not configured');
-  }
+// ─── Build the user prompt for both providers ────────────────────────────────
 
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
+function buildUserPrompt({ companyName, category, city, customIndustry }) {
   let vendorType, categoryLabel, hints, searchQueries, clarification;
   if (category === 'other') {
     vendorType = 'other';
@@ -623,7 +608,7 @@ export async function generateFullReport({ companyName, category, city, email, c
   const scoringHints = getScoringHints(vendorType);
   const gapHints = getGapHints(vendorType);
 
-  const userPrompt = `You are researching a UK business for an AI visibility audit. Search the web thoroughly.
+  const prompt = `You are researching a UK business for an AI visibility audit. Search the web thoroughly.
 
 COMPANY: "${companyName}"
 CATEGORY: ${categoryLabel}
@@ -683,7 +668,15 @@ AI MENTION RULES:
 
 Be brutally honest. Most small businesses score 15-45. A score above 60 is genuinely good.`;
 
-  // Call Claude with web search
+  return { prompt, vendorType };
+}
+
+// ─── Generate report text using Claude (with web search) ─────────────────────
+
+async function generateWithClaude(userPrompt) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
   const searchTools = [
     {
       type: 'web_search_20250305',
@@ -697,7 +690,6 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
 
   for (let turn = 0; turn < 8; turn++) {
     let resp;
-    // Retry with backoff for rate limit errors
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         resp = await anthropic.messages.create({
@@ -709,15 +701,15 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
         break;
       } catch (err) {
         if (err.status === 429 && attempt < 3) {
-          const waitSec = 30 * (attempt + 1); // 30s, 60s, 90s
-          console.log(`Rate limited (attempt ${attempt + 1}/4). Waiting ${waitSec}s...`);
+          const waitSec = 30 * (attempt + 1);
+          console.log(`[AEO] Claude rate limited (attempt ${attempt + 1}/4). Waiting ${waitSec}s...`);
           await new Promise((r) => setTimeout(r, waitSec * 1000));
         } else {
           throw err;
         }
       }
     }
-    if (!resp) throw new Error('Failed after 4 rate-limit retries');
+    if (!resp) throw new Error('Claude failed after 4 rate-limit retries');
 
     finalContent = resp.content;
     if (resp.stop_reason === 'end_turn') break;
@@ -728,25 +720,88 @@ Be brutally honest. Most small businesses score 15-45. A score above 60 is genui
     ];
   }
 
-  // Extract text from response
   const textBlocks = finalContent.filter((block) => block.type === 'text');
-  const responseText = textBlocks.map((block) => block.text).join('');
+  return textBlocks.map((block) => block.text).join('');
+}
 
-  // Parse JSON
+// ─── Generate report text using OpenAI GPT-4o (fallback, no web search) ──────
+
+async function generateWithOpenAI(userPrompt) {
+  const { default: OpenAI } = await import('openai');
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  const adaptedPrompt = userPrompt
+    .replace('Search the web thoroughly.', 'Based on your knowledge of UK businesses, answer as accurately as possible.')
+    .replace(/STEP 1: Search for/g, 'STEP 1: Based on your knowledge, find')
+    .replace(/STEP 2: Search for/g, 'STEP 2: Based on your knowledge, identify');
+
+  const resp = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    max_tokens: 4096,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a UK business research analyst. Respond with ONLY valid JSON. No markdown fences, no explanation, no extra text before or after the JSON.',
+      },
+      { role: 'user', content: adaptedPrompt },
+    ],
+  });
+
+  return resp.choices[0].message.content;
+}
+
+// ─── Parse raw response text into structured data ────────────────────────────
+
+function parseResponseJSON(responseText) {
   const jsonMatch = responseText.match(/\{[\s\S]*?"searchedCompany"[\s\S]*?\}[\s\S]*$/);
   if (!jsonMatch) {
-    throw new Error('Failed to parse Claude response as JSON');
+    throw new Error('Failed to parse AI response as JSON');
   }
 
-  let parsed;
   try {
-    parsed = JSON.parse(jsonMatch[0]);
+    return JSON.parse(jsonMatch[0]);
   } catch (e) {
-    // Try to extract just the JSON object
     const braceMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!braceMatch) throw new Error('No JSON found in Claude response');
-    parsed = JSON.parse(braceMatch[0]);
+    if (!braceMatch) throw new Error('No JSON found in AI response');
+    return JSON.parse(braceMatch[0]);
   }
+}
+
+/**
+ * Generate a full AEO visibility report for a company.
+ *
+ * @param {Object} params
+ * @param {string} params.companyName
+ * @param {string} params.category - copiers|telecoms|cctv|it|conveyancing|family-law|...
+ * @param {string} params.city
+ * @param {string} [params.email]
+ * @returns {Object} Full report data ready for saving
+ */
+export async function generateFullReport({ companyName, category, city, email, customIndustry }) {
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
+    throw new Error('Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is configured');
+  }
+
+  const { prompt: userPrompt, vendorType } = buildUserPrompt({ companyName, category, city, customIndustry });
+
+  // Try Claude first, fall back to OpenAI
+  let responseText;
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      responseText = await generateWithClaude(userPrompt);
+    } catch (claudeErr) {
+      console.error('[AEO] Claude failed, falling back to OpenAI:', claudeErr.message);
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('Claude failed and OPENAI_API_KEY is not configured as fallback');
+      }
+      responseText = await generateWithOpenAI(userPrompt);
+    }
+  } else {
+    console.log('[AEO] No ANTHROPIC_API_KEY, using OpenAI directly');
+    responseText = await generateWithOpenAI(userPrompt);
+  }
+
+  const parsed = parseResponseJSON(responseText);
 
   // Validate and clamp score
   const score = Math.max(0, Math.min(100, Math.round(parsed.score || 0)));
