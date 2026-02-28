@@ -1159,6 +1159,88 @@ function capitalize(str) {
 }
 
 // ============================================================
+// CITY STATS — Public aggregated counts for city+vertical landing pages
+// ============================================================
+
+const VALID_VENDOR_TYPES = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'];
+
+const cityStatsCache = {};
+
+/**
+ * GET /api/public/city-stats?city=cardiff&vendorType=solicitor
+ * Return aggregated vendor counts and average AEO score for a city + vendor type
+ */
+router.get('/city-stats', async (req, res) => {
+  try {
+    const { city, vendorType } = req.query;
+
+    if (!city || !vendorType || !VALID_VENDOR_TYPES.includes(vendorType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid city and vendorType (solicitor|accountant|mortgage-advisor|estate-agent) required',
+      });
+    }
+
+    const cacheKey = `${city.toLowerCase()}:${vendorType}`;
+    const cached = cityStatsCache[cacheKey];
+    if (cached && cached.expiry > Date.now()) {
+      return res.json({ success: true, ...cached.data });
+    }
+
+    const cityRegex = new RegExp(`^${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+    // Vendor counts
+    const vendors = await Vendor.find(
+      { 'location.city': cityRegex, vendorType },
+      { claimed: 1, tier: 1 }
+    ).lean();
+
+    const count = vendors.length;
+    const claimedCount = vendors.filter((v) => v.claimed).length;
+    const paidTiers = new Set(['starter', 'pro', 'basic', 'visible', 'standard', 'verified', 'managed', 'enterprise', 'gold', 'platinum', 'silver', 'bronze']);
+    const paidCount = vendors.filter((v) => v.tier && paidTiers.has(v.tier) && v.tier !== 'free' && v.tier !== 'listed').length;
+
+    // Average AEO score for this city + vendor type
+    const categoriesForType = VENDOR_TYPE_CATEGORIES[vendorType];
+    let averageScore = null;
+
+    if (categoriesForType) {
+      const agg = await AeoReport.aggregate([
+        {
+          $match: {
+            city: cityRegex,
+            category: { $in: [...categoriesForType] },
+            score: { $ne: null },
+          },
+        },
+        { $group: { _id: null, avg: { $avg: '$score' }, count: { $sum: 1 } } },
+      ]);
+
+      if (agg.length && agg[0].count >= 5) {
+        averageScore = Math.round(agg[0].avg);
+      } else {
+        averageScore = FALLBACK_AVERAGES[vendorType] || null;
+      }
+    }
+
+    const data = {
+      city: city.charAt(0).toUpperCase() + city.slice(1).toLowerCase(),
+      vendorType,
+      count,
+      claimedCount,
+      paidCount,
+      averageScore,
+    };
+
+    cityStatsCache[cacheKey] = { data, expiry: Date.now() + 24 * 60 * 60 * 1000 };
+    res.json({ success: true, ...data });
+  } catch (error) {
+    console.error('City stats error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch city stats' });
+  }
+});
+
+// ============================================================
 // AEO FULL REPORT — Public viewing (no auth, report ID = secret token)
 // ============================================================
 
