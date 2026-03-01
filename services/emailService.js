@@ -292,6 +292,8 @@ export const sendAeoReportEmail = async (email, reportData) => {
       aiMentioned: reportData.aiMentioned,
       aiPosition: reportData.aiPosition,
       reportUrl: reportData.reportUrl,
+      platformResults: reportData.platformResults || [],
+      tier: reportData.tier || 'free',
     }),
     text: reportData.aiMentioned
       ? `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`

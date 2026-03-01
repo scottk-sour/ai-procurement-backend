@@ -13,6 +13,7 @@ import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
+import { queryAllPlatforms } from '../services/platformQuery/index.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 
@@ -1429,14 +1430,52 @@ const aeoRateLimiter = rateLimit({
  * Generate a full AEO visibility report with score, competitors, gaps, and PDF
  * Returns reportId for redirect to /aeo-report/results/[reportId]
  */
+// Category labels for platform query prompts
+const AEO_CATEGORY_LABELS = {
+  copiers: 'photocopier and managed print supplier',
+  telecoms: 'business telecoms and VoIP provider',
+  cctv: 'CCTV and security system installer',
+  it: 'IT support and managed services provider',
+  conveyancing: 'conveyancing solicitor',
+  'family-law': 'family law solicitor',
+  'criminal-law': 'criminal law solicitor',
+  'commercial-law': 'commercial law solicitor',
+  'employment-law': 'employment law solicitor',
+  'wills-and-probate': 'wills and probate solicitor',
+  immigration: 'immigration solicitor',
+  'personal-injury': 'personal injury solicitor',
+  'tax-advisory': 'tax advisory accountant',
+  'audit-assurance': 'audit and assurance accountant',
+  bookkeeping: 'bookkeeping accountant',
+  payroll: 'payroll services accountant',
+  'corporate-finance': 'corporate finance accountant',
+  'business-advisory': 'business advisory accountant',
+  'vat-services': 'VAT services accountant',
+  'financial-planning': 'financial planning accountant',
+  'residential-mortgages': 'residential mortgage advisor',
+  'buy-to-let': 'buy-to-let mortgage advisor',
+  remortgage: 'remortgage advisor',
+  'first-time-buyer': 'first-time buyer mortgage advisor',
+  'equity-release': 'equity release advisor',
+  'commercial-mortgages': 'commercial mortgage advisor',
+  'protection-insurance': 'protection insurance advisor',
+  sales: 'property sales estate agent',
+  lettings: 'lettings agent',
+  'property-management': 'property management agent',
+  'block-management': 'block management agent',
+  auctions: 'property auction house',
+  'commercial-property': 'commercial property agent',
+  inventory: 'inventory services provider',
+};
+
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
     const { companyName, category, city, email, name, source, customIndustry } = req.body;
 
-    if (!companyName || !category || !city) {
+    if (!companyName || !category || !city || !email) {
       return res.status(400).json({
         success: false,
-        error: 'companyName, category, and city are required',
+        error: 'companyName, category, city, and email are required',
       });
     }
 
@@ -1459,10 +1498,38 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
+    // Check usage limit — 1 free report per email
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingCount = await AeoReport.countDocuments({ email: normalizedEmail });
+    if (existingCount >= 1) {
+      const existingReport = await AeoReport.findOne({ email: normalizedEmail })
+        .sort({ createdAt: -1 })
+        .select('_id');
+      const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
+      return res.status(200).json({
+        success: true,
+        reportId: existingReport._id,
+        reportUrl: `${baseUrl}/aeo-report/results/${existingReport._id}`,
+        existing: true,
+      });
+    }
+
     console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city})`);
 
-    // 1. Generate full report via Claude with web search
-    const reportData = await generateFullReport({ companyName, category, city, email, customIndustry });
+    const categoryLabel = customIndustry || AEO_CATEGORY_LABELS[category] || category;
+
+    // 1. Generate full report + platform queries in parallel
+    const [reportData, platformResults] = await Promise.all([
+      generateFullReport({ companyName, category, city, email, customIndustry }),
+      queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
+        console.error('[AEO] Platform queries failed:', err.message);
+        return [];
+      }),
+    ]);
+
+    // Attach platform results
+    reportData.platformResults = platformResults;
+    reportData.tier = 'free';
 
     // 1b. Compute industry average for PDF context
     try {
@@ -1490,21 +1557,21 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     console.log(`[AEO Public] Report generated: ${report._id} — Score: ${report.score}/100`);
 
-    // 4. Send email with link to full report (not inline data)
-    if (email) {
-      sendAeoReportEmail(email, {
-        name,
-        companyName,
-        category,
-        city,
-        score: report.score,
-        aiMentioned: report.aiMentioned,
-        aiPosition: report.aiPosition || null,
-        reportUrl,
-      }).catch((err) =>
-        console.error('Failed to send AI Visibility report email:', err.message)
-      );
-    }
+    // 4. Send email with link to full report
+    sendAeoReportEmail(email, {
+      name,
+      companyName,
+      category,
+      city,
+      score: report.score,
+      aiMentioned: report.aiMentioned,
+      aiPosition: report.aiPosition || null,
+      reportUrl,
+      platformResults,
+      tier: 'free',
+    }).catch((err) =>
+      console.error('Failed to send AI Visibility report email:', err.message)
+    );
 
     // 5. Return reportId for frontend redirect
     res.json({

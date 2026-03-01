@@ -425,7 +425,52 @@ function getIndustryContent(vendorType, displayName, categoryLabel, city, score,
   return { subject, opening, whyItMatters };
 }
 
-export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, aiMentioned, aiPosition, reportUrl }) => {
+const TIER_UNLOCKED_PLATFORMS = {
+  free: ['perplexity'],
+  starter: ['perplexity', 'chatgpt'],
+  pro: ['perplexity', 'chatgpt', 'claude'],
+  enterprise: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'],
+};
+
+function buildPlatformSummaryHtml(platformResults, tier) {
+  if (!platformResults || platformResults.length === 0) return '';
+
+  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
+  const mentionedCount = platformResults.filter(r => r.mentioned).length;
+  const totalCount = platformResults.length;
+  const lockedCount = totalCount - unlocked.length;
+
+  let rows = '';
+  for (const result of platformResults) {
+    const isUnlocked = unlocked.includes(result.platform);
+    if (isUnlocked) {
+      const icon = result.mentioned ? '&#9989;' : '&#10060;';
+      const posText = result.mentioned && result.position ? ` (Position #${result.position})` : '';
+      rows += `<tr><td style="padding:6px 0;font-size:14px;color:#374151;">${icon} ${result.platformLabel}${posText}</td></tr>`;
+    }
+  }
+
+  if (lockedCount > 0) {
+    rows += `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">&#128274; ${lockedCount} more platform${lockedCount > 1 ? 's' : ''} — <a href="https://www.tendorai.com/for-vendors#pricing" style="color:#7c3aed;text-decoration:none;font-weight:600;">upgrade to see all results</a></td></tr>`;
+  }
+
+  return `
+          <!-- Platform mention summary -->
+          <tr>
+            <td style="padding:0 40px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;">
+                <tr><td style="padding:12px 16px 4px;">
+                  <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#1f2937;">AI Platform Results: Mentioned by ${mentionedCount} of ${totalCount} platforms</p>
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                    ${rows}
+                  </table>
+                </td></tr>
+              </table>
+            </td>
+          </tr>`;
+}
+
+export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, aiMentioned, aiPosition, reportUrl, platformResults, tier }) => {
   const vendorType = getEmailVendorType(category);
   const displayName = formatCompanyName(companyName);
   const greeting = formatGreetingName(name);
@@ -482,6 +527,8 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
               </table>
             </td>
           </tr>
+
+          ${buildPlatformSummaryHtml(platformResults, tier)}
 
           <!-- Main content -->
           <tr>
