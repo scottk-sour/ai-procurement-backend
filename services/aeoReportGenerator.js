@@ -778,11 +778,14 @@ function parseResponseJSON(responseText) {
  * @returns {Object} Full report data ready for saving
  */
 export async function generateFullReport({ companyName, category, city, email, customIndustry }) {
+  console.log(`[AEO Generator] generateFullReport called — companyName="${companyName}", category="${category}", city="${city}"`);
+
   if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
     throw new Error('Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is configured');
   }
 
   const { prompt: userPrompt, vendorType } = buildUserPrompt({ companyName, category, city, customIndustry });
+  console.log(`[AEO Generator] Prompt starts with: ${userPrompt.substring(0, 200)}...`);
 
   // Try Claude first, fall back to OpenAI
   let responseText;

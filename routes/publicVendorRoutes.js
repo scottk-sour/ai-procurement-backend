@@ -1472,6 +1472,8 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
     const { companyName, category, city, email, name, source, customIndustry } = req.body;
 
+    console.log('[AEO Public] req.body:', JSON.stringify({ companyName, category, city, email, name, source, customIndustry }));
+
     if (!companyName || !category || !city || !email) {
       return res.status(400).json({
         success: false,
@@ -1498,13 +1500,19 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    // Check usage limit — 1 free report per email
+    // Check usage limit — 1 free report per email+company+category+city combo
     const normalizedEmail = email.toLowerCase().trim();
-    const existingCount = await AeoReport.countDocuments({ email: normalizedEmail });
-    if (existingCount >= 1) {
-      const existingReport = await AeoReport.findOne({ email: normalizedEmail })
-        .sort({ createdAt: -1 })
-        .select('_id');
+    const normalizedCompany = companyName.trim().toLowerCase();
+    const existingReport = await AeoReport.findOne({
+      email: normalizedEmail,
+      companyName: { $regex: new RegExp(`^${normalizedCompany.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      category,
+      city: { $regex: new RegExp(`^${city.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    })
+      .sort({ createdAt: -1 })
+      .select('_id companyName');
+    if (existingReport) {
+      console.log(`[AEO Public] Returning existing report ${existingReport._id} for "${existingReport.companyName}" (same email+company+category+city)`);
       const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
       return res.status(200).json({
         success: true,
@@ -1514,11 +1522,12 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city})`);
+    console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city}) — email: ${normalizedEmail}`);
 
     const categoryLabel = customIndustry || AEO_CATEGORY_LABELS[category] || category;
 
     // 1. Generate full report + platform queries in parallel
+    console.log(`[AEO Public] Calling generateFullReport with companyName="${companyName}", category="${category}", city="${city}"`);
     const [reportData, platformResults] = await Promise.all([
       generateFullReport({ companyName, category, city, email, customIndustry }),
       queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
