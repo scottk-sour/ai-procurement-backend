@@ -276,7 +276,9 @@ export const sendAeoReportEmail = async (email, reportData) => {
     reportData.city,
     reportData.score,
     reportData.aiMentioned,
-    reportData.aiPosition
+    reportData.aiPosition,
+    reportData.platformResults || [],
+    reportData.tier || 'free'
   );
 
   return sendEmail({

@@ -374,12 +374,31 @@ function getIndustryEntityLabel(vendorType) {
   return 'companies';
 }
 
-function getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition) {
+function getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition, platformResults, tier) {
   const entityLabel = getIndustryEntityLabel(vendorType);
+
+  // --- Build dynamic platform name list from actual results ---
+  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
+  const queriedPlatforms = (platformResults || [])
+    .filter(r => !r.error && unlocked.includes(r.platform))
+    .map(r => r.platformLabel);
+  const unlockedMentioned = (platformResults || [])
+    .filter(r => r.mentioned && unlocked.includes(r.platform));
+
+  let platformListText;
+  if (queriedPlatforms.length === 0) {
+    platformListText = 'ChatGPT, Claude, and Perplexity';
+  } else if (queriedPlatforms.length === 1) {
+    platformListText = queriedPlatforms[0];
+  } else if (queriedPlatforms.length === 2) {
+    platformListText = `${queriedPlatforms[0]} and ${queriedPlatforms[1]}`;
+  } else {
+    platformListText = `${queriedPlatforms.slice(0, -1).join(', ')}, and ${queriedPlatforms[queriedPlatforms.length - 1]}`;
+  }
 
   // --- Subject line ---
   let subject;
-  if (aiMentioned) {
+  if (unlockedMentioned.length > 0) {
     subject = `AI recommends ${displayName} — but you could rank higher`;
   } else if (vendorType === 'mortgage-advisor') {
     subject = `AI doesn't recommend ${displayName} to homebuyers`;
@@ -391,24 +410,16 @@ function getIndustryContent(vendorType, displayName, categoryLabel, city, score,
 
   // --- Opening paragraph ---
   let opening;
-  if (aiMentioned) {
-    const positionText = aiPosition ? ` at position ${aiPosition}` : '';
-    opening = `Good news — when we asked AI about ${categoryLabel} in ${city}, <strong>${displayName}</strong> appeared${positionText}. But there's room to improve. Your AI Visibility score is <strong>${score}/100</strong>.`;
-  } else if (vendorType === 'solicitor') {
-    opening = `We asked ChatGPT, Claude, and Perplexity: <em>"Who are the best ${categoryLabel} solicitors in ${city}?"</em> <strong>${displayName}</strong> wasn't mentioned.`;
-  } else if (vendorType === 'accountant') {
-    opening = `We asked ChatGPT, Claude, and Perplexity: <em>"Who are the best ${categoryLabel} accountants in ${city}?"</em> <strong>${displayName}</strong> wasn't mentioned.`;
-  } else if (vendorType === 'mortgage-advisor') {
-    opening = `We asked ChatGPT and Perplexity: <em>"Who are the best mortgage advisors in ${city}?"</em> <strong>${displayName}</strong> didn't appear.`;
-  } else if (vendorType === 'estate-agent') {
-    opening = `We asked ChatGPT: <em>"Who are the best estate agents in ${city}?"</em> <strong>${displayName}</strong> wasn't listed.`;
+  if (unlockedMentioned.length > 0) {
+    const mentionedNames = unlockedMentioned.map(r => r.platformLabel).join(', ');
+    opening = `Good news — <strong>${displayName}</strong> appeared in ${unlockedMentioned.length} of ${queriedPlatforms.length} AI recommendations (${mentionedNames}). But there's room to improve. Your AI Visibility score is <strong>${score}/100</strong>.`;
   } else {
-    opening = `We asked ChatGPT, Claude, and Perplexity: <em>"Who are the best ${categoryLabel} ${entityLabel} in ${city}?"</em> <strong>${displayName}</strong> wasn't mentioned.`;
+    opening = `We asked ${platformListText}: <em>"Who are the best ${categoryLabel} in ${city}?"</em> <strong>${displayName}</strong> wasn't mentioned by any of the AI platforms we tested.`;
   }
 
   // --- Why it matters ---
   let whyItMatters;
-  if (aiMentioned) {
+  if (unlockedMentioned.length > 0) {
     whyItMatters = `Your full report shows exactly who ranks above you, what they're doing differently, and how to climb higher. The ${entityLabel} AI recommends first get the most enquiries.`;
   } else if (vendorType === 'solicitor') {
     whyItMatters = `More clients are asking AI for solicitor recommendations before they search Google. The firms AI recommends are getting enquiries you'll never see in your analytics. Your full report shows exactly who AI recommends instead of you, and what to fix.`;
@@ -478,7 +489,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
   const scoreColor = score <= 25 ? '#dc2626' : score <= 50 ? '#ea580c' : score <= 75 ? '#65a30d' : '#16a34a';
   const scoreLabel = score <= 25 ? 'Needs attention' : score <= 50 ? 'Room to grow' : score <= 75 ? 'Good start' : 'Strong';
 
-  const { opening, whyItMatters } = getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition);
+  const { opening, whyItMatters } = getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition, platformResults, tier);
   const trustLine = getEmailRegulatoryBody(vendorType);
 
   return `
