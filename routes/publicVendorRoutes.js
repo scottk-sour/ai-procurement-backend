@@ -1575,11 +1575,11 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       category,
       city,
       score: report.score,
-      aiMentioned: report.aiMentioned,
-      aiPosition: report.aiPosition || null,
       reportUrl,
       platformResults,
       tier: 'free',
+      competitors: reportData.competitors || [],
+      gaps: reportData.gaps || [],
     }).catch((err) =>
       console.error('Failed to send AI Visibility report email:', err.message)
     );

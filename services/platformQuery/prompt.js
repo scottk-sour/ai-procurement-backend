@@ -14,6 +14,40 @@ Respond in plain text, not JSON.`;
 }
 
 /**
+ * Check if a mention of the company name is a genuine positive mention,
+ * not a negation like "I couldn't find", "not mentioned", etc.
+ */
+function isPositiveMention(text, companyName) {
+  const companyLower = companyName.toLowerCase();
+  const textLower = text.toLowerCase();
+  const idx = textLower.indexOf(companyLower);
+  if (idx === -1) return false;
+
+  // Check the surrounding context (100 chars before the mention)
+  const before = textLower.substring(Math.max(0, idx - 100), idx);
+
+  const negationPatterns = [
+    /(?:do(?:es)?n[''']?t|does not|do not|did not|didn[''']?t|cannot|can[''']?t|couldn[''']?t|could not)\s+(?:mention|include|recommend|find|list|know|have|feature|reference|recogni[sz]e)/,
+    /(?:not? (?:mention|include|recommend|find|list|feature|reference))/,
+    /(?:no (?:mention|information|data|results?|record))/,
+    /(?:wasn[''']?t|weren[''']?t|isn[''']?t|aren[''']?t)\s+(?:mentioned|included|recommended|found|listed|featured)/,
+    /(?:unable to (?:find|locate|identify|verify))/,
+    /(?:not (?:among|one of|in|part of|included|listed|featured|mentioned|recommended))/,
+    /(?:unfortunately|however|sadly),?\s+/,
+    /(?:search results? (?:do not|don[''']?t) (?:mention|include))/,
+    /(?:not appear|does not appear|didn[''']?t appear)/,
+    /(?:could not be found|was not found)/,
+    /(?:i (?:could|can)(?:n[''']?t| not) (?:find|locate|verify|confirm))/,
+  ];
+
+  for (const pattern of negationPatterns) {
+    if (pattern.test(before)) return false;
+  }
+
+  return true;
+}
+
+/**
  * Parse an AI platform's response to extract mention data.
  */
 export function parsePlatformResponse(responseText, companyName) {
@@ -25,7 +59,9 @@ export function parsePlatformResponse(responseText, companyName) {
   const companyLower = companyName.toLowerCase();
 
   // Check if the company is mentioned (case-insensitive, partial match)
-  const mentioned = text.toLowerCase().includes(companyLower);
+  // Filter out negative/false mentions
+  const rawMentioned = text.toLowerCase().includes(companyLower);
+  const mentioned = rawMentioned ? isPositiveMention(text, companyName) : false;
 
   // Try to determine position from numbered lists or order of appearance
   let position = null;

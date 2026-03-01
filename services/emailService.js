@@ -10,11 +10,12 @@ import {
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
   aeoReportTemplate,
-  getEmailVendorType,
   formatCompanyName,
-  getIndustryContent,
+  buildAeoSubject,
+  TIER_UNLOCKED_PLATFORMS,
   newLeadNotificationTemplate
 } from './emailTemplates.js';
+import { getIndustryConfig } from './industryConfig.js';
 
 dotenv.config();
 
@@ -230,56 +231,17 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
 // =====================================================
 
 export const sendAeoReportEmail = async (email, reportData) => {
-  const categoryLabels = {
-    copiers: 'copier and managed print',
-    telecoms: 'telecoms and VoIP',
-    cctv: 'CCTV and security',
-    it: 'IT support',
-    conveyancing: 'conveyancing',
-    'family-law': 'family law',
-    'criminal-law': 'criminal law',
-    'commercial-law': 'commercial law',
-    'employment-law': 'employment law',
-    'wills-and-probate': 'wills and probate',
-    immigration: 'immigration',
-    'personal-injury': 'personal injury',
-    'tax-advisory': 'tax advisory',
-    'audit-assurance': 'audit and assurance',
-    bookkeeping: 'bookkeeping',
-    payroll: 'payroll',
-    'corporate-finance': 'corporate finance',
-    'business-advisory': 'business advisory',
-    'vat-services': 'VAT services',
-    'financial-planning': 'financial planning',
-    'residential-mortgages': 'residential mortgage',
-    'buy-to-let': 'buy-to-let mortgage',
-    remortgage: 'remortgage',
-    'first-time-buyer': 'first-time buyer mortgage',
-    'equity-release': 'equity release',
-    'commercial-mortgages': 'commercial mortgage',
-    'protection-insurance': 'protection insurance',
-    sales: 'property sales',
-    lettings: 'lettings',
-    'property-management': 'property management',
-    'block-management': 'block management',
-    auctions: 'property auction',
-    'commercial-property': 'commercial property',
-    inventory: 'inventory services',
-  };
-
-  const categoryLabel = categoryLabels[reportData.category] || reportData.category;
+  const config = getIndustryConfig(reportData.category);
   const displayName = formatCompanyName(reportData.companyName);
-  const { subject } = getIndustryContent(
-    getEmailVendorType(reportData.category),
-    displayName,
-    categoryLabel,
-    reportData.city,
-    reportData.score,
-    reportData.aiMentioned,
-    reportData.aiPosition,
-    reportData.platformResults || [],
-    reportData.tier || 'free'
-  );
+  const categoryLabel = config.industryLabel || reportData.category;
+  const tier = reportData.tier || 'free';
+  const platformResults = reportData.platformResults || [];
+
+  // Compute unlocked mentioned for subject line
+  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
+  const unlockedMentioned = platformResults.filter(r => r.mentioned && unlocked.includes(r.platform));
+
+  const subject = buildAeoSubject({ displayName, config, unlockedMentioned, score: reportData.score });
 
   return sendEmail({
     to: email,
@@ -291,13 +253,13 @@ export const sendAeoReportEmail = async (email, reportData) => {
       categoryLabel,
       city: reportData.city,
       score: reportData.score,
-      aiMentioned: reportData.aiMentioned,
-      aiPosition: reportData.aiPosition,
       reportUrl: reportData.reportUrl,
-      platformResults: reportData.platformResults || [],
-      tier: reportData.tier || 'free',
+      platformResults,
+      tier,
+      competitors: reportData.competitors || [],
+      gaps: reportData.gaps || [],
     }),
-    text: reportData.aiMentioned
+    text: unlockedMentioned.length > 0
       ? `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`
       : `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI does NOT recommend you for ${categoryLabel} in ${reportData.city}. View your full report: ${reportData.reportUrl}`
   });

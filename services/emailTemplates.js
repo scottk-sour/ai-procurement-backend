@@ -1,6 +1,8 @@
 // Email Templates for TendorAI
 // All templates use a consistent design with the TendorAI brand
 
+import { getIndustryConfig } from './industryConfig.js';
+
 const baseStyles = `
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
   .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
@@ -340,100 +342,9 @@ function formatCompanyName(name) {
 }
 
 function formatGreetingName(name) {
-  if (!name || !name.trim()) return 'Hi there,';
+  if (!name || !name.trim()) return null;
   const firstName = name.trim().split(/\s+/)[0];
-  const cased = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
-  return `Hi ${cased},`;
-}
-
-function getEmailVendorType(category) {
-  const solicitor = ['conveyancing', 'family-law', 'criminal-law', 'commercial-law', 'employment-law', 'wills-and-probate', 'immigration', 'personal-injury'];
-  const accountant = ['tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll', 'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning'];
-  const mortgage = ['residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer', 'equity-release', 'commercial-mortgages', 'protection-insurance'];
-  const estate = ['sales', 'lettings', 'property-management', 'block-management', 'auctions', 'commercial-property', 'inventory'];
-  if (solicitor.includes(category)) return 'solicitor';
-  if (accountant.includes(category)) return 'accountant';
-  if (mortgage.includes(category)) return 'mortgage-advisor';
-  if (estate.includes(category)) return 'estate-agent';
-  return 'other';
-}
-
-function getEmailRegulatoryBody(vendorType) {
-  if (vendorType === 'solicitor') return 'verified data from the SRA Solicitors Register';
-  if (vendorType === 'accountant') return 'data from the ICAEW Chartered Accountant directory';
-  if (vendorType === 'mortgage-advisor') return 'data from the FCA Financial Services Register';
-  if (vendorType === 'estate-agent') return 'public property directory data';
-  return 'publicly available business data';
-}
-
-function getIndustryEntityLabel(vendorType) {
-  if (vendorType === 'solicitor') return 'solicitors';
-  if (vendorType === 'accountant') return 'accountants';
-  if (vendorType === 'mortgage-advisor') return 'mortgage advisors';
-  if (vendorType === 'estate-agent') return 'estate agents';
-  return 'companies';
-}
-
-function getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition, platformResults, tier) {
-  const entityLabel = getIndustryEntityLabel(vendorType);
-
-  // --- Build dynamic platform name list from actual results ---
-  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
-  const queriedPlatforms = (platformResults || [])
-    .filter(r => !r.error && unlocked.includes(r.platform))
-    .map(r => r.platformLabel);
-  const unlockedMentioned = (platformResults || [])
-    .filter(r => r.mentioned && unlocked.includes(r.platform));
-
-  let platformListText;
-  if (queriedPlatforms.length === 0) {
-    platformListText = 'ChatGPT, Claude, and Perplexity';
-  } else if (queriedPlatforms.length === 1) {
-    platformListText = queriedPlatforms[0];
-  } else if (queriedPlatforms.length === 2) {
-    platformListText = `${queriedPlatforms[0]} and ${queriedPlatforms[1]}`;
-  } else {
-    platformListText = `${queriedPlatforms.slice(0, -1).join(', ')}, and ${queriedPlatforms[queriedPlatforms.length - 1]}`;
-  }
-
-  // --- Subject line ---
-  let subject;
-  if (unlockedMentioned.length > 0) {
-    subject = `AI recommends ${displayName} — but you could rank higher`;
-  } else if (vendorType === 'mortgage-advisor') {
-    subject = `AI doesn't recommend ${displayName} to homebuyers`;
-  } else if (vendorType === 'estate-agent') {
-    subject = `AI doesn't recommend ${displayName} to sellers`;
-  } else {
-    subject = `AI doesn't recommend ${displayName} — here's why`;
-  }
-
-  // --- Opening paragraph ---
-  let opening;
-  if (unlockedMentioned.length > 0) {
-    const mentionedNames = unlockedMentioned.map(r => r.platformLabel).join(', ');
-    opening = `Good news — <strong>${displayName}</strong> appeared in ${unlockedMentioned.length} of ${queriedPlatforms.length} AI recommendations (${mentionedNames}). But there's room to improve. Your AI Visibility score is <strong>${score}/100</strong>.`;
-  } else {
-    opening = `We asked ${platformListText}: <em>"Who are the best ${categoryLabel} in ${city}?"</em> <strong>${displayName}</strong> wasn't mentioned by any of the AI platforms we tested.`;
-  }
-
-  // --- Why it matters ---
-  let whyItMatters;
-  if (unlockedMentioned.length > 0) {
-    whyItMatters = `Your full report shows exactly who ranks above you, what they're doing differently, and how to climb higher. The ${entityLabel} AI recommends first get the most enquiries.`;
-  } else if (vendorType === 'solicitor') {
-    whyItMatters = `More clients are asking AI for solicitor recommendations before they search Google. The firms AI recommends are getting enquiries you'll never see in your analytics. Your full report shows exactly who AI recommends instead of you, and what to fix.`;
-  } else if (vendorType === 'accountant') {
-    whyItMatters = `Business owners are asking AI for accountant recommendations. If AI can't find structured data about your practice — your services, specialisms, client sectors — it recommends your competitors instead.`;
-  } else if (vendorType === 'mortgage-advisor') {
-    whyItMatters = `First-time buyers and remortgagers are asking AI for mortgage advice before they search Google. The advisors AI recommends are getting leads you never see.`;
-  } else if (vendorType === 'estate-agent') {
-    whyItMatters = `Vendors are asking AI for estate agent recommendations before checking Rightmove. If AI doesn't know your agency, those instructions go to competitors.`;
-  } else {
-    whyItMatters = `200M+ people use ChatGPT monthly. Buyers are switching from Google to AI to find suppliers. If AI doesn't recommend you, you're losing leads you'll never know about.`;
-  }
-
-  return { subject, opening, whyItMatters };
+  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 }
 
 const TIER_UNLOCKED_PLATFORMS = {
@@ -443,12 +354,26 @@ const TIER_UNLOCKED_PLATFORMS = {
   enterprise: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'],
 };
 
+/**
+ * Build the AEO report email subject line using industry config.
+ */
+function buildAeoSubject({ displayName, config, unlockedMentioned, score }) {
+  if (unlockedMentioned.length > 0) {
+    return `${displayName} is visible to AI — but you're not #1`;
+  }
+  return `AI doesn't recommend ${displayName} to ${config.buyerLabel}`;
+}
+
+/**
+ * Build platform result rows for the email.
+ */
 function buildPlatformSummaryHtml(platformResults, tier) {
   if (!platformResults || platformResults.length === 0) return '';
 
   const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
-  const mentionedCount = platformResults.filter(r => r.mentioned).length;
   const totalCount = platformResults.length;
+  const unlockedResults = platformResults.filter(r => unlocked.includes(r.platform));
+  const mentionedCount = unlockedResults.filter(r => r.mentioned).length;
   const lockedCount = totalCount - unlocked.length;
 
   let rows = '';
@@ -481,16 +406,108 @@ function buildPlatformSummaryHtml(platformResults, tier) {
           </tr>`;
 }
 
-export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, aiMentioned, aiPosition, reportUrl, platformResults, tier }) => {
-  const vendorType = getEmailVendorType(category);
+/**
+ * Build the competitors section HTML.
+ */
+function buildCompetitorsHtml(competitors) {
+  if (!competitors || competitors.length === 0) return '';
+
+  const topCompetitors = competitors.slice(0, 3);
+  let rows = topCompetitors.map(c => {
+    const name = typeof c === 'string' ? c : (c.name || c.companyName || '');
+    if (!name) return '';
+    return `<tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#8226;&nbsp;&nbsp;${name}</td></tr>`;
+  }).filter(Boolean).join('');
+
+  if (!rows) return '';
+
+  return `
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:20px 0;">
+                <tr><td style="padding:16px 20px;">
+                  <p style="margin:0 0 8px;color:#991b1b;font-size:14px;font-weight:600;">AI recommends these competitors instead:</p>
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                    ${rows}
+                  </table>
+                  <p style="margin:8px 0 0;color:#6b7280;font-size:13px;">Your full report shows why they rank above you and how to overtake them.</p>
+                </td></tr>
+              </table>`;
+}
+
+/**
+ * Build the gaps teaser section HTML.
+ */
+function buildGapsTeaserHtml(gaps) {
+  if (!gaps || gaps.length === 0) return '';
+
+  const topGaps = gaps.slice(0, 2);
+  let rows = topGaps.map(g => {
+    const title = typeof g === 'string' ? g : (g.title || g.gap || '');
+    if (!title) return '';
+    return `<tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#9888;&nbsp;&nbsp;${title}</td></tr>`;
+  }).filter(Boolean).join('');
+
+  if (!rows) return '';
+
+  const remainingCount = Math.max(0, gaps.length - 2);
+  const moreText = remainingCount > 0
+    ? `<p style="margin:8px 0 0;color:#6b7280;font-size:13px;">+ ${remainingCount} more gap${remainingCount > 1 ? 's' : ''} identified in your full report</p>`
+    : '';
+
+  return `
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin:20px 0;">
+                <tr><td style="padding:16px 20px;">
+                  <p style="margin:0 0 8px;color:#92400e;font-size:14px;font-weight:600;">Key gaps holding you back:</p>
+                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                    ${rows}
+                  </table>
+                  ${moreText}
+                </td></tr>
+              </table>`;
+}
+
+export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, reportUrl, platformResults, tier, competitors, gaps }) => {
+  const config = getIndustryConfig(category);
   const displayName = formatCompanyName(companyName);
-  const greeting = formatGreetingName(name);
+  const firstName = formatGreetingName(name);
+  const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
 
   const scoreColor = score <= 25 ? '#dc2626' : score <= 50 ? '#ea580c' : score <= 75 ? '#65a30d' : '#16a34a';
   const scoreLabel = score <= 25 ? 'Needs attention' : score <= 50 ? 'Room to grow' : score <= 75 ? 'Good start' : 'Strong';
 
-  const { opening, whyItMatters } = getIndustryContent(vendorType, displayName, categoryLabel, city, score, aiMentioned, aiPosition, platformResults, tier);
-  const trustLine = getEmailRegulatoryBody(vendorType);
+  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
+  const unlockedResults = (platformResults || []).filter(r => unlocked.includes(r.platform));
+  const unlockedMentioned = unlockedResults.filter(r => r.mentioned);
+  const totalPlatforms = (platformResults || []).length || 6;
+
+  // --- Build dynamic platform list text ---
+  const queriedPlatforms = (platformResults || [])
+    .filter(r => !r.error && unlocked.includes(r.platform))
+    .map(r => r.platformLabel);
+  let platformListText;
+  if (queriedPlatforms.length === 0) {
+    platformListText = 'ChatGPT, Claude, and Perplexity';
+  } else if (queriedPlatforms.length === 1) {
+    platformListText = queriedPlatforms[0];
+  } else if (queriedPlatforms.length === 2) {
+    platformListText = `${queriedPlatforms[0]} and ${queriedPlatforms[1]}`;
+  } else {
+    platformListText = `${queriedPlatforms.slice(0, -1).join(', ')}, and ${queriedPlatforms[queriedPlatforms.length - 1]}`;
+  }
+
+  // --- Subject ---
+  const subject = buildAeoSubject({ displayName, config, unlockedMentioned, score });
+
+  // --- Result block ---
+  let resultBlock;
+  if (unlockedMentioned.length > 0) {
+    const mentionedNames = unlockedMentioned.map(r => r.platformLabel).join(', ');
+    resultBlock = `We asked ${totalPlatforms} AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName}</strong> was mentioned by <strong>${unlockedMentioned.length} of ${totalPlatforms}</strong> platforms (${mentionedNames}). But there's room to improve — your AI Visibility score is <strong>${score}/100</strong>.`;
+  } else {
+    resultBlock = `We asked ${totalPlatforms} AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName} wasn't recommended by any of them.</strong> Your AI Visibility score is <strong>${score}/100</strong>.`;
+  }
+
+  // --- Trust line ---
+  const trustLine = config.regulatorNote || 'This report uses publicly available business data and AI analysis.';
 
   return `
 <!DOCTYPE html>
@@ -545,27 +562,35 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
           <tr>
             <td style="padding:0 40px 32px;">
 
+              <!-- Greeting -->
               <h2 style="color:#1f2937;font-size:20px;margin:0 0 16px;font-weight:600;">${greeting}</h2>
 
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;">${opening}</p>
+              <!-- Result block -->
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;">${resultBlock}</p>
 
-              <!-- Why it matters -->
+              <!-- Why this matters now (industry-specific urgency) -->
               <div style="background:#faf5ff;border-left:4px solid #7c3aed;border-radius:0 8px 8px 0;padding:16px 20px;margin:20px 0;">
-                <p style="margin:0;color:#4b5563;font-size:14px;line-height:1.7;"><strong style="color:#7c3aed;">Why this matters:</strong> ${whyItMatters}</p>
+                <p style="margin:0;color:#4b5563;font-size:14px;line-height:1.7;"><strong style="color:#7c3aed;">Why this matters now:</strong> ${config.urgencyAngle}</p>
               </div>
 
-              <!-- Social proof -->
-              <p style="text-align:center;color:#6b7280;font-size:13px;margin:20px 0;font-style:italic;">Over 12,000 UK businesses are already on TendorAI.</p>
+              <!-- Competitors section -->
+              ${buildCompetitorsHtml(competitors)}
 
-              <!-- What's in your report -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;padding:20px;margin:20px 0;">
-                <tr><td style="padding:16px 20px 8px;">
-                  <p style="margin:0 0 12px;color:#1f2937;font-size:15px;font-weight:600;">What's in your report:</p>
+              <!-- Gaps teaser -->
+              ${buildGapsTeaserHtml(gaps)}
+
+              <!-- Industry benchmark -->
+              <p style="color:#6b7280;font-size:13px;margin:16px 0;line-height:1.6;text-align:center;font-style:italic;">${config.benchmark}</p>
+
+              <!-- Score context -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;margin:20px 0;">
+                <tr><td style="padding:16px 20px;">
+                  <p style="margin:0 0 12px;color:#1f2937;font-size:15px;font-weight:600;">Your full report includes:</p>
                   <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Your AI Visibility score with detailed breakdown</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;What AI knows (and doesn't know) about your business</td></tr>
+                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;AI Visibility score with detailed breakdown</td></tr>
+                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Which AI platforms mention you (and which don't)</td></tr>
                     <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Who AI recommends instead — with website links</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Specific gaps holding you back</td></tr>
+                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Specific gaps and how to fix them</td></tr>
                     <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Downloadable PDF report</td></tr>
                   </table>
                 </td></tr>
@@ -589,8 +614,16 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
                 </tr>
               </table>
 
+              <!-- Sign-off -->
+              <div style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e5e7eb;">
+                <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;">Best,</p>
+                <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;font-weight:600;">Scott Davies</p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">Founder, TendorAI</p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">scott.davies@tendorai.com</p>
+              </div>
+
               <!-- Trust line -->
-              <p style="color:#9ca3af;font-size:12px;text-align:center;margin:20px 0 0;">This report was generated using ${trustLine} and AI analysis across ChatGPT, Claude, Perplexity, and Google AI Overviews.</p>
+              <p style="color:#9ca3af;font-size:12px;text-align:center;margin:20px 0 0;">${trustLine}</p>
 
             </td>
           </tr>
@@ -617,7 +650,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
 };
 
 // Export helpers for use in emailService.js
-export { getEmailVendorType, formatCompanyName, getIndustryContent };
+export { formatCompanyName, buildAeoSubject, TIER_UNLOCKED_PLATFORMS };
 
 // =====================================================
 // NEW LEAD NOTIFICATION (sent to vendor on VendorLead creation)
