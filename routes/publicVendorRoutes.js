@@ -1501,9 +1501,11 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     }
 
     // Check usage limit — 1 free report per email+company+category+city combo
+    const ADMIN_EMAILS = ['scott.davies@tendorai.com'];
     const normalizedEmail = email.toLowerCase().trim();
+    const isAdmin = ADMIN_EMAILS.includes(normalizedEmail);
     const normalizedCompany = companyName.trim().toLowerCase();
-    const existingReport = await AeoReport.findOne({
+    const existingReport = !isAdmin && await AeoReport.findOne({
       email: normalizedEmail,
       companyName: { $regex: new RegExp(`^${normalizedCompany.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       category,
