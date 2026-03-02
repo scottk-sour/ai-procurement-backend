@@ -396,7 +396,7 @@ function buildPlatformSummaryHtml(platformResults, tier) {
             <td style="padding:0 40px 24px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;">
                 <tr><td style="padding:12px 16px 4px;">
-                  <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#1f2937;">AI Platform Results: Mentioned by ${mentionedCount} of ${totalCount} platforms</p>
+                  <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#1f2937;">AI Platform Results: Mentioned by ${mentionedCount} of 6 platforms</p>
                   <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
                     ${rows}
                   </table>
@@ -477,7 +477,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
   const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
   const unlockedResults = (platformResults || []).filter(r => unlocked.includes(r.platform));
   const unlockedMentioned = unlockedResults.filter(r => r.mentioned);
-  const totalPlatforms = (platformResults || []).length || 6;
+
 
   // --- Build dynamic platform list text ---
   const queriedPlatforms = (platformResults || [])
@@ -501,9 +501,9 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
   let resultBlock;
   if (unlockedMentioned.length > 0) {
     const mentionedNames = unlockedMentioned.map(r => r.platformLabel).join(', ');
-    resultBlock = `We asked ${totalPlatforms} AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName}</strong> was mentioned by <strong>${unlockedMentioned.length} of ${totalPlatforms}</strong> platforms (${mentionedNames}). But there's room to improve — your AI Visibility score is <strong>${score}/100</strong>.`;
+    resultBlock = `We asked 6 AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName}</strong> was mentioned by <strong>${unlockedMentioned.length} of 6</strong> platforms (${mentionedNames}). But there's room to improve — your AI Visibility score is <strong>${score}/100</strong>.`;
   } else {
-    resultBlock = `We asked ${totalPlatforms} AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName} wasn't recommended by any of them.</strong> Your AI Visibility score is <strong>${score}/100</strong>.`;
+    resultBlock = `We asked 6 AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName} wasn't recommended by any of them.</strong> Your AI Visibility score is <strong>${score}/100</strong>.`;
   }
 
   // --- Trust line ---

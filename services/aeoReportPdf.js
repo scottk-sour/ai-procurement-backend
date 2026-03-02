@@ -295,7 +295,7 @@ function drawCoverPage(ctx, report) {
   page.drawText(companyNameStr, { x: cx - nameW / 2, y, size: 22, font: bold, color: DARK });
 
   y -= 25;
-  const categoryLabel = {
+  let categoryLabel = {
     // Office equipment
     copiers: 'Photocopiers & Managed Print',
     telecoms: 'Business Telecoms & VoIP',

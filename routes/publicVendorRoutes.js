@@ -1472,8 +1472,6 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
     const { companyName, category, city, email, name, source, customIndustry } = req.body;
 
-    console.log('[AEO Public] req.body:', JSON.stringify({ companyName, category, city, email, name, source, customIndustry }));
-
     if (!companyName || !category || !city || !email) {
       return res.status(400).json({
         success: false,
@@ -1514,7 +1512,6 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       .sort({ createdAt: -1 })
       .select('_id companyName');
     if (existingReport) {
-      console.log(`[AEO Public] Returning existing report ${existingReport._id} for "${existingReport.companyName}" (same email+company+category+city)`);
       const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
       return res.status(200).json({
         success: true,
@@ -1524,12 +1521,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    console.log(`[AEO Public] Generating full report for "${companyName}" (${category}, ${city}) — email: ${normalizedEmail}`);
-
     const categoryLabel = customIndustry || AEO_CATEGORY_LABELS[category] || category;
 
     // 1. Generate full report + platform queries in parallel
-    console.log(`[AEO Public] Calling generateFullReport with companyName="${companyName}", category="${category}", city="${city}"`);
     const [reportData, platformResults] = await Promise.all([
       generateFullReport({ companyName, category, city, email, customIndustry }),
       queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
@@ -1565,8 +1559,6 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
     const reportUrl = `${baseUrl}/aeo-report/results/${report._id}`;
-
-    console.log(`[AEO Public] Report generated: ${report._id} — Score: ${report.score}/100`);
 
     // 4. Send email with link to full report
     sendAeoReportEmail(email, {
