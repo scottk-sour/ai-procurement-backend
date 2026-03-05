@@ -50,6 +50,12 @@ router.post('/track', async (req, res) => {
       country: req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || null
     };
 
+    // For ai_mention events, log unknown sources for debugging but mark them
+    const referrer = source?.referrer || parseReferrer(req.headers.referer);
+    if (eventType === 'ai_mention' && referrer === 'unknown-ai') {
+      console.log('[analytics] Skipping unknown-ai mention event for vendor', vendorId, '- query:', source?.searchQuery);
+    }
+
     // Create analytics event
     const analyticsEvent = new VendorAnalytics({
       vendorId,
@@ -57,7 +63,7 @@ router.post('/track', async (req, res) => {
       sessionId: sessionId || generateSessionId(),
       source: {
         page: source?.page || req.headers.referer,
-        referrer: source?.referrer || parseReferrer(req.headers.referer),
+        referrer,
         campaign: source?.campaign,
         searchQuery: source?.searchQuery,
         category: source?.category,
@@ -276,24 +282,50 @@ router.get('/vendor/:vendorId', async (req, res) => {
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const oid = new mongoose.default.Types.ObjectId(vendorId);
 
-    // Get event counts by type
+    // Get event counts by type (exclude unknown-ai from ai_mention counts)
     const eventCounts = await VendorAnalytics.aggregate([
-      { $match: { vendorId: oid, timestamp: { $gte: startDate } } },
+      {
+        $match: {
+          vendorId: oid,
+          timestamp: { $gte: startDate },
+          $or: [
+            { eventType: { $ne: 'ai_mention' } },
+            { eventType: 'ai_mention', 'source.referrer': { $ne: 'unknown-ai' } },
+          ],
+        },
+      },
       { $group: { _id: '$eventType', count: { $sum: 1 } } }
     ]);
 
     const counts = {};
     eventCounts.forEach(c => { counts[c._id] = c.count; });
 
-    // Get AI mentions by source
+    // Get AI mentions by source (only count identified AI platforms)
+    const KNOWN_AI_SOURCES = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'meta', 'metaai'];
     const aiBySource = await VendorAnalytics.aggregate([
-      { $match: { vendorId: oid, eventType: 'ai_mention', timestamp: { $gte: startDate } } },
+      {
+        $match: {
+          vendorId: oid,
+          eventType: 'ai_mention',
+          timestamp: { $gte: startDate },
+          'source.referrer': { $ne: 'unknown-ai' },
+        },
+      },
       { $group: { _id: '$source.referrer', count: { $sum: 1 } } }
     ]);
 
-    // Get daily activity
+    // Get daily activity (exclude unknown-ai from ai_mention counts)
     const dailyActivity = await VendorAnalytics.aggregate([
-      { $match: { vendorId: oid, timestamp: { $gte: startDate } } },
+      {
+        $match: {
+          vendorId: oid,
+          timestamp: { $gte: startDate },
+          $or: [
+            { eventType: { $ne: 'ai_mention' } },
+            { eventType: 'ai_mention', 'source.referrer': { $ne: 'unknown-ai' } },
+          ],
+        },
+      },
       {
         $group: {
           _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
@@ -305,10 +337,11 @@ router.get('/vendor/:vendorId', async (req, res) => {
       { $sort: { _id: 1 } }
     ]);
 
-    // Get recent AI queries
+    // Get recent AI queries (exclude unknown-ai sources)
     const recentAiQueries = await VendorAnalytics.find({
       vendorId: oid,
-      eventType: 'ai_mention'
+      eventType: 'ai_mention',
+      'source.referrer': { $ne: 'unknown-ai' },
     })
       .sort({ timestamp: -1 })
       .limit(10)
