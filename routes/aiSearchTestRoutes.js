@@ -2,7 +2,7 @@
  * Live AI Search Test Routes
  *
  * Lets vendors test real AI queries and see if they appear in AI responses.
- * Free tier: 3 tests total. Paid tier: 10 tests per month.
+ * Free tier: 3 tests total. Starter: 10/month. Pro: unlimited.
  */
 
 import express from 'express';
@@ -13,18 +13,33 @@ import AIMentionScan from '../models/AIMentionScan.js';
 
 const router = express.Router();
 
-const PAID_TIERS = ['basic', 'visible', 'managed', 'enterprise', 'verified'];
+const PAID_TIERS = ['basic', 'visible', 'managed', 'enterprise', 'verified', 'starter', 'pro'];
+const PRO_TIERS = ['pro', 'enterprise', 'managed'];
 const FREE_LIMIT = 3;
-const PAID_MONTHLY_LIMIT = 10;
+const STARTER_MONTHLY_LIMIT = 10;
 
 /**
  * Check usage limits
  */
 async function checkUsageLimits(vendorId, tier) {
-  const isPaid = PAID_TIERS.includes((tier || 'free').toLowerCase());
+  const normalizedTier = (tier || 'free').toLowerCase();
+  const isPaid = PAID_TIERS.includes(normalizedTier);
+  const isPro = PRO_TIERS.includes(normalizedTier);
+
+  if (isPro) {
+    // Pro/Enterprise: unlimited tests
+    return {
+      allowed: true,
+      remaining: 999,
+      limit: 999,
+      isPaid: true,
+      unlimited: true,
+      resetDate: null,
+    };
+  }
 
   if (isPaid) {
-    // Paid: 10 tests this calendar month
+    // Starter: 10 tests this calendar month
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
@@ -36,9 +51,9 @@ async function checkUsageLimits(vendorId, tier) {
     });
 
     return {
-      allowed: usedThisMonth < PAID_MONTHLY_LIMIT,
-      remaining: Math.max(0, PAID_MONTHLY_LIMIT - usedThisMonth),
-      limit: PAID_MONTHLY_LIMIT,
+      allowed: usedThisMonth < STARTER_MONTHLY_LIMIT,
+      remaining: Math.max(0, STARTER_MONTHLY_LIMIT - usedThisMonth),
+      limit: STARTER_MONTHLY_LIMIT,
       isPaid: true,
       resetDate: new Date(startOfMonth.getFullYear(), startOfMonth.getMonth() + 1, 1).toISOString(),
     };
@@ -163,7 +178,7 @@ router.post('/', vendorAuth, async (req, res) => {
           limited: true,
           message: usage.isPaid
             ? `You've used all ${usage.limit} tests this month. Tests reset on ${new Date(usage.resetDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.`
-            : `You've used all ${usage.limit} free tests. Upgrade to Starter for ${PAID_MONTHLY_LIMIT} monthly tests.`,
+            : `You've used all ${usage.limit} free tests. Upgrade to Starter for ${STARTER_MONTHLY_LIMIT} monthly tests.`,
           testsRemaining: 0,
           isPaid: usage.isPaid,
           resetDate: usage.resetDate,
