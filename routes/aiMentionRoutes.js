@@ -86,7 +86,7 @@ router.get('/summary', vendorAuth, async (req, res) => {
       })
         .sort({ scanDate: -1 })
         .limit(10)
-        .select('scanDate prompt position competitorsMentioned category location')
+        .select('scanDate prompt position platform aiModel competitorsMentioned category location')
         .lean();
 
       // Weekly history (last 12 weeks)
@@ -116,6 +116,35 @@ router.get('/summary', vendorAuth, async (req, res) => {
         week: w._id,
         mentions: w.mentions,
       }));
+
+      // Per-platform breakdown (last 30 days)
+      const platformAgg = await AIMentionScan.aggregate([
+        {
+          $match: {
+            vendorId: new mongoose.Types.ObjectId(vendorId),
+            mentioned: true,
+            scanDate: { $gte: thirtyDaysAgo },
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$platform', '$aiModel'] },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]);
+
+      const byPlatform = { chatgpt: 0, perplexity: 0, claude: 0, gemini: 0, grok: 0, metaai: 0 };
+      for (const p of platformAgg) {
+        const key = (p._id || '').toLowerCase().replace(/[-\s]/g, '');
+        // Map old 'claude-haiku' to 'claude', etc.
+        const normalized = key.includes('claude') ? 'claude' : key.includes('chatgpt') || key.includes('gpt') ? 'chatgpt' : key;
+        if (normalized in byPlatform) {
+          byPlatform[normalized] += p.count;
+        }
+      }
+      response.mentionsByPlatform = byPlatform;
     }
 
     res.json({ success: true, data: response });

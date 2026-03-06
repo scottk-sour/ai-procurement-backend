@@ -16,6 +16,7 @@ const aiMentionScanSchema = new mongoose.Schema({
     required: true,
   },
   aiModel: { type: String, default: 'claude-haiku' },
+  platform: { type: String, enum: ['chatgpt', 'perplexity', 'claude', 'gemini', 'grok', 'metaai'], default: null },
   competitorsMentioned: [String],
   category: { type: String, required: true },
   location: { type: String, required: true },
@@ -29,5 +30,6 @@ const aiMentionScanSchema = new mongoose.Schema({
 aiMentionScanSchema.index({ vendorId: 1, scanDate: -1 });
 aiMentionScanSchema.index({ scanDate: -1 });
 aiMentionScanSchema.index({ vendorId: 1, mentioned: 1, scanDate: -1 });
+aiMentionScanSchema.index({ vendorId: 1, platform: 1, mentioned: 1, scanDate: -1 });
 
 export default mongoose.model('AIMentionScan', aiMentionScanSchema);

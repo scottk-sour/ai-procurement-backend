@@ -23,6 +23,7 @@ import { importVendorProducts, VendorUploadValidator } from "../controllers/vend
 import { sendEmail } from "../services/emailService.js";
 import AeoReport from "../models/AeoReport.js";
 import { generateFullReport } from "../services/aeoReportGenerator.js";
+import { runSingleVendorScan } from "../services/aiMentionScanner.js";
 
 const router = express.Router();
 const { JWT_SECRET } = process.env;
@@ -469,6 +470,23 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 responseTime: updatedVendor.responseTime || '',
             }
         });
+
+        // Trigger first AI mention scan if profile is now complete and on a paid tier
+        const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
+        const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum', 'starter', 'pro', 'verified'];
+        const vendorTier = (updatedVendor.tier || 'free').toLowerCase();
+        const accountTier = (updatedVendor.account?.tier || '').toLowerCase();
+        const isPaid = PAID_TIERS.includes(vendorTier) || PAID_ACCOUNT_TIERS.includes(accountTier);
+        const hasCity = !!updatedVendor.location?.city;
+        const hasType = !!updatedVendor.vendorType;
+        const alreadyScanned = updatedVendor.firstScanTriggered === true;
+
+        if (isPaid && hasCity && hasType && !alreadyScanned) {
+          // Run async — don't block the profile update response
+          runSingleVendorScan(updatedVendor._id).catch(err => {
+            console.error('[FirstScan] Failed for vendor', updatedVendor._id, err.message);
+          });
+        }
     } catch (error) {
         console.error('Error updating vendor profile:', error.message);
         res.status(500).json({

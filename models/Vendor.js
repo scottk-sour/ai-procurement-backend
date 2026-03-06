@@ -33,7 +33,7 @@ const vendorSchema = new mongoose.Schema({
   // Vendor Type
   vendorType: {
     type: String,
-    enum: ['office-equipment', 'solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'],
+    enum: ['office-equipment', 'solicitor', 'accountant', 'mortgage-advisor', 'estate-agent', 'financial-advisor', 'insurance-broker'],
     default: 'office-equipment'
   },
 
@@ -241,6 +241,9 @@ const vendorSchema = new mongoose.Schema({
   },
   subscriptionEndDate: { type: Date },
   subscriptionCurrentPeriodEnd: { type: Date },
+
+  // AI Mention Scanning
+  firstScanTriggered: { type: Boolean, default: false },
 
   // Platform Integration
   integration: {

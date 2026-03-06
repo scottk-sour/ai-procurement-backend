@@ -1432,7 +1432,9 @@ async function startServer() {
       logger.info(`🎉 TendorAI Backend is ready!`);
 
       // Start scheduled report cron jobs if enabled
-      if (process.env.ENABLE_CRON === 'true') {
+      const cronEnabled = process.env.ENABLE_CRON === 'true';
+      logger.info(`ENABLE_CRON is ${cronEnabled} — weekly AI mention scans are ${cronEnabled ? 'enabled' : 'disabled'}`);
+      if (cronEnabled) {
         import('./jobs/scheduledReports.js').then(m => m.startScheduledReports());
       }
     });

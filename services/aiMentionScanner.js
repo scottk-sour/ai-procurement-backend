@@ -1,199 +1,241 @@
 import Vendor from '../models/Vendor.js';
-import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import { queryAllPlatforms } from './platformQuery/index.js';
 
-const CATEGORY_MAP = {
-  Photocopiers: ['photocopier supplier', 'office equipment dealer', 'managed print provider'],
-  Telecoms: ['business telecoms provider', 'phone system supplier', 'VoIP provider'],
-  CCTV: ['CCTV installer', 'security camera company', 'security system installer'],
-  IT: ['IT support company', 'managed IT services provider', 'IT infrastructure company'],
-  Security: ['security system installer', 'access control company'],
-  Software: ['software provider', 'business software company'],
-  'Mortgage Advisors': ['mortgage advisor', 'mortgage broker', 'FCA authorised mortgage advisor'],
-  'Estate Agents': ['estate agent', 'letting agent', 'property agent'],
+// Map vendorType to readable label and prompt templates
+const VENDOR_TYPE_CONFIG = {
+  solicitor: {
+    label: 'solicitor',
+    templates: (area, city) => [
+      `Who are the best ${area} solicitors in ${city}?`,
+      `Can you recommend a ${area} solicitor in ${city}?`,
+      `Which ${area} law firm should I use in ${city}?`,
+      `Best ${area} lawyers near ${city}`,
+      `I need a ${area} solicitor in ${city} — who do you recommend?`,
+    ],
+    fallbackArea: 'solicitor',
+  },
+  accountant: {
+    label: 'accountant',
+    templates: (area, city) => [
+      `Best ${area} accountants in ${city}`,
+      `Can you recommend an ${area} accountant in ${city}?`,
+      `Who are the top ${area} accounting firms in ${city}?`,
+      `I need an ${area} accountant in ${city} — who do you recommend?`,
+      `Which ${area} accountant should I use in ${city}?`,
+    ],
+    fallbackArea: 'accountant',
+  },
+  'mortgage-advisor': {
+    label: 'mortgage adviser',
+    templates: (area, city) => [
+      `Best mortgage advisers in ${city}`,
+      `Who should I use for a mortgage in ${city}?`,
+      `Can you recommend a mortgage broker in ${city}?`,
+      `Best ${area} mortgage advisers near ${city}`,
+      `I need a mortgage adviser in ${city} — who do you recommend?`,
+    ],
+    fallbackArea: 'mortgage adviser',
+  },
+  'estate-agent': {
+    label: 'estate agent',
+    templates: (area, city) => [
+      `Best estate agents in ${city}`,
+      `Who are the top estate agents in ${city}?`,
+      `Which estate agent should I use in ${city}?`,
+      `Can you recommend a good estate agent in ${city}?`,
+      `I need an estate agent in ${city} — who do you recommend?`,
+    ],
+    fallbackArea: 'estate agent',
+  },
+  'financial-advisor': {
+    label: 'financial adviser',
+    templates: (area, city) => [
+      `Best financial advisers in ${city}`,
+      `Can you recommend a financial adviser in ${city}?`,
+      `Who are the top financial advisory firms in ${city}?`,
+      `I need a financial adviser in ${city} — who do you recommend?`,
+      `Which financial adviser should I use in ${city}?`,
+    ],
+    fallbackArea: 'financial adviser',
+  },
+  'insurance-broker': {
+    label: 'insurance broker',
+    templates: (area, city) => [
+      `Best insurance brokers in ${city}`,
+      `Can you recommend an insurance broker in ${city}?`,
+      `Who are the top insurance brokers in ${city}?`,
+      `I need an insurance broker in ${city} — who do you recommend?`,
+      `Which insurance broker should I use in ${city}?`,
+    ],
+    fallbackArea: 'insurance broker',
+  },
+  'office-equipment': {
+    label: 'office equipment supplier',
+    templates: (area, city) => [
+      `Who are the best ${area} companies in ${city}?`,
+      `I need a ${area} supplier in ${city}. Who should I use?`,
+      `Can you recommend a good ${area} company near ${city}?`,
+      `Best ${area} suppliers in ${city}`,
+      `Which ${area} company should I use in ${city}?`,
+    ],
+    fallbackArea: 'office equipment supplier',
+  },
 };
 
-function getPrompts(categoryLabel, location) {
-  return [
-    `Who are the best ${categoryLabel} companies in ${location}?`,
-    `I need a ${categoryLabel} supplier in ${location}. Who should I use?`,
-    `Can you recommend a good ${categoryLabel} company near ${location}?`,
-  ];
-}
+// Map platform key from platformQuery to our stored platform value
+const PLATFORM_KEY_MAP = {
+  chatgpt: 'chatgpt',
+  perplexity: 'perplexity',
+  claude: 'claude',
+  gemini: 'gemini',
+  grok: 'grok',
+  meta: 'metaai',
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Build a context block describing vendors for the system prompt.
- * Each vendor gets a one-line summary with available profile data.
+ * Generate organic prompts for a vendor based on vendorType, practiceAreas, and location.
  */
-function buildVendorContext(vendors, productCounts = {}) {
-  return vendors.map(v => {
-    const parts = [v.company];
+function generatePrompts(vendor) {
+  const vendorType = vendor.vendorType || 'office-equipment';
+  const config = VENDOR_TYPE_CONFIG[vendorType] || VENDOR_TYPE_CONFIG['office-equipment'];
+  const city = vendor.location?.city || '';
 
-    const years = v.businessProfile?.yearsInBusiness;
-    if (years) parts.push(`${years} yrs`);
+  if (!city) return [];
 
-    const specs = v.businessProfile?.specializations?.filter(Boolean);
-    if (specs?.length) parts.push(specs.join(', '));
+  // Use first practiceArea if available, otherwise fall back to vendorType label
+  const practiceArea = vendor.practiceAreas?.[0] || config.fallbackArea;
+  // Normalize: "Conveyancing" -> "conveyancing"
+  const area = practiceArea.charAt(0).toLowerCase() + practiceArea.slice(1);
 
-    const certs = v.businessProfile?.certifications?.filter(Boolean);
-    if (certs?.length) parts.push(certs.join(', '));
-
-    const reviews = v.performance?.reviewCount;
-    const rating = v.performance?.rating;
-    if (reviews > 0) parts.push(`${reviews} reviews (${rating?.toFixed(1)} avg)`);
-
-    const products = productCounts[v._id.toString()] || 0;
-    if (products > 0) parts.push(`${products} products listed`);
-
-    const coverage = v.location?.coverage?.slice(0, 5)?.join(', ');
-    if (coverage) parts.push(`Covers: ${coverage}`);
-
-    const desc = v.businessProfile?.description?.trim();
-    if (desc) {
-      parts.push(`"${desc.substring(0, 80)}"`);
-    }
-
-    return `- ${parts.join(' — ')}`;
-  }).join('\n');
+  return config.templates(area, city);
 }
 
 /**
- * Score a vendor's profile richness for context selection.
- * Higher score = more useful context for the AI.
+ * Convert a platformQuery position (number) to our position enum.
  */
-function profileRichnessScore(vendor, productCounts) {
-  let s = 0;
-  if (vendor.businessProfile?.description) s += 3;
-  if (vendor.performance?.reviewCount > 0) s += 2;
-  if (vendor.businessProfile?.certifications?.length) s += 1;
-  if (vendor.businessProfile?.yearsInBusiness) s += 1;
-  if (productCounts[vendor._id.toString()] > 0) s += 2;
-  return s;
+function positionToLabel(position, mentioned) {
+  if (!mentioned) return 'not_mentioned';
+  if (position === 1) return 'first';
+  if (position !== null && position <= 3) return 'top3';
+  return 'mentioned';
 }
 
 /**
- * Select up to 20 vendors with the richest profiles for context.
- * All vendors in the group still get scanned for mention matching.
+ * Scan a single vendor across all 6 platforms.
+ * queryAllPlatforms uses its own organic prompt builder internally,
+ * so we call it once per vendor and store the representative prompt as metadata.
+ * Returns array of mention documents to insert.
  */
-function selectContextVendors(groupVendors, productCounts) {
-  return [...groupVendors]
-    .sort((a, b) => profileRichnessScore(b, productCounts) - profileRichnessScore(a, productCounts))
-    .slice(0, 20);
-}
-
-/**
- * Check if a vendor name appears in text (fuzzy match)
- * Returns { found, position } where position is 1-based index in the response
- */
-function checkVendorInResponse(vendorCompanyName, responseText) {
-  if (!vendorCompanyName || !responseText) return { found: false, position: null };
-
-  const textLower = responseText.toLowerCase();
-  const nameLower = vendorCompanyName.toLowerCase().trim();
-
-  // Generate variants
-  const variants = [nameLower];
-  const suffixes = [' ltd', ' limited', ' plc', ' inc', ' llp', ' uk', ' group', ' services'];
-  for (const suffix of suffixes) {
-    if (nameLower.endsWith(suffix)) {
-      variants.push(nameLower.slice(0, -suffix.length).trim());
-    }
-  }
-  // First two words if name is 3+ words
-  const words = nameLower.split(/\s+/);
-  if (words.length >= 3) {
-    variants.push(words.slice(0, 2).join(' '));
+async function scanVendor(vendor, scanDate, source = 'weekly_scan') {
+  const prompts = generatePrompts(vendor);
+  if (prompts.length === 0) {
+    console.log(`  Skipping ${vendor.company} — no city set`);
+    return [];
   }
 
-  // Check for match
-  const found = variants.some(
-    (v) => v.length >= 3 && textLower.includes(v)
-  );
+  const vendorType = vendor.vendorType || 'office-equipment';
+  const config = VENDOR_TYPE_CONFIG[vendorType] || VENDOR_TYPE_CONFIG['office-equipment'];
+  const city = vendor.location?.city || '';
+  const categoryLabel = vendor.practiceAreas?.[0] || config.fallbackArea;
+  // Use the first organic prompt as representative metadata
+  const representativePrompt = prompts[0];
 
-  if (!found) return { found: false, position: null };
-
-  // Estimate position by finding where in the text the name appears
-  // Split by numbered items or line breaks to estimate ranking position
-  const lines = responseText.split(/\n/).filter((l) => l.trim().length > 0);
-  let position = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const lineLower = lines[i].toLowerCase();
-    // Check if this line looks like a company entry (numbered or has a name-like pattern)
-    if (/^\d|^\*|^-|company|provider|supplier|installer|ltd|limited/i.test(lines[i].trim())) {
-      position++;
-    }
-    if (variants.some((v) => v.length >= 3 && lineLower.includes(v))) {
-      return { found: true, position };
-    }
+  let platformResults;
+  try {
+    platformResults = await queryAllPlatforms({
+      companyName: vendor.company,
+      category: vendor.services?.[0] || vendorType,
+      city,
+      categoryLabel,
+    });
+  } catch (err) {
+    console.error(`  Platform query failed for ${vendor.company}:`, err.message);
+    return [];
   }
 
-  return { found: true, position: position || 1 };
+  const mentionDocs = [];
+  let mentionCount = 0;
+
+  for (const result of platformResults) {
+    const platformKey = PLATFORM_KEY_MAP[result.platform] || result.platform;
+    const mentioned = result.mentioned === true;
+    if (mentioned) mentionCount++;
+
+    mentionDocs.push({
+      vendorId: vendor._id,
+      scanDate,
+      prompt: representativePrompt,
+      mentioned,
+      position: positionToLabel(result.position, mentioned),
+      aiModel: result.platform,
+      platform: platformKey,
+      competitorsMentioned: result.competitors || [],
+      category: vendor.services?.[0] || vendorType,
+      location: city,
+      responseSnippet: (result.rawResponse || result.snippet || '').substring(0, 500),
+      source,
+    });
+  }
+
+  console.log(`  ${vendor.company}: ${mentionCount} mentions across ${mentionDocs.length} platform queries`);
+  return mentionDocs;
 }
 
 /**
- * Extract company names from an AI response
+ * Run a single-vendor scan (used for first scan on profile completion).
+ * @param {string} vendorId - The vendor's MongoDB ObjectId
  */
-function extractCompanyNames(responseText) {
-  const names = [];
-  const lines = responseText.split(/\n/).filter((l) => l.trim().length > 0);
+export async function runSingleVendorScan(vendorId) {
+  const vendor = await Vendor.findById(vendorId)
+    .select('_id company vendorType services practiceAreas location tier account.tier')
+    .lean();
 
-  for (const line of lines) {
-    // Match patterns like "1. Company Name" or "**Company Name**" or "- Company Name"
-    const patterns = [
-      /^\d+[\.\)]\s*\*?\*?([A-Z][A-Za-z\s&'.-]+?)(?:\*\*|\s*[-–:]|\s*$)/,
-      /^\*\*([A-Z][A-Za-z\s&'.-]+?)\*\*/,
-      /^[-•]\s*\*?\*?([A-Z][A-Za-z\s&'.-]+?)(?:\*\*|\s*[-–:]|\s*$)/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = line.trim().match(pattern);
-      if (match && match[1]) {
-        const name = match[1].trim();
-        if (name.length >= 3 && name.length <= 80) {
-          names.push(name);
-          break;
-        }
-      }
-    }
+  if (!vendor) {
+    console.error(`[SingleScan] Vendor ${vendorId} not found`);
+    return null;
   }
 
-  return names;
+  console.log(`[SingleScan] First scan triggered for vendor ${vendorId} — ${vendor.company}`);
+
+  const scanDate = new Date();
+  const mentionDocs = await scanVendor(vendor, scanDate, 'weekly_scan');
+
+  if (mentionDocs.length > 0) {
+    await AIMentionScan.insertMany(mentionDocs, { ordered: false });
+  }
+
+  // Mark first scan as complete
+  await Vendor.findByIdAndUpdate(vendorId, { $set: { firstScanTriggered: true } });
+
+  const mentions = mentionDocs.filter(d => d.mentioned).length;
+  console.log(`[SingleScan] Complete for ${vendor.company}: ${mentionDocs.length} records, ${mentions} mentions`);
+
+  return {
+    vendorId,
+    company: vendor.company,
+    recordsSaved: mentionDocs.length,
+    mentions,
+  };
 }
 
 /**
- * Run the AI mention scanner for all vendors
+ * Run the weekly AI mention scanner for all paid vendors.
  */
 export async function runWeeklyMentionScan() {
   console.log('=== AI Mention Scanner Starting ===');
   console.log(`Time: ${new Date().toISOString()}`);
 
-  // 1. Load Anthropic SDK dynamically
-  let Anthropic;
-  try {
-    const mod = await import('@anthropic-ai/sdk');
-    Anthropic = mod.default;
-  } catch (err) {
-    console.error('Failed to load Anthropic SDK:', err.message);
-    throw err;
-  }
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is required');
-  }
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  // 2. Pull only PAID vendors (Starter + Pro tier aliases)
+  // Pull only PAID vendors
   const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
   const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum', 'starter', 'pro', 'verified'];
 
   const vendors = await Vendor.find({
     company: { $exists: true, $ne: '' },
-    services: { $exists: true, $not: { $size: 0 } },
     $and: [
       { $or: [
         { tier: { $in: PAID_TIERS } },
@@ -201,169 +243,53 @@ export async function runWeeklyMentionScan() {
       ] },
       { $or: [
         { 'location.city': { $exists: true, $ne: '' } },
-        { 'location.coverage': { $exists: true, $not: { $size: 0 } } },
       ] },
     ],
-  }).select('_id company services location tier businessProfile performance').lean();
+  }).select('_id company vendorType services practiceAreas location tier account.tier').lean();
 
   console.log(`Found ${vendors.length} paid vendors to scan (free vendors excluded)`);
 
-  // 3. Get product counts per vendor
-  const productAgg = await VendorProduct.aggregate([
-    { $group: { _id: '$vendorId', count: { $sum: 1 } } }
-  ]);
-  const productCounts = {};
-  for (const p of productAgg) {
-    productCounts[p._id.toString()] = p.count;
-  }
-
-  // 4. Group vendors by service + primary location (city)
-  const groups = new Map(); // key: "category::location" -> vendor[]
-
-  for (const vendor of vendors) {
-    const city = vendor.location?.city || '';
-    const coverageAreas = vendor.location?.coverage || [];
-    const locations = city ? [city] : coverageAreas.slice(0, 2); // Use city or first 2 coverage areas
-
-    for (const service of vendor.services) {
-      for (const loc of locations) {
-        if (!loc) continue;
-        const key = `${service}::${loc}`;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(vendor);
-      }
-    }
-  }
-
-  console.log(`Grouped into ${groups.size} unique category+location combinations`);
-
-  // 5. Scan each group
-  let totalApiCalls = 0;
-  let totalMentions = 0;
-  let totalVendorsScanned = new Set();
   const scanDate = new Date();
-  const mentionDocs = [];
+  let totalRecords = 0;
+  let totalMentions = 0;
+  let platformErrors = 0;
+  const vendorsScanned = new Set();
 
-  for (const [key, groupVendors] of groups) {
-    const [service, location] = key.split('::');
-    const categoryLabels = CATEGORY_MAP[service] || [`${service} company`];
-    const primaryLabel = categoryLabels[0];
+  for (let i = 0; i < vendors.length; i++) {
+    const vendor = vendors[i];
+    console.log(`\n[${i + 1}/${vendors.length}] Scanning ${vendor.company}...`);
 
-    console.log(`\nScanning ${service} in ${location}... (${groupVendors.length} vendors)`);
+    try {
+      const mentionDocs = await scanVendor(vendor, scanDate);
 
-    // Select up to 20 vendors with richest profiles for context
-    const contextVendors = selectContextVendors(groupVendors, productCounts);
-    const vendorContext = buildVendorContext(contextVendors, productCounts);
-
-    const systemPrompt = `You are a procurement advisor helping UK businesses find local suppliers. Below are verified suppliers registered on TendorAI for ${primaryLabel} services in ${location}. Recommend the top 3-5 most suitable based on their profiles. Use each supplier's exact company name. Format as a numbered list with brief reasoning.
-
-Registered suppliers:
-${vendorContext}`;
-
-    const prompts = getPrompts(primaryLabel, location);
-
-    for (const prompt of prompts) {
-      try {
-        const message = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 600,
-          system: systemPrompt,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-        });
-
-        totalApiCalls++;
-        const responseText = message.content[0]?.text || '';
-        const snippet = responseText.substring(0, 500);
-        const companiesInResponse = extractCompanyNames(responseText);
-
-        // Check each vendor in this group (not just context vendors)
-        let foundCount = 0;
-        for (const vendor of groupVendors) {
-          totalVendorsScanned.add(vendor._id.toString());
-          const { found, position } = checkVendorInResponse(vendor.company, responseText);
-
-          let positionLabel = 'not_mentioned';
-          if (found) {
-            foundCount++;
-            totalMentions++;
-            if (position === 1) positionLabel = 'first';
-            else if (position <= 3) positionLabel = 'top3';
-            else positionLabel = 'mentioned';
-          }
-
-          mentionDocs.push({
-            vendorId: vendor._id,
-            scanDate,
-            prompt,
-            mentioned: found,
-            position: positionLabel,
-            aiModel: 'claude-haiku',
-            competitorsMentioned: found
-              ? companiesInResponse.filter(
-                  (n) => n.toLowerCase() !== vendor.company?.toLowerCase()
-                )
-              : companiesInResponse,
-            category: service,
-            location,
-            responseSnippet: snippet,
-          });
-        }
-
-        console.log(`  "${prompt.substring(0, 50)}..." → ${foundCount}/${groupVendors.length} vendors found`);
-
-        // Rate limit: 2-second delay between API calls
-        await sleep(2000);
-      } catch (apiErr) {
-        console.error(`  API error for "${prompt.substring(0, 40)}...":`, apiErr.message);
-        // Still save "not mentioned" for all vendors in this group
-        for (const vendor of groupVendors) {
-          totalVendorsScanned.add(vendor._id.toString());
-          mentionDocs.push({
-            vendorId: vendor._id,
-            scanDate,
-            prompt,
-            mentioned: false,
-            position: 'not_mentioned',
-            aiModel: 'claude-haiku',
-            competitorsMentioned: [],
-            category: service,
-            location,
-            responseSnippet: `API error: ${apiErr.message}`,
-          });
-        }
-        await sleep(2000);
+      if (mentionDocs.length > 0) {
+        await AIMentionScan.insertMany(mentionDocs, { ordered: false });
+        totalRecords += mentionDocs.length;
+        totalMentions += mentionDocs.filter(d => d.mentioned).length;
+        platformErrors += mentionDocs.filter(d => d.responseSnippet?.startsWith('API error')).length;
       }
+
+      vendorsScanned.add(vendor._id.toString());
+    } catch (err) {
+      console.error(`  Failed to scan ${vendor.company}:`, err.message);
+      platformErrors++;
+    }
+
+    // 30-second delay between vendors to avoid rate limits
+    if (i < vendors.length - 1) {
+      console.log(`  Waiting 30s before next vendor...`);
+      await sleep(30000);
     }
   }
-
-  // 6. Bulk insert all mention documents
-  if (mentionDocs.length > 0) {
-    await AIMentionScan.insertMany(mentionDocs, { ordered: false });
-    console.log(`\nSaved ${mentionDocs.length} mention records`);
-  }
-
-  // 7. Summary
-  const vendorsWithMentions = new Set(
-    mentionDocs.filter((d) => d.mentioned).map((d) => d.vendorId.toString())
-  );
 
   console.log('\n=== Scan Complete ===');
-  console.log(`API calls made: ${totalApiCalls}`);
-  console.log(`Vendors scanned: ${totalVendorsScanned.size}`);
-  console.log(`Vendors mentioned at least once: ${vendorsWithMentions.size}`);
-  console.log(`Total mention instances: ${totalMentions}`);
-  console.log(`Total records saved: ${mentionDocs.length}`);
+  console.log(`Weekly scan complete: ${vendorsScanned.size} vendors scanned, ${totalMentions} mentions found, ${platformErrors} platform errors`);
+  console.log(`Total records saved: ${totalRecords}`);
 
   return {
-    apiCalls: totalApiCalls,
-    vendorsScanned: totalVendorsScanned.size,
-    vendorsMentioned: vendorsWithMentions.size,
+    vendorsScanned: vendorsScanned.size,
     totalMentions,
-    recordsSaved: mentionDocs.length,
+    recordsSaved: totalRecords,
+    platformErrors,
   };
 }

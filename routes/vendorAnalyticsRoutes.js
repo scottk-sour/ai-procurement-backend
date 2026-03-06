@@ -3,6 +3,7 @@
 
 import express from 'express';
 import VendorAnalytics from '../models/VendorAnalytics.js';
+import AIMentionScan from '../models/AIMentionScan.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 import crypto from 'crypto';
 
@@ -300,7 +301,7 @@ router.get('/vendor/:vendorId', async (req, res) => {
     const counts = {};
     eventCounts.forEach(c => { counts[c._id] = c.count; });
 
-    // Get AI mentions by source (only count identified AI platforms)
+    // Get AI mentions by source from VendorAnalytics (real-time tracking)
     const KNOWN_AI_SOURCES = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok', 'meta', 'metaai'];
     const aiBySource = await VendorAnalytics.aggregate([
       {
@@ -312,6 +313,23 @@ router.get('/vendor/:vendorId', async (req, res) => {
         },
       },
       { $group: { _id: '$source.referrer', count: { $sum: 1 } } }
+    ]);
+
+    // Also get per-platform counts from weekly scan data (AIMentionScan collection)
+    const scanByPlatform = await AIMentionScan.aggregate([
+      {
+        $match: {
+          vendorId: oid,
+          mentioned: true,
+          scanDate: { $gte: startDate },
+        },
+      },
+      {
+        $group: {
+          _id: { $ifNull: ['$platform', '$aiModel'] },
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
     // Get daily activity (exclude unknown-ai from ai_mention counts)
@@ -356,12 +374,28 @@ router.get('/vendor/:vendorId', async (req, res) => {
       phoneClicks: counts.phone_click || 0,
       aiMentions: counts.ai_mention || 0,
       searchImpressions: counts.search_impression || 0,
-      aiMentionsBySource: {
-        chatgpt: aiBySource.find(a => a._id === 'chatgpt')?.count || 0,
-        claude: aiBySource.find(a => a._id === 'claude')?.count || 0,
-        perplexity: aiBySource.find(a => a._id === 'perplexity')?.count || 0,
-        other: aiBySource.filter(a => !['chatgpt', 'claude', 'perplexity'].includes(a._id)).reduce((s, a) => s + a.count, 0)
-      },
+      aiMentionsBySource: (() => {
+        // Merge real-time analytics + weekly scan data
+        const merged = { chatgpt: 0, claude: 0, perplexity: 0, gemini: 0, grok: 0, metaai: 0, other: 0 };
+
+        // From real-time analytics
+        for (const a of aiBySource) {
+          const key = (a._id || '').toLowerCase();
+          if (key in merged) merged[key] += a.count;
+          else merged.other += a.count;
+        }
+
+        // From weekly scan data
+        for (const s of scanByPlatform) {
+          const raw = (s._id || '').toLowerCase().replace(/[-\s]/g, '');
+          const key = raw.includes('claude') ? 'claude'
+            : raw.includes('chatgpt') || raw.includes('gpt') ? 'chatgpt'
+            : raw in merged ? raw : 'other';
+          merged[key] += s.count;
+        }
+
+        return merged;
+      })(),
       recentAiQueries: recentAiQueries.map(q => ({
         timestamp: q.timestamp,
         query: q.source?.searchQuery,

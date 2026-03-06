@@ -6,9 +6,9 @@
  * Usage: node scripts/weeklyAIMentionScan.js
  * Cron:  Every Monday at 6am UTC
  *
- * Scans all active vendors by querying Claude Haiku with buyer-like
- * questions for each category+location combination. Records whether
- * each vendor was mentioned, their position, and which competitors appeared.
+ * Scans all paid vendors by querying 6 AI platforms (ChatGPT, Perplexity,
+ * Claude, Gemini, Grok, Meta AI) with organic buyer-like questions per
+ * vendor's type and location. Records per-platform mention data.
  */
 
 import dotenv from 'dotenv';
@@ -24,10 +24,14 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('ANTHROPIC_API_KEY environment variable is required');
+// Check for at least one platform API key
+const platformKeys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'PERPLEXITY_API_KEY', 'GEMINI_API_KEY', 'GROK_API_KEY', 'GROQ_API_KEY'];
+const configuredKeys = platformKeys.filter(k => process.env[k]);
+if (configuredKeys.length === 0) {
+  console.error('At least one AI platform API key is required. Set one of:', platformKeys.join(', '));
   process.exit(1);
 }
+console.log(`Configured platform API keys: ${configuredKeys.join(', ')}`);
 
 async function main() {
   try {
