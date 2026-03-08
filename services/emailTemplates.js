@@ -349,9 +349,8 @@ function formatGreetingName(name) {
 
 const TIER_UNLOCKED_PLATFORMS = {
   free: ['perplexity'],
-  starter: ['perplexity', 'chatgpt'],
-  pro: ['perplexity', 'chatgpt', 'claude'],
-  enterprise: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'],
+  starter: ['perplexity', 'chatgpt', 'claude'],
+  pro: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'],
 };
 
 /**
