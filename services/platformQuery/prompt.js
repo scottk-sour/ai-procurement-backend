@@ -63,10 +63,12 @@ export function parsePlatformResponse(responseText, companyName) {
   const rawMentioned = text.toLowerCase().includes(companyLower);
   const mentioned = rawMentioned ? isPositiveMention(text, companyName) : false;
 
-  // Try to determine position from numbered lists or order of appearance
+  // Try to determine position from explicitly numbered lists only.
+  // We only assign position when the company appears in a clear "1. Name" or "1) Name"
+  // pattern. Fallback order-of-appearance is too unreliable so we skip it —
+  // a null position simply means "mentioned" without a rank.
   let position = null;
   if (mentioned) {
-    // Try numbered list patterns: "1. CompanyName", "1) CompanyName", "#1 CompanyName"
     const numberedPatterns = [
       /(?:^|\n)\s*(\d+)[.)]\s*\**\s*([^\n*]+)/g,
       /(?:^|\n)\s*#(\d+)\s+([^\n]+)/g,
@@ -77,27 +79,15 @@ export function parsePlatformResponse(responseText, companyName) {
       while ((match = pattern.exec(text)) !== null) {
         const lineText = match[2].toLowerCase();
         if (lineText.includes(companyLower)) {
-          position = parseInt(match[1], 10);
+          const num = parseInt(match[1], 10);
+          // Sanity check: position should be 1-10
+          if (num >= 1 && num <= 10) {
+            position = num;
+          }
           break;
         }
       }
       if (position !== null) break;
-    }
-
-    // If no numbered position found, try order of appearance among company-like mentions
-    if (position === null) {
-      const lines = text.split('\n').filter(l => l.trim());
-      let order = 0;
-      for (const line of lines) {
-        // Lines that look like they mention a company (contain bold, bullet, or start with text)
-        if (line.match(/^\s*[-•*]\s+/) || line.match(/^\s*\d+[.)]/)) {
-          order++;
-          if (line.toLowerCase().includes(companyLower)) {
-            position = order;
-            break;
-          }
-        }
-      }
     }
   }
 
