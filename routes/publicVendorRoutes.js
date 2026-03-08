@@ -1536,6 +1536,57 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     reportData.platformResults = platformResults;
     reportData.tier = 'free';
 
+    // 1a. Aggregate competitors from actual platform responses
+    // This replaces the Claude web-search competitors with data from
+    // the real AI platform queries (ChatGPT, Perplexity, Claude, etc.)
+    if (platformResults.length > 0) {
+      const companyLower = companyName.toLowerCase();
+      const competitorFreq = new Map(); // name -> { count, platforms[] }
+
+      for (const pr of platformResults) {
+        if (pr.error || !pr.competitors || pr.competitors.length === 0) continue;
+        for (const name of pr.competitors) {
+          if (!name || name.toLowerCase().includes(companyLower)) continue;
+          // Normalise key: trim, collapse whitespace
+          const key = name.trim().replace(/\s+/g, ' ');
+          if (!key || key.length < 2 || key.length > 120) continue;
+          const existing = competitorFreq.get(key);
+          if (existing) {
+            existing.count++;
+            existing.platforms.push(pr.platformLabel);
+          } else {
+            competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel] });
+          }
+        }
+      }
+
+      // Sort by frequency (most platforms first), then alphabetical
+      const ranked = [...competitorFreq.entries()]
+        .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+
+      // Build competitor objects using the existing schema structure
+      const aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
+        const platformList = data.platforms.join(', ');
+        return {
+          name,
+          description: `Recommended by ${platformList}`,
+          reason: `Mentioned by ${data.count} of 6 AI platforms when asked for the best ${categoryLabel} in ${city}`,
+          website: null,
+          strengths: data.platforms.map(p => `Mentioned by ${p}`),
+        };
+      });
+
+      if (aggregatedCompetitors.length > 0) {
+        reportData.competitors = aggregatedCompetitors;
+        // Keep backward compat
+        reportData.aiRecommendations = aggregatedCompetitors.map(c => ({
+          name: c.name,
+          description: c.description,
+          reason: c.reason,
+        }));
+      }
+    }
+
     // 1b. Compute industry average for PDF context
     try {
       const avg = await getIndustryAverage(category);
