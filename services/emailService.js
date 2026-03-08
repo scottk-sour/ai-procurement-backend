@@ -12,7 +12,6 @@ import {
   aeoReportTemplate,
   formatCompanyName,
   buildAeoSubject,
-  TIER_UNLOCKED_PLATFORMS,
   newLeadNotificationTemplate
 } from './emailTemplates.js';
 import { getIndustryConfig } from './industryConfig.js';
@@ -237,11 +236,7 @@ export const sendAeoReportEmail = async (email, reportData) => {
   const tier = reportData.tier || 'free';
   const platformResults = reportData.platformResults || [];
 
-  // Compute unlocked mentioned for subject line
-  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
-  const unlockedMentioned = platformResults.filter(r => r.mentioned && unlocked.includes(r.platform));
-
-  const subject = buildAeoSubject({ displayName, config, unlockedMentioned, score: reportData.score });
+  const subject = buildAeoSubject({ displayName });
 
   return sendEmail({
     to: email,
@@ -259,9 +254,7 @@ export const sendAeoReportEmail = async (email, reportData) => {
       competitors: reportData.competitors || [],
       gaps: reportData.gaps || [],
     }),
-    text: unlockedMentioned.length > 0
-      ? `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI mentions you but competitors rank higher. View your full report: ${reportData.reportUrl}`
-      : `AI Visibility Report for ${displayName}: Score ${reportData.score}/100. AI does NOT recommend you for ${categoryLabel} in ${reportData.city}. View your full report: ${reportData.reportUrl}`
+    text: `Your AI Visibility Report for ${displayName} is ready. Score: ${reportData.score}/100. We asked 6 AI platforms who they recommend for ${categoryLabel} in ${reportData.city}. See why AI recommends your competitors: ${reportData.reportUrl}`
   });
 };
 

@@ -355,159 +355,55 @@ const TIER_UNLOCKED_PLATFORMS = {
 };
 
 /**
- * Build the AEO report email subject line using industry config.
+ * Build the AEO report email subject line.
  */
-function buildAeoSubject({ displayName, config, unlockedMentioned, score }) {
-  if (unlockedMentioned.length > 0) {
-    return `${displayName} is visible to AI — but you're not #1`;
-  }
-  return `AI doesn't recommend ${displayName} to ${config.buyerLabel}`;
-}
-
-/**
- * Build platform result rows for the email.
- */
-function buildPlatformSummaryHtml(platformResults, tier) {
-  if (!platformResults || platformResults.length === 0) return '';
-
-  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
-  const totalCount = platformResults.length;
-  const unlockedResults = platformResults.filter(r => unlocked.includes(r.platform));
-  const mentionedCount = unlockedResults.filter(r => r.mentioned).length;
-  const lockedCount = totalCount - unlocked.length;
-
-  let rows = '';
-  for (const result of platformResults) {
-    const isUnlocked = unlocked.includes(result.platform);
-    if (isUnlocked) {
-      const icon = result.mentioned ? '&#9989;' : '&#10060;';
-      const posText = result.mentioned && result.position ? ` (Position #${result.position})` : '';
-      rows += `<tr><td style="padding:6px 0;font-size:14px;color:#374151;">${icon} ${result.platformLabel}${posText}</td></tr>`;
-    }
-  }
-
-  if (lockedCount > 0) {
-    rows += `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">&#128274; ${lockedCount} more platform${lockedCount > 1 ? 's' : ''} — <a href="https://www.tendorai.com/for-vendors#pricing" style="color:#7c3aed;text-decoration:none;font-weight:600;">upgrade to see all results</a></td></tr>`;
-  }
-
-  return `
-          <!-- Platform mention summary -->
-          <tr>
-            <td style="padding:0 40px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px 20px;">
-                <tr><td style="padding:12px 16px 4px;">
-                  <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#1f2937;">AI Platform Results: Mentioned by ${mentionedCount} of 6 platforms</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                    ${rows}
-                  </table>
-                </td></tr>
-              </table>
-            </td>
-          </tr>`;
-}
-
-/**
- * Build the competitors section HTML.
- */
-function buildCompetitorsHtml(competitors) {
-  if (!competitors || competitors.length === 0) return '';
-
-  const topCompetitors = competitors.slice(0, 3);
-  let rows = topCompetitors.map(c => {
-    const name = typeof c === 'string' ? c : (c.name || c.companyName || '');
-    if (!name) return '';
-    return `<tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#8226;&nbsp;&nbsp;${name}</td></tr>`;
-  }).filter(Boolean).join('');
-
-  if (!rows) return '';
-
-  return `
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin:20px 0;">
-                <tr><td style="padding:16px 20px;">
-                  <p style="margin:0 0 8px;color:#991b1b;font-size:14px;font-weight:600;">AI recommends these competitors instead:</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                    ${rows}
-                  </table>
-                  <p style="margin:8px 0 0;color:#6b7280;font-size:13px;">Your full report shows why they rank above you and how to overtake them.</p>
-                </td></tr>
-              </table>`;
-}
-
-/**
- * Build the gaps teaser section HTML.
- */
-function buildGapsTeaserHtml(gaps) {
-  if (!gaps || gaps.length === 0) return '';
-
-  const topGaps = gaps.slice(0, 2);
-  let rows = topGaps.map(g => {
-    const title = typeof g === 'string' ? g : (g.title || g.gap || '');
-    if (!title) return '';
-    return `<tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#9888;&nbsp;&nbsp;${title}</td></tr>`;
-  }).filter(Boolean).join('');
-
-  if (!rows) return '';
-
-  const remainingCount = Math.max(0, gaps.length - 2);
-  const moreText = remainingCount > 0
-    ? `<p style="margin:8px 0 0;color:#6b7280;font-size:13px;">+ ${remainingCount} more gap${remainingCount > 1 ? 's' : ''} identified in your full report</p>`
-    : '';
-
-  return `
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin:20px 0;">
-                <tr><td style="padding:16px 20px;">
-                  <p style="margin:0 0 8px;color:#92400e;font-size:14px;font-weight:600;">Key gaps holding you back:</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                    ${rows}
-                  </table>
-                  ${moreText}
-                </td></tr>
-              </table>`;
+function buildAeoSubject({ displayName }) {
+  return `Your AI Visibility Report — ${displayName}`;
 }
 
 export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, reportUrl, platformResults, tier, competitors, gaps }) => {
-  const config = getIndustryConfig(category);
   const displayName = formatCompanyName(companyName);
   const firstName = formatGreetingName(name);
   const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
+  const scorePercent = Math.min(100, Math.max(0, score || 0));
 
-  const scoreColor = score <= 25 ? '#dc2626' : score <= 50 ? '#ea580c' : score <= 75 ? '#65a30d' : '#16a34a';
-  const scoreLabel = score <= 25 ? 'Needs attention' : score <= 50 ? 'Room to grow' : score <= 75 ? 'Good start' : 'Strong';
+  // Count total mentions across all platforms
+  const mentionCount = (platformResults || []).filter(r => r.mentioned && !r.error).length;
 
-  const unlocked = TIER_UNLOCKED_PLATFORMS[tier] || TIER_UNLOCKED_PLATFORMS.free;
-  const unlockedResults = (platformResults || []).filter(r => unlocked.includes(r.platform));
-  const unlockedMentioned = unlockedResults.filter(r => r.mentioned);
+  // Top 3 competitors
+  const competitorItems = (competitors || []).slice(0, 3).map(c => {
+    const cName = typeof c === 'string' ? c : (c.name || c.companyName || '');
+    return cName || null;
+  }).filter(Boolean);
 
+  // Top 3 gaps
+  const gapItems = (gaps || []).slice(0, 3).map(g => {
+    const title = typeof g === 'string' ? g : (g.title || g.gap || '');
+    return title || null;
+  }).filter(Boolean);
 
-  // --- Build dynamic platform list text ---
-  const queriedPlatforms = (platformResults || [])
-    .filter(r => !r.error && unlocked.includes(r.platform))
-    .map(r => r.platformLabel);
-  let platformListText;
-  if (queriedPlatforms.length === 0) {
-    platformListText = 'ChatGPT, Claude, and Perplexity';
-  } else if (queriedPlatforms.length === 1) {
-    platformListText = queriedPlatforms[0];
-  } else if (queriedPlatforms.length === 2) {
-    platformListText = `${queriedPlatforms[0]} and ${queriedPlatforms[1]}`;
+  const competitorListHtml = competitorItems.length > 0
+    ? competitorItems.map(n => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${n}</li>`).join('')
+    : '';
+
+  const gapListHtml = gapItems.length > 0
+    ? gapItems.map(g => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${g}</li>`).join('')
+    : '';
+
+  // Dynamic mention result paragraph
+  let mentionResultHtml;
+  if (mentionCount === 0) {
+    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> wasn&rsquo;t recommended by any of them.</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">Instead, AI platforms suggested firms such as:</p>`;
   } else {
-    platformListText = `${queriedPlatforms.slice(0, -1).join(', ')}, and ${queriedPlatforms[queriedPlatforms.length - 1]}`;
+    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> was mentioned by <strong>${mentionCount} of 6</strong> platforms &mdash; but competitors still ranked higher.</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">AI platforms also suggested firms such as:</p>`;
   }
 
-  // --- Subject ---
-  const subject = buildAeoSubject({ displayName, config, unlockedMentioned, score });
-
-  // --- Result block ---
-  let resultBlock;
-  if (unlockedMentioned.length > 0) {
-    const mentionedNames = unlockedMentioned.map(r => r.platformLabel).join(', ');
-    resultBlock = `We asked 6 AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName}</strong> was mentioned by <strong>${unlockedMentioned.length} of 6</strong> platforms (${mentionedNames}). But there's room to improve — your AI Visibility score is <strong>${score}/100</strong>.`;
-  } else {
-    resultBlock = `We asked 6 AI platforms: <em>"Who are the best ${config.industryLabel} providers in ${city}?"</em><br><br><strong>${displayName} wasn't recommended by any of them.</strong> Your AI Visibility score is <strong>${score}/100</strong>.`;
-  }
-
-  // --- Trust line ---
-  const trustLine = config.regulatorNote || 'This report uses publicly available business data and AI analysis.';
+  // Dynamic preview text
+  const previewText = mentionCount === 0
+    ? 'AI recommended your competitors instead. Here\u2019s why.'
+    : `Mentioned by ${mentionCount} of 6 AI platforms \u2014 but competitors ranked higher.`;
 
   return `
 <!DOCTYPE html>
@@ -515,10 +411,13 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your AI Visibility Report — ${displayName}</title>
+  <title>Your AI Visibility Report &mdash; ${displayName}</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 </head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <!-- Preview text (hidden preheader) -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${previewText}</div>
+
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 16px;">
     <tr>
       <td align="center">
@@ -526,104 +425,88 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
 
           <!-- Logo bar -->
           <tr>
-            <td style="background:#ffffff;padding:24px 40px 16px;text-align:center;border-bottom:1px solid #f3f4f6;">
+            <td style="background:#ffffff;padding:24px 40px 16px;text-align:center;border-bottom:1px solid #e5e7eb;">
               <img src="https://www.tendorai.com/logo.png" alt="TendorAI" width="140" style="display:inline-block;max-width:140px;height:auto;" />
             </td>
           </tr>
 
-          <!-- Score hero -->
-          <tr>
-            <td style="padding:32px 40px 24px;text-align:center;">
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-                <tr>
-                  <td align="center">
-                    <div style="width:140px;height:140px;border-radius:50%;border:8px solid ${scoreColor};text-align:center;line-height:124px;margin:0 auto;">
-                      <span style="font-size:52px;font-weight:700;color:${scoreColor};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">${score}</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-top:12px;">
-                    <span style="display:inline-block;background:${scoreColor};color:#ffffff;font-size:13px;font-weight:600;padding:4px 16px;border-radius:20px;letter-spacing:0.3px;">${scoreLabel}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-top:8px;">
-                    <p style="margin:0;color:#6b7280;font-size:14px;">${displayName} — AI Visibility Score</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          ${buildPlatformSummaryHtml(platformResults, tier)}
-
           <!-- Main content -->
           <tr>
-            <td style="padding:0 40px 32px;">
+            <td style="padding:32px 40px;">
 
               <!-- Greeting -->
-              <h2 style="color:#1f2937;font-size:20px;margin:0 0 16px;font-weight:600;">${greeting}</h2>
+              <p style="color:#374151;font-size:16px;line-height:1.7;margin:0 0 16px;">${greeting}</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">Your AI Visibility Report for <strong>${displayName}</strong> is ready.</p>
 
-              <!-- Result block -->
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;">${resultBlock}</p>
-
-              <!-- Why this matters now (industry-specific urgency) -->
-              <div style="background:#faf5ff;border-left:4px solid #7c3aed;border-radius:0 8px 8px 0;padding:16px 20px;margin:20px 0;">
-                <p style="margin:0;color:#4b5563;font-size:14px;line-height:1.7;"><strong style="color:#7c3aed;">Why this matters now:</strong> ${config.urgencyAngle}</p>
+              <!-- The question -->
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 12px;">We asked six AI assistants &mdash; including ChatGPT, Gemini and Perplexity &mdash; the same question potential clients increasingly ask:</p>
+              <div style="background:#f0f4f8;border-left:4px solid #1A56A0;border-radius:0 6px 6px 0;padding:14px 18px;margin:0 0 24px;">
+                <p style="margin:0;color:#1f2937;font-size:15px;font-style:italic;line-height:1.5;">&ldquo;Who are the best ${categoryLabel} in ${city}?&rdquo;</p>
               </div>
 
-              <!-- Competitors section -->
-              ${buildCompetitorsHtml(competitors)}
+              <!-- Mention result + competitors -->
+              ${mentionResultHtml}
+              ${competitorListHtml ? `<ul style="margin:0 0 16px;padding-left:24px;">${competitorListHtml}</ul>` : ''}
 
-              <!-- Gaps teaser -->
-              ${buildGapsTeaserHtml(gaps)}
+              <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 24px;">These firms aren&rsquo;t necessarily better &mdash; their websites and public profiles are simply structured in a way AI systems can verify and recommend with more confidence.</p>
 
-              <!-- Industry benchmark -->
-              <p style="color:#6b7280;font-size:13px;margin:16px 0;line-height:1.6;text-align:center;font-style:italic;">${config.benchmark}</p>
+              <!-- Score -->
+              <h3 style="color:#1A56A0;font-size:16px;font-weight:700;margin:0 0 8px;">Your AI Visibility Score: ${scorePercent} / 100</h3>
 
-              <!-- Score context -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;margin:20px 0;">
-                <tr><td style="padding:16px 20px;">
-                  <p style="margin:0 0 12px;color:#1f2937;font-size:15px;font-weight:600;">Your full report includes:</p>
-                  <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;AI Visibility score with detailed breakdown</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Which AI platforms mention you (and which don't)</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Who AI recommends instead — with website links</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Specific gaps and how to fix them</td></tr>
-                    <tr><td style="padding:4px 0;color:#374151;font-size:14px;line-height:1.6;">&#10003;&nbsp;&nbsp;Downloadable PDF report</td></tr>
-                  </table>
-                </td></tr>
-              </table>
-
-              <!-- Primary CTA -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <!-- Progress bar -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
                 <tr>
-                  <td align="center" style="padding:8px 0 12px;">
-                    <a href="${reportUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:16px 40px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;letter-spacing:0.3px;">View Your Full Report</a>
+                  <td style="background:#e5e7eb;border-radius:6px;overflow:hidden;height:14px;padding:0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="${scorePercent}%" style="height:14px;">
+                      <tr>
+                        <td style="background:#1A56A0;border-radius:6px;height:14px;line-height:14px;font-size:1px;">&nbsp;</td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
 
-              <!-- Secondary CTA -->
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">A score at this level means AI platforms currently have low confidence recommending your firm. Firms scoring above 60 appear in roughly 4&times; more AI recommendations.</p>
+
+              <!-- Gaps -->
+              <p style="color:#1A56A0;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">Key gaps affecting your visibility:</p>
+              ${gapListHtml ? `<ul style="margin:0 0 16px;padding-left:24px;">${gapListHtml}</ul>` : ''}
+
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">These are common issues &mdash; the average score in your sector is around 35/100 &mdash; but firms fixing them now are the ones starting to appear in AI recommendations.</p>
+
+              <!-- Already listed -->
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">Your firm is already listed on TendorAI. We built the directory using data from the SRA register, so your profile exists &mdash; it just hasn&rsquo;t been claimed yet. That means you&rsquo;re currently not controlling what AI systems see about your firm.</p>
+
+              <!-- Full report shows -->
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">Your full report shows:</p>
+              <ul style="margin:0 0 24px;padding-left:24px;">
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">Which AI platforms mention your firm</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">Which competitors are recommended instead</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">The exact gaps affecting your score</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">The specific fixes to improve your visibility</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">A downloadable PDF report</li>
+              </ul>
+
+              <!-- Single CTA -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td align="center" style="padding:4px 0 8px;">
-                    <a href="https://www.tendorai.com/for-vendors" style="display:inline-block;border:2px solid #7c3aed;color:#7c3aed;padding:12px 32px;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Claim Your Free Profile</a>
+                  <td align="center" style="padding:0 0 28px;">
+                    <a href="${reportUrl}" style="display:inline-block;background:#1A56A0;color:#ffffff;padding:16px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;letter-spacing:0.3px;">See why AI recommends your competitors &rarr;</a>
                   </td>
                 </tr>
               </table>
 
               <!-- Sign-off -->
-              <div style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e5e7eb;">
-                <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;">Best,</p>
+              <div style="padding-top:16px;border-top:1px solid #e5e7eb;">
+                <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;">Best regards,</p>
                 <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;font-weight:600;">Scott Davies</p>
                 <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">Founder, TendorAI</p>
-                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">scott.davies@tendorai.com</p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="mailto:scott.davies@tendorai.com" style="color:#1A56A0;text-decoration:none;">scott.davies@tendorai.com</a></p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a></p>
               </div>
 
-              <!-- Trust line -->
-              <p style="color:#9ca3af;font-size:12px;text-align:center;margin:20px 0 0;">${trustLine}</p>
+              <!-- P.S. -->
+              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:16px 0 0;font-style:italic;">P.S. Three ${categoryLabel.toLowerCase()} firms in ${city} claimed their profiles this week. If helpful, I&rsquo;m also happy to send the exact prompts we used to test the AI platforms.</p>
 
             </td>
           </tr>
@@ -631,12 +514,9 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
           <!-- Footer -->
           <tr>
             <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
-              <p style="margin:0 0 4px;color:#6b7280;font-size:13px;font-weight:600;">TendorAI</p>
-              <p style="margin:0 0 12px;color:#9ca3af;font-size:12px;">The UK's AI Visibility Platform</p>
-              <p style="margin:0;color:#9ca3af;font-size:11px;">
-                <a href="https://www.tendorai.com" style="color:#7c3aed;text-decoration:none;">tendorai.com</a>
-                &nbsp;&bull;&nbsp;
-                <a href="https://www.tendorai.com/unsubscribe" style="color:#9ca3af;text-decoration:none;">Unsubscribe</a>
+              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">TendorAI is the UK&rsquo;s AI visibility platform for regulated professional services. This report uses publicly available information from the SRA register and AI platform analysis.</p>
+              <p style="margin:12px 0 0;color:#9ca3af;font-size:11px;">
+                <a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a>
               </p>
             </td>
           </tr>
