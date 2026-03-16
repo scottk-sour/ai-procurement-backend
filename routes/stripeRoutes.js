@@ -33,16 +33,16 @@ const requireStripe = (req, res, next) => {
 // Price IDs from environment variables
 // Env vars still use old names (STRIPE_VISIBLE_PRICE_ID / STRIPE_VERIFIED_PRICE_ID)
 const PRICE_IDS = {
-  starter: process.env.STRIPE_VISIBLE_PRICE_ID,   // Starter — £149/mo
+  starter: process.env.STRIPE_VISIBLE_PRICE_ID,   // Pro (was Starter) — maps existing starter subscribers
   pro: process.env.STRIPE_VERIFIED_PRICE_ID,       // Pro — £299/mo
 };
 
 // Subscription plan configurations
 const SUBSCRIPTION_PLANS = {
   starter: {
-    name: 'Starter',
+    name: 'Pro',
     priceId: PRICE_IDS.starter,
-    price: 149,
+    price: 299,
     internalTier: 'basic',
     features: [
       'Pricing visible to AI',
@@ -60,7 +60,7 @@ const SUBSCRIPTION_PLANS = {
     price: 299,
     internalTier: 'managed',
     features: [
-      'Everything in Starter',
+      'Everything in Pro',
       'We install AI visibility code on your website',
       'Weekly AI Visibility (AEO) reports',
       'TendorAI Verified badge',

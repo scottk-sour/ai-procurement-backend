@@ -827,15 +827,14 @@ function drawCtaPage(ctx, report) {
 
   const plans = [
     { name: 'Free', price: '\u00A30/forever', features: ['Basic AI profile', 'Category listing', 'Ranked last in results'], url: 'https://www.tendorai.com/vendor-signup' },
-    { name: 'Starter', price: '\u00A3149/mo', features: ['Pricing visible to AI', 'Ranked above free profiles', 'Monthly AI Visibility (AEO) report', 'AI Visibility (AEO) Audit tool', 'Review collection'], subtext: 'Early adopter price (was \u00A3299)', url: 'https://www.tendorai.com/vendor-signup?tier=starter' },
-    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AI Visibility (AEO) reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], subtext: 'Early adopter price (was \u00A3499)', url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
+    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AI Visibility (AEO) reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
   ];
 
-  const planW = CONTENT_W / 3;
+  const planW = CONTENT_W / 2;
   for (let i = 0; i < plans.length; i++) {
     const plan = plans[i];
     const px = MARGIN + i * planW;
-    const isHighlight = i === 2; // Pro is highlighted
+    const isHighlight = i === 1; // Pro is highlighted
 
     // Plan card
     const cardH = 190;

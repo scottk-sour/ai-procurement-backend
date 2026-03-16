@@ -223,7 +223,7 @@ export async function generateWeeklyEmail(vendorId) {
                     <p style="margin:0;font-size:14px;color:#991b1b;font-weight:600;">You weren't mentioned by any AI tools this week.</p>
                     <p style="margin:8px 0 0;font-size:13px;color:#b91c1c;">Paid vendors are 3x more likely to be recommended by AI assistants.</p>
                     <p style="margin:12px 0 0;">
-                      <a href="${upgradeUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Upgrade to Starter &mdash; &pound;149/mo</a>
+                      <a href="${upgradeUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:10px 20px;text-decoration:none;border-radius:6px;font-size:13px;font-weight:600;">Upgrade to Pro &mdash; &pound;299/mo</a>
                     </p>
                   </td>
                 </tr>
@@ -300,7 +300,7 @@ export async function generateWeeklyEmail(vendorId) {
               <a href="${dashboardUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">View Your Dashboard &rarr;</a>
               ${!isPaid ? `
               <p style="margin:12px 0 0;">
-                <a href="${upgradeUrl}" style="font-size:13px;color:#7c3aed;text-decoration:underline;">Upgrade to Starter &mdash; &pound;149/mo</a>
+                <a href="${upgradeUrl}" style="font-size:13px;color:#7c3aed;text-decoration:underline;">Upgrade to Pro &mdash; &pound;299/mo</a>
               </p>
               ` : ''}
             </td>

@@ -3,7 +3,7 @@
  *
  * 7 categories, 100 points total. Tier ceilings:
  *   Free vendor, fully active:       ~40/100
- *   Starter £149, fully active:      ~75/100
+ *   Pro £299, fully active:           ~75/100
  *   Pro £299, fully active:          ~95/100
  *   Nobody hits 100 without doing everything.
  */
@@ -183,7 +183,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   const hasBlogAddon = !!vendor.blogAddonActive;
 
   const planChecks = [
-    { name: 'Starter plan (£149/mo)', points: 5, completed: tier === 'visible' || tier === 'verified' },
+    { name: 'Pro plan (£299/mo)', points: 5, completed: tier === 'visible' || tier === 'verified' },
     { name: 'Pro plan (£299/mo)', points: 5, completed: tier === 'verified' },
     { name: 'Blog add-on active', points: 5, completed: hasBlogAddon },
     { name: 'Profile claimed (not unclaimed)', points: 5, completed: isClaimed },
@@ -196,7 +196,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
 
   if (tier === 'listed') {
     tips.push({
-      message: 'Upgrade to Starter (£149/mo) to earn plan tier points',
+      message: 'Upgrade to Pro (£299/mo) to earn plan tier points',
       impact: 'high', points: 5, priority: 18,
       category: 'plan', action: 'View Plans',
     });
@@ -209,7 +209,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   }
 
   // ============================================
-  // VERIFIED-ONLY FEATURES (max 20 pts — £149 only)
+  // VERIFIED-ONLY FEATURES (max 20 pts — Pro only)
   // ============================================
   const {
     aeoAuditCompleted = false,
@@ -251,7 +251,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   // Next tier info
   let nextTier = null;
   if (tier === 'listed') {
-    nextTier = { name: 'Starter', price: '£149/mo', additionalPoints: 35 };
+    nextTier = { name: 'Pro', price: '£299/mo', additionalPoints: 35 };
   } else if (tier === 'visible') {
     nextTier = { name: 'Pro', price: '£299/mo', additionalPoints: 25 };
   }
@@ -284,7 +284,7 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
 function getTierDisplayName(tier) {
   const names = {
     listed: 'Free',
-    visible: 'Starter (£149/mo)',
+    visible: 'Pro (£299/mo)',
     verified: 'Pro (£299/mo)',
   };
   return names[tier] || 'Free';

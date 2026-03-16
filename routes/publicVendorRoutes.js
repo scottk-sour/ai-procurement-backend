@@ -19,19 +19,19 @@ import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } f
 
 const router = express.Router();
 
-// Tier priority for sorting (Pro > Starter > Free)
+// Tier priority for sorting (Pro > Free)
 // Pro tiers: pro, enterprise, managed, verified (£299/mo)
-// Starter tiers: starter, basic, visible, standard (£149/mo)
+// Pro tiers (legacy starter): starter, basic, visible, standard (£299/mo)
 // Free tiers: free, listed
 const TIER_PRIORITY = {
   pro: 100,         // Pro (£299/mo)
   enterprise: 100,  // Legacy → Pro
   managed: 100,     // Legacy → Pro
   verified: 100,    // Legacy → Pro
-  starter: 50,      // Starter (£149/mo)
-  basic: 50,        // Legacy → Starter
-  visible: 50,      // Legacy → Starter
-  standard: 50,     // Legacy → Starter
+  starter: 50,      // Pro (was Starter) (£299/mo)
+  basic: 50,        // Legacy → Pro
+  visible: 50,      // Legacy → Pro
+  standard: 50,     // Legacy → Pro
   free: 0,          // Free
   listed: 0         // Free
 };
@@ -519,8 +519,8 @@ router.get('/vendors/:id', async (req, res) => {
       profileData.showPricing = false;
       profileData.upgradePrompt = {
         message: 'Upgrade to see full profile and request quotes',
-        tier: 'starter',
-        price: '£149/mo'
+        tier: 'pro',
+        price: '£299/mo'
       };
     }
 

@@ -105,7 +105,7 @@ const STARTER_ACCOUNT_TIERS = ['silver', 'bronze', 'starter'];
  * Generate AEO reports for all vendors on a given tier.
  */
 async function generateVendorReports(tier) {
-  const tierLabel = tier === 'pro' ? 'Pro (weekly)' : 'Starter (monthly)';
+  const tierLabel = tier === 'pro' ? 'Pro (weekly)' : 'Pro (monthly)';
   logger.info(`[ScheduledReports] Starting ${tierLabel} report generation...`);
 
   const tierValues = tier === 'pro' ? PRO_TIER_VALUES : STARTER_TIER_VALUES;
@@ -215,7 +215,7 @@ export function startScheduledReports() {
 
   // Starter: 1st of every month at 6am UTC
   cron.schedule('0 6 1 * *', () => {
-    logger.info('[ScheduledReports] Triggering monthly Starter reports...');
+    logger.info('[ScheduledReports] Triggering monthly Pro reports...');
     generateVendorReports('starter');
   });
 
@@ -227,6 +227,6 @@ export function startScheduledReports() {
 
   logger.info('[ScheduledReports] Cron jobs registered:');
   logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
-  logger.info('  - Starter (monthly): 1st of every month at 06:00 UTC');
+  logger.info('  - Pro (monthly): 1st of every month at 06:00 UTC');
   logger.info('  - Pro (weekly): every Monday at 06:00 UTC');
 }
