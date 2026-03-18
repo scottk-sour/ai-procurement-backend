@@ -309,6 +309,94 @@ function buildDescription(vendor) {
 }
 
 /**
+ * Build additionalProperty array from vertical-specific fields.
+ */
+function buildAdditionalProperties(vendor) {
+  const props = [];
+
+  // Solicitor fields
+  if (vendor.noWinNoFee !== undefined) {
+    props.push({ '@type': 'PropertyValue', name: 'No Win No Fee', value: vendor.noWinNoFee ? 'Yes' : 'No' });
+  }
+  if (vendor.courtCoverageAreas?.length > 0) {
+    props.push({ '@type': 'PropertyValue', name: 'Courts Covered', value: vendor.courtCoverageAreas.join(', ') });
+  }
+
+  // Accountant fields
+  if (vendor.accaNumber) {
+    props.push({ '@type': 'PropertyValue', name: 'ACCA Registration Number', propertyID: 'https://www.accaglobal.com', value: vendor.accaNumber });
+  }
+  if (vendor.practiceCertificateNumber) {
+    props.push({ '@type': 'PropertyValue', name: 'Practice Certificate Number', value: vendor.practiceCertificateNumber });
+  }
+  if (vendor.minimumFeeThreshold) {
+    props.push({ '@type': 'PropertyValue', name: 'Minimum Fee', value: `£${vendor.minimumFeeThreshold}` });
+  }
+  if (vendor.rdTaxCreditsSpecialist !== undefined) {
+    props.push({ '@type': 'PropertyValue', name: 'R&D Tax Credits Specialist', value: vendor.rdTaxCreditsSpecialist ? 'Yes' : 'No' });
+  }
+
+  // Mortgage Adviser fields
+  if (vendor.wholeOfMarket !== undefined) {
+    props.push({ '@type': 'PropertyValue', name: 'Whole of Market', value: vendor.wholeOfMarket ? 'Yes' : 'No' });
+  }
+  if (vendor.numberOfLenders) {
+    props.push({ '@type': 'PropertyValue', name: 'Lenders on Panel', value: String(vendor.numberOfLenders) });
+  }
+  if (vendor.typicalCompletionTime) {
+    props.push({ '@type': 'PropertyValue', name: 'Typical Completion Time', value: vendor.typicalCompletionTime });
+  }
+  if (vendor.feeModel) {
+    const feeModelLabels = { 'fee': 'Fee-based', 'fee-free': 'Fee-free', 'both': 'Fee or Fee-free' };
+    props.push({ '@type': 'PropertyValue', name: 'Fee Model', value: feeModelLabels[vendor.feeModel] || vendor.feeModel });
+  }
+  if (vendor.maximumLoanSize) {
+    props.push({ '@type': 'PropertyValue', name: 'Maximum Loan Size', value: `£${vendor.maximumLoanSize}` });
+  }
+
+  // Estate Agent fields
+  if (vendor.averageSaleTime) {
+    props.push({ '@type': 'PropertyValue', name: 'Average Sale Time', value: vendor.averageSaleTime });
+  }
+  if (vendor.achievedVsAskingPercent) {
+    props.push({ '@type': 'PropertyValue', name: 'Achieved vs Asking Price', value: `${vendor.achievedVsAskingPercent}%` });
+  }
+  if (vendor.managementFeePercent) {
+    props.push({ '@type': 'PropertyValue', name: 'Management Fee', value: `${vendor.managementFeePercent}%` });
+  }
+  if (vendor.tenantFindOrFullManagement) {
+    const lettingsLabels = { 'tenant-find': 'Tenant Find Only', 'full-management': 'Full Management', 'both': 'Tenant Find & Full Management' };
+    props.push({ '@type': 'PropertyValue', name: 'Lettings Service Type', value: lettingsLabels[vendor.tenantFindOrFullManagement] || vendor.tenantFindOrFullManagement });
+  }
+  if (vendor.epcAssessor !== undefined) {
+    props.push({ '@type': 'PropertyValue', name: 'EPC Assessments', value: vendor.epcAssessor ? 'Yes' : 'No' });
+  }
+  if (vendor.propertyTypesHandled?.length > 0) {
+    props.push({ '@type': 'PropertyValue', name: 'Property Types', value: vendor.propertyTypesHandled.join(', ') });
+  }
+
+  // Office Equipment fields
+  if (vendor.leaseVsPurchase) {
+    const leaseLabels = { 'lease': 'Lease', 'purchase': 'Purchase', 'both': 'Lease & Purchase' };
+    props.push({ '@type': 'PropertyValue', name: 'Equipment Available On', value: leaseLabels[vendor.leaseVsPurchase] || vendor.leaseVsPurchase });
+  }
+  if (vendor.managedPrintService !== undefined) {
+    props.push({ '@type': 'PropertyValue', name: 'Managed Print Service', value: vendor.managedPrintService ? 'Yes' : 'No' });
+  }
+  if (vendor.monthlyCostRange) {
+    props.push({ '@type': 'PropertyValue', name: 'Monthly Cost Range', value: vendor.monthlyCostRange });
+  }
+
+  // Shared
+  if (vendor.feeStructureType) {
+    const structureLabels = { 'fixed': 'Fixed', 'hourly': 'Hourly', 'retainer': 'Monthly Retainer', 'mixed': 'Mixed' };
+    props.push({ '@type': 'PropertyValue', name: 'Fee Structure', value: structureLabels[vendor.feeStructureType] || vendor.feeStructureType });
+  }
+
+  return props.length > 0 ? props : undefined;
+}
+
+/**
  * Generate full Schema.org JSON-LD for a vendor.
  *
  * @param {Object} vendor - Vendor document (lean or full)
@@ -464,6 +552,7 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
     areaServed: buildAreaServed(vendor),
     openingHoursSpecification: buildOpeningHours(vendor),
     ...(vendor.languages?.length > 0 && { knowsLanguage: vendor.languages }),
+    additionalProperty: buildAdditionalProperties(vendor),
   };
 
   return stripEmpty(schema);

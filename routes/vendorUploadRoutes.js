@@ -323,6 +323,28 @@ router.get('/profile', vendorAuth, async (req, res) => {
                 industrySpecialisms: vendor.industrySpecialisms || [],
                 mtdCompliant: vendor.mtdCompliant || false,
                 responseTime: vendor.responseTime || '',
+                // New fields
+                noWinNoFee: vendor.noWinNoFee || false,
+                courtCoverageAreas: vendor.courtCoverageAreas || [],
+                accaNumber: vendor.accaNumber || '',
+                practiceCertificateNumber: vendor.practiceCertificateNumber || '',
+                minimumFeeThreshold: vendor.minimumFeeThreshold || 0,
+                rdTaxCreditsSpecialist: vendor.rdTaxCreditsSpecialist || false,
+                wholeOfMarket: vendor.wholeOfMarket || false,
+                numberOfLenders: vendor.numberOfLenders || 0,
+                typicalCompletionTime: vendor.typicalCompletionTime || '',
+                feeModel: vendor.feeModel || '',
+                maximumLoanSize: vendor.maximumLoanSize || 0,
+                averageSaleTime: vendor.averageSaleTime || '',
+                achievedVsAskingPercent: vendor.achievedVsAskingPercent || 0,
+                managementFeePercent: vendor.managementFeePercent || 0,
+                tenantFindOrFullManagement: vendor.tenantFindOrFullManagement || '',
+                epcAssessor: vendor.epcAssessor || false,
+                propertyTypesHandled: vendor.propertyTypesHandled || [],
+                leaseVsPurchase: vendor.leaseVsPurchase || '',
+                managedPrintService: vendor.managedPrintService || false,
+                monthlyCostRange: vendor.monthlyCostRange || '',
+                feeStructureType: vendor.feeStructureType || '',
                 // Onboarding
                 onboardingCompleted: vendor.account?.onboardingCompleted || false,
             },
@@ -367,6 +389,28 @@ router.put('/profile', vendorAuth, async (req, res) => {
             fcaNumber,
             propertymarkNumber,
             propertymarkQualification,
+            // New fields
+            noWinNoFee,
+            courtCoverageAreas,
+            accaNumber,
+            practiceCertificateNumber,
+            minimumFeeThreshold,
+            rdTaxCreditsSpecialist,
+            wholeOfMarket,
+            numberOfLenders,
+            typicalCompletionTime,
+            feeModel,
+            maximumLoanSize,
+            averageSaleTime,
+            achievedVsAskingPercent,
+            managementFeePercent,
+            tenantFindOrFullManagement,
+            epcAssessor,
+            propertyTypesHandled,
+            leaseVsPurchase,
+            managedPrintService,
+            monthlyCostRange,
+            feeStructureType,
         } = req.body;
 
         // Build update object - only include fields that were provided
@@ -418,6 +462,33 @@ router.put('/profile', vendorAuth, async (req, res) => {
         if (fcaNumber !== undefined) updateFields.fcaNumber = fcaNumber;
         if (propertymarkNumber !== undefined) updateFields.propertymarkNumber = propertymarkNumber;
         if (propertymarkQualification !== undefined) updateFields.propertymarkQualification = propertymarkQualification;
+        // Solicitor additions
+        if (noWinNoFee !== undefined) updateFields.noWinNoFee = noWinNoFee;
+        if (courtCoverageAreas !== undefined) updateFields.courtCoverageAreas = courtCoverageAreas;
+        // Accountant additions
+        if (accaNumber !== undefined) updateFields.accaNumber = accaNumber;
+        if (practiceCertificateNumber !== undefined) updateFields.practiceCertificateNumber = practiceCertificateNumber;
+        if (minimumFeeThreshold !== undefined) updateFields.minimumFeeThreshold = minimumFeeThreshold;
+        if (rdTaxCreditsSpecialist !== undefined) updateFields.rdTaxCreditsSpecialist = rdTaxCreditsSpecialist;
+        // Mortgage Adviser additions
+        if (wholeOfMarket !== undefined) updateFields.wholeOfMarket = wholeOfMarket;
+        if (numberOfLenders !== undefined) updateFields.numberOfLenders = numberOfLenders;
+        if (typicalCompletionTime !== undefined) updateFields.typicalCompletionTime = typicalCompletionTime;
+        if (feeModel !== undefined) updateFields.feeModel = feeModel;
+        if (maximumLoanSize !== undefined) updateFields.maximumLoanSize = maximumLoanSize;
+        // Estate Agent additions
+        if (averageSaleTime !== undefined) updateFields.averageSaleTime = averageSaleTime;
+        if (achievedVsAskingPercent !== undefined) updateFields.achievedVsAskingPercent = achievedVsAskingPercent;
+        if (managementFeePercent !== undefined) updateFields.managementFeePercent = managementFeePercent;
+        if (tenantFindOrFullManagement !== undefined) updateFields.tenantFindOrFullManagement = tenantFindOrFullManagement;
+        if (epcAssessor !== undefined) updateFields.epcAssessor = epcAssessor;
+        if (propertyTypesHandled !== undefined) updateFields.propertyTypesHandled = propertyTypesHandled;
+        // Office Equipment additions
+        if (leaseVsPurchase !== undefined) updateFields.leaseVsPurchase = leaseVsPurchase;
+        if (managedPrintService !== undefined) updateFields.managedPrintService = managedPrintService;
+        if (monthlyCostRange !== undefined) updateFields.monthlyCostRange = monthlyCostRange;
+        // Shared
+        if (feeStructureType !== undefined) updateFields.feeStructureType = feeStructureType;
 
         // Update the vendor
         const updatedVendor = await Vendor.findByIdAndUpdate(
@@ -468,6 +539,28 @@ router.put('/profile', vendorAuth, async (req, res) => {
                 industrySpecialisms: updatedVendor.industrySpecialisms || [],
                 mtdCompliant: updatedVendor.mtdCompliant || false,
                 responseTime: updatedVendor.responseTime || '',
+                // New fields
+                noWinNoFee: updatedVendor.noWinNoFee || false,
+                courtCoverageAreas: updatedVendor.courtCoverageAreas || [],
+                accaNumber: updatedVendor.accaNumber || '',
+                practiceCertificateNumber: updatedVendor.practiceCertificateNumber || '',
+                minimumFeeThreshold: updatedVendor.minimumFeeThreshold || 0,
+                rdTaxCreditsSpecialist: updatedVendor.rdTaxCreditsSpecialist || false,
+                wholeOfMarket: updatedVendor.wholeOfMarket || false,
+                numberOfLenders: updatedVendor.numberOfLenders || 0,
+                typicalCompletionTime: updatedVendor.typicalCompletionTime || '',
+                feeModel: updatedVendor.feeModel || '',
+                maximumLoanSize: updatedVendor.maximumLoanSize || 0,
+                averageSaleTime: updatedVendor.averageSaleTime || '',
+                achievedVsAskingPercent: updatedVendor.achievedVsAskingPercent || 0,
+                managementFeePercent: updatedVendor.managementFeePercent || 0,
+                tenantFindOrFullManagement: updatedVendor.tenantFindOrFullManagement || '',
+                epcAssessor: updatedVendor.epcAssessor || false,
+                propertyTypesHandled: updatedVendor.propertyTypesHandled || [],
+                leaseVsPurchase: updatedVendor.leaseVsPurchase || '',
+                managedPrintService: updatedVendor.managedPrintService || false,
+                monthlyCostRange: updatedVendor.monthlyCostRange || '',
+                feeStructureType: updatedVendor.feeStructureType || '',
             }
         });
 
