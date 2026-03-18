@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const vendorPostSchema = new mongoose.Schema({
   vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true, index: true },
   title: { type: String, required: true, maxlength: 200, trim: true },
-  body: { type: String, required: true, maxlength: 5000, trim: true },
+  body: { type: String, required: true, maxlength: 10000, trim: true },
   category: {
     type: String,
     enum: ['news', 'product', 'offer', 'guide', 'update'],
@@ -12,11 +12,16 @@ const vendorPostSchema = new mongoose.Schema({
   tags: [{ type: String, trim: true, lowercase: true }],
   status: {
     type: String,
-    enum: ['published', 'hidden'],
-    default: 'published',
+    enum: ['draft', 'published', 'hidden'],
+    default: 'draft',
   },
   slug: { type: String, unique: true, index: true },
   isDemoVendor: { type: Boolean, default: false },
+  aiGenerated: { type: Boolean, default: false },
+  topic: { type: String, trim: true },
+  stats: { type: String, trim: true },
+  linkedInText: { type: String, trim: true },
+  facebookText: { type: String, trim: true },
 }, { timestamps: true });
 
 // Auto-generate slug from title before validation
