@@ -9,8 +9,10 @@ const router = express.Router();
 const POST_LIMITS = {
   free: 0,
   listed: 0,
+  starter: 2,
   visible: 2,
   basic: 2,
+  pro: Infinity,
   verified: Infinity,
   managed: Infinity,
   enterprise: Infinity,
