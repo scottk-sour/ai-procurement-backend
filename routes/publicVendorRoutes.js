@@ -17,6 +17,7 @@ import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuer
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
+import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 
 const router = express.Router();
 
@@ -1346,7 +1347,23 @@ router.get('/aeo-report/:reportId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Report not found' });
     }
 
-    res.json({ success: true, data: report });
+    // Enrich with profile gaps if a matching vendor exists
+    let profileGaps = { gaps: [], totalGaps: 0, hasProfile: false };
+    try {
+      const vendor = await Vendor.findOne({
+        $or: [
+          ...(report.email ? [{ 'contactInfo.email': report.email }] : []),
+          { company: { $regex: new RegExp(`^${report.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        ],
+      }).lean();
+      if (vendor) {
+        profileGaps = computeProfileGaps(vendor);
+      }
+    } catch (err) {
+      console.error('Profile gap lookup failed silently:', err.message);
+    }
+
+    res.json({ success: true, data: { ...report, profileGaps } });
   } catch (error) {
     console.error('AEO report fetch error:', error.message);
     res.status(500).json({ success: false, error: 'Failed to fetch report' });
