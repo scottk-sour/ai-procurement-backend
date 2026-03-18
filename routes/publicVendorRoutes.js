@@ -13,7 +13,7 @@ import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
-import { queryAllPlatforms } from '../services/platformQuery/index.js';
+import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuery/index.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
@@ -1280,6 +1280,59 @@ router.get('/aeo-report/average', async (req, res) => {
 });
 
 /**
+ * POST /api/public/aeo-report/:reportId/retry-platform
+ * Re-query a single timed-out/errored platform and update the stored report
+ */
+router.post('/aeo-report/:reportId/retry-platform', async (req, res) => {
+  try {
+    const { platform } = req.body;
+    const validPlatforms = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'];
+    if (!platform || !validPlatforms.includes(platform)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing platform' });
+    }
+
+    const report = await AeoReport.findById(req.params.reportId)
+      .select('companyName category customIndustry city platformResults')
+      .lean();
+    if (!report) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+
+    // Only allow retry on platforms that timed out or errored
+    const existing = (report.platformResults || []).find(r => r.platform === platform);
+    if (existing && existing.status === 'checked') {
+      return res.status(400).json({ success: false, error: 'Platform already checked successfully' });
+    }
+
+    const AEO_CATEGORY_LABELS_LOCAL = {
+      copiers: 'Photocopiers & Managed Print', telecoms: 'Business Telecoms & VoIP',
+      cctv: 'CCTV & Security Systems', it: 'IT Support & Managed Services',
+    };
+    const categoryLabel = report.customIndustry || AEO_CATEGORY_LABELS_LOCAL[report.category] || report.category;
+
+    const result = await querySinglePlatform(platform, {
+      companyName: report.companyName,
+      categoryLabel,
+      city: report.city,
+    });
+
+    // Strip rawResponse before storing
+    const { rawResponse, ...storable } = result;
+
+    // Update the specific platform result in the array
+    await AeoReport.updateOne(
+      { _id: req.params.reportId, 'platformResults.platform': platform },
+      { $set: { 'platformResults.$': storable } },
+    );
+
+    res.json({ success: true, result: storable });
+  } catch (error) {
+    console.error('Platform retry error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to retry platform query' });
+  }
+});
+
+/**
  * GET /api/public/aeo-report/:reportId
  * Return full report JSON (excludes pdfBuffer and ipAddress)
  */
@@ -1500,9 +1553,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     // 1b. Compute industry average for PDF context
     try {
-      const avg = await getIndustryAverage(category);
+      const avg = await computeIndustryAverage(category);
       reportData.industryAverage = avg.average;
-      reportData.industryTypeLabel = avg.vendorTypeLabel;
+      reportData.industryTypeLabel = avg.category;
     } catch (e) {
       console.error('Failed to fetch industry average for PDF:', e.message);
     }

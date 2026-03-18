@@ -85,7 +85,8 @@ const aeoReportSchema = new mongoose.Schema({
   platformResults: [{
     platform: { type: String, enum: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'] },
     platformLabel: String,
-    mentioned: Boolean,
+    mentioned: { type: Boolean, default: null },
+    status: { type: String, enum: ['checked', 'timeout', 'error'], default: 'checked' },
     position: { type: Number, default: null },
     snippet: { type: String, default: null },
     competitors: [String],
