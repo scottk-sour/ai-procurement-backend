@@ -142,9 +142,29 @@ export function parsePlatformResponse(responseText, companyName) {
     }
   }
 
+  // Final false-positive check: if the snippet itself says the firm was NOT found,
+  // override to not mentioned (catches cases where AI names the company only to say
+  // it couldn't find it).
+  let finalMentioned = mentioned;
+  if (mentioned && snippet) {
+    const snippetLower = snippet.toLowerCase();
+    const falsePositivePhrases = [
+      'was not mentioned',
+      'cannot include it',
+      'not found in',
+      'does not appear',
+      'no results for',
+      'i cannot include',
+      'not included',
+    ];
+    if (falsePositivePhrases.some(phrase => snippetLower.includes(phrase))) {
+      finalMentioned = false;
+    }
+  }
+
   return {
-    mentioned,
-    position,
+    mentioned: finalMentioned,
+    position: finalMentioned ? position : null,
     snippet,
     competitors: competitors.slice(0, 10),
   };

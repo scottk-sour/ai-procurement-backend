@@ -1550,6 +1550,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           // Normalise key: trim, collapse whitespace
           const key = name.trim().replace(/\s+/g, ' ');
           if (!key || key.length < 2 || key.length > 120) continue;
+          // Filter junk entries that are advice strings, not company names
+          const junkPrefixes = ['Ask', 'Asking'];
+          if (junkPrefixes.some(p => key.startsWith(p))) continue;
           const existing = competitorFreq.get(key);
           if (existing) {
             existing.count++;
