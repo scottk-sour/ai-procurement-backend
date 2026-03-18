@@ -1531,6 +1531,13 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           // Normalise key: trim, collapse whitespace
           const key = name.trim().replace(/\s+/g, ' ');
           if (!key || key.length < 2 || key.length > 120) continue;
+
+          // Filter out AI hedging responses misidentified as competitors
+          if (key.length > 60) continue;
+          if (!/^[A-Z]/.test(key)) continue;
+          if (/^(Ask|Check|Visit|Use|Consider|Search|Look|Try)\b/.test(key)) continue;
+          if (/Law Society|lawsociety\.org|friends|family|estate agent|directory|solicitors register/i.test(key)) continue;
+
           const existing = competitorFreq.get(key);
           if (existing) {
             existing.count++;
