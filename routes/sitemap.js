@@ -40,6 +40,17 @@ const STATIC_PAGES = [
   { path: '/resources/business-phone-system-buyers-guide', priority: '0.7', changefreq: 'monthly' },
   { path: '/resources/office-security-checklist', priority: '0.7', changefreq: 'monthly' },
   { path: '/resources/ai-visibility-vs-seo-agencies', priority: '0.7', changefreq: 'monthly' },
+  // AEO guide pages
+  { path: '/aeo-guide/schema-markup', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/meta-titles', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/h1-heading', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/mobile-viewport', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/ssl-certificate', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/page-weight', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/social-media-links', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/contact-information', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/faq-section', priority: '0.7', changefreq: 'monthly' },
+  { path: '/aeo-guide/content-length', priority: '0.7', changefreq: 'monthly' },
 ];
 
 // ─── Category slugs (must match frontend SERVICES keys) ───────────
