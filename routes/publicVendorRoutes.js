@@ -14,6 +14,7 @@ import { sendAeoReportEmail } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuery/index.js';
+import { isValidBusinessName } from '../services/platformQuery/prompt.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
@@ -1530,13 +1531,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           if (!name || name.toLowerCase().includes(companyLower)) continue;
           // Normalise key: trim, collapse whitespace
           const key = name.trim().replace(/\s+/g, ' ');
-          if (!key || key.length < 2 || key.length > 120) continue;
 
-          // Filter out AI hedging responses misidentified as competitors
-          if (key.length > 60) continue;
-          if (!/^[A-Z]/.test(key)) continue;
-          if (/^(Ask|Check|Visit|Use|Consider|Search|Look|Try)\b/.test(key)) continue;
-          if (/Law Society|lawsociety\.org|friends|family|estate agent|directory|solicitors register/i.test(key)) continue;
+          // Production competitor filter — validates business name quality
+          if (!isValidBusinessName(key)) continue;
 
           const existing = competitorFreq.get(key);
           if (existing) {
@@ -1553,7 +1550,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
 
       // Build competitor objects using the existing schema structure
-      const aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
+      let aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
         const platformList = data.platforms.join(', ');
         return {
           name,
@@ -1563,6 +1560,29 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           strengths: data.platforms.map(p => `Mentioned by ${p}`),
         };
       });
+
+      // Perplexity fallback: if fewer than 2 real competitors found,
+      // run a targeted Perplexity web search for local businesses
+      if (aggregatedCompetitors.length < 2 && process.env.PERPLEXITY_API_KEY) {
+        try {
+          const fallbackNames = await queryPerplexityForCompetitors(categoryLabel, city, companyName);
+          const existingNames = new Set(aggregatedCompetitors.map(c => c.name.toLowerCase()));
+          for (const fbName of fallbackNames) {
+            if (existingNames.has(fbName.toLowerCase())) continue;
+            if (aggregatedCompetitors.length >= 6) break;
+            aggregatedCompetitors.push({
+              name: fbName,
+              description: 'Found via Perplexity web search',
+              reason: `Discovered by Perplexity when searching for ${categoryLabel} in ${city}`,
+              website: null,
+              strengths: ['Mentioned by Perplexity'],
+            });
+            existingNames.add(fbName.toLowerCase());
+          }
+        } catch (err) {
+          console.error('[PerplexityFallback] Failed:', err.message);
+        }
+      }
 
       if (aggregatedCompetitors.length > 0) {
         reportData.competitors = aggregatedCompetitors;
@@ -1702,6 +1722,40 @@ a{color:#7c3aed;text-decoration:none;margin-top:16px;display:inline-block;font-s
 <p>${message}</p>
 ${success ? '<a href="https://www.tendorai.com">Go to TendorAI</a>' : ''}
 </div></body></html>`;
+}
+
+/**
+ * Perplexity fallback: targeted web search for local competitors when
+ * the main platform queries return fewer than 2 real business names.
+ * Perplexity has live web search, unlike the other LLM platforms.
+ */
+async function queryPerplexityForCompetitors(categoryLabel, city, companyName) {
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [{
+        role: 'user',
+        content: `List the names of up to 5 real businesses that provide ${categoryLabel} services in ${city}, UK. Real business trading names only, one per line. No advice, no tips, no descriptions. Just business names.`,
+      }],
+      max_tokens: 200,
+    }),
+  });
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || '';
+
+  // Extract names — one per line
+  const names = text.split('\n')
+    .map(line => line.replace(/^\d+[.)]\s*/, '').replace(/^[-•*]\s*/, '').replace(/\*\*/g, '').trim())
+    .filter(n => isValidBusinessName(n) &&
+             !n.toLowerCase().includes(companyName.toLowerCase()));
+
+  return names.slice(0, 5);
 }
 
 export default router;
