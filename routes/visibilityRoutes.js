@@ -13,6 +13,7 @@ import AIMentionScan from '../models/AIMentionScan.js';
 import Review from '../models/Review.js';
 import AeoAudit from '../models/AeoAudit.js';
 import VendorActivity from '../models/VendorActivity.js';
+import VendorScoreHistory from '../models/VendorScoreHistory.js';
 
 const router = express.Router();
 
@@ -361,5 +362,32 @@ function getActionUrl(action) {
 
   return '/vendor-dashboard?tab=profile';
 }
+
+// GET /api/visibility/history — last N weeks of score history
+router.get('/history', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const weeks = parseInt(req.query.weeks) || 8;
+
+    const history = await VendorScoreHistory.find({ vendorId })
+      .sort({ weekStarting: -1 })
+      .limit(weeks)
+      .lean();
+
+    // Return in chronological order (oldest first)
+    history.reverse();
+
+    res.json({
+      success: true,
+      history: history.map(h => ({
+        score: h.score,
+        breakdown: h.breakdown,
+        weekStarting: h.weekStarting,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 export default router;
