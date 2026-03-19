@@ -89,7 +89,10 @@ const aeoReportSchema = new mongoose.Schema({
     status: { type: String, enum: ['checked', 'timeout', 'error'], default: 'checked' },
     position: { type: Number, default: null },
     snippet: { type: String, default: null },
-    competitors: [String],
+    competitors: [{
+      name: String,
+      reason: { type: String, default: null },
+    }],
     error: { type: String, default: null },
   }],
   tier: { type: String, enum: ['free', 'starter', 'pro', 'enterprise', null], default: null },

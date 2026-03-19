@@ -1523,14 +1523,17 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     // the real AI platform queries (ChatGPT, Perplexity, Claude, etc.)
     if (platformResults.length > 0) {
       const companyLower = companyName.toLowerCase();
-      const competitorFreq = new Map(); // name -> { count, platforms[] }
+      const competitorFreq = new Map(); // name -> { count, platforms[], reason }
 
       for (const pr of platformResults) {
         if (pr.error || !pr.competitors || pr.competitors.length === 0) continue;
-        for (const name of pr.competitors) {
-          if (!name || name.toLowerCase().includes(companyLower)) continue;
+        for (const entry of pr.competitors) {
+          // Support both old string format and new { name, reason } format
+          const compName = typeof entry === 'string' ? entry : entry?.name;
+          const compReason = typeof entry === 'string' ? null : (entry?.reason || null);
+          if (!compName || compName.toLowerCase().includes(companyLower)) continue;
           // Normalise key: trim, collapse whitespace
-          const key = name.trim().replace(/\s+/g, ' ');
+          const key = compName.trim().replace(/\s+/g, ' ');
 
           // Production competitor filter — validates business name quality
           if (!isValidBusinessName(key)) continue;
@@ -1539,8 +1542,10 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           if (existing) {
             existing.count++;
             existing.platforms.push(pr.platformLabel);
+            // Keep the first non-null reason
+            if (!existing.reason && compReason) existing.reason = compReason;
           } else {
-            competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel] });
+            competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel], reason: compReason });
           }
         }
       }
@@ -1555,7 +1560,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         return {
           name,
           description: `Recommended by ${platformList}`,
-          reason: `Mentioned by ${data.count} of 6 AI platforms when asked for the best ${categoryLabel} in ${city}`,
+          reason: data.reason || null,
           website: null,
           strengths: data.platforms.map(p => `Mentioned by ${p}`),
         };

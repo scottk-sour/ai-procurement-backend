@@ -226,19 +226,38 @@ export function parsePlatformResponse(responseText, companyName) {
     }
   }
 
-  // Extract competitor names — other companies mentioned in numbered/bulleted items
+  // Extract competitor names and reasons — other companies mentioned in numbered/bulleted items
   const competitors = [];
-  const listItemPattern = /(?:^|\n)\s*(?:\d+[.)]\s*\**|[-•*]\s+\**)\s*([^:\n*]+?)(?:\*\*)?(?:\s*[-–:]\s|\s*\n)/g;
+  // This pattern captures: name (group 1) and the rest of the line as reason (group 2)
+  const listItemWithReasonPattern = /(?:^|\n)\s*(?:\d+[.)]\s*\**|[-•*]\s+\**)\s*([^:\n*]+?)(?:\*\*)?(?:\s*[-–:]\s)([^\n]*)/g;
   let match;
-  while ((match = listItemPattern.exec(text)) !== null) {
+  while ((match = listItemWithReasonPattern.exec(text)) !== null) {
     const name = match[1].replace(/\*\*/g, '').trim();
+    const reason = (match[2] || '').replace(/\*\*/g, '').trim();
     if (
       name &&
       !name.toLowerCase().includes(companyLower) &&
-      !competitors.includes(name) &&
+      !competitors.some(c => c.name === name) &&
       isValidBusinessName(name)
     ) {
-      competitors.push(name);
+      competitors.push({ name, reason: reason || null });
+    }
+  }
+
+  // Second pass: catch list items without a reason separator (name only, no colon/dash)
+  if (competitors.length === 0) {
+    const listItemNameOnly = /(?:^|\n)\s*(?:\d+[.)]\s*\**|[-•*]\s+\**)\s*([^:\n*]+?)(?:\*\*)?(?:\s*\n)/g;
+    let nameMatch;
+    while ((nameMatch = listItemNameOnly.exec(text)) !== null) {
+      const name = nameMatch[1].replace(/\*\*/g, '').trim();
+      if (
+        name &&
+        !name.toLowerCase().includes(companyLower) &&
+        !competitors.some(c => c.name === name) &&
+        isValidBusinessName(name)
+      ) {
+        competitors.push({ name, reason: null });
+      }
     }
   }
 
@@ -251,10 +270,10 @@ export function parsePlatformResponse(responseText, companyName) {
       if (
         name &&
         !name.toLowerCase().includes(companyLower) &&
-        !competitors.includes(name) &&
+        !competitors.some(c => c.name === name) &&
         isValidBusinessName(name)
       ) {
-        competitors.push(name);
+        competitors.push({ name, reason: null });
       }
     }
   }
