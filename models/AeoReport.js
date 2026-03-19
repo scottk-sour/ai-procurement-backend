@@ -85,7 +85,8 @@ const aeoReportSchema = new mongoose.Schema({
   platformResults: [{
     platform: { type: String, enum: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'] },
     platformLabel: String,
-    mentioned: Boolean,
+    mentioned: { type: Boolean, default: null },
+    status: { type: String, enum: ['checked', 'timeout', 'error'], default: 'checked' },
     position: { type: Number, default: null },
     snippet: { type: String, default: null },
     competitors: [String],
@@ -97,6 +98,7 @@ const aeoReportSchema = new mongoose.Schema({
 aeoReportSchema.index({ createdAt: -1 });
 aeoReportSchema.index({ email: 1 }, { sparse: true });
 aeoReportSchema.index({ ipAddress: 1, createdAt: -1 });
+aeoReportSchema.index({ category: 1, score: 1, createdAt: -1 });
 
 const AeoReport = mongoose.model('AeoReport', aeoReportSchema);
 

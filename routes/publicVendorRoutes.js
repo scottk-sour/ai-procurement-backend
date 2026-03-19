@@ -13,9 +13,12 @@ import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
-import { queryAllPlatforms } from '../services/platformQuery/index.js';
+import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuery/index.js';
+import { isValidBusinessName } from '../services/platformQuery/prompt.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
+import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
+import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 
 const router = express.Router();
 
@@ -1270,11 +1273,64 @@ router.get('/aeo-report/average', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid or missing category' });
     }
 
-    const data = await getIndustryAverage(category);
+    const data = await computeIndustryAverage(category);
     res.json({ success: true, ...data });
   } catch (error) {
     console.error('AEO average error:', error.message);
     res.status(500).json({ success: false, error: 'Failed to fetch industry average' });
+  }
+});
+
+/**
+ * POST /api/public/aeo-report/:reportId/retry-platform
+ * Re-query a single timed-out/errored platform and update the stored report
+ */
+router.post('/aeo-report/:reportId/retry-platform', async (req, res) => {
+  try {
+    const { platform } = req.body;
+    const validPlatforms = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'];
+    if (!platform || !validPlatforms.includes(platform)) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing platform' });
+    }
+
+    const report = await AeoReport.findById(req.params.reportId)
+      .select('companyName category customIndustry city platformResults')
+      .lean();
+    if (!report) {
+      return res.status(404).json({ success: false, error: 'Report not found' });
+    }
+
+    // Only allow retry on platforms that timed out or errored
+    const existing = (report.platformResults || []).find(r => r.platform === platform);
+    if (existing && existing.status === 'checked') {
+      return res.status(400).json({ success: false, error: 'Platform already checked successfully' });
+    }
+
+    const AEO_CATEGORY_LABELS_LOCAL = {
+      copiers: 'Photocopiers & Managed Print', telecoms: 'Business Telecoms & VoIP',
+      cctv: 'CCTV & Security Systems', it: 'IT Support & Managed Services',
+    };
+    const categoryLabel = report.customIndustry || AEO_CATEGORY_LABELS_LOCAL[report.category] || report.category;
+
+    const result = await querySinglePlatform(platform, {
+      companyName: report.companyName,
+      categoryLabel,
+      city: report.city,
+    });
+
+    // Strip rawResponse before storing
+    const { rawResponse, ...storable } = result;
+
+    // Update the specific platform result in the array
+    await AeoReport.updateOne(
+      { _id: req.params.reportId, 'platformResults.platform': platform },
+      { $set: { 'platformResults.$': storable } },
+    );
+
+    res.json({ success: true, result: storable });
+  } catch (error) {
+    console.error('Platform retry error:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to retry platform query' });
   }
 });
 
@@ -1292,7 +1348,23 @@ router.get('/aeo-report/:reportId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Report not found' });
     }
 
-    res.json({ success: true, data: report });
+    // Enrich with profile gaps if a matching vendor exists
+    let profileGaps = { gaps: [], totalGaps: 0, hasProfile: false };
+    try {
+      const vendor = await Vendor.findOne({
+        $or: [
+          ...(report.email ? [{ 'contactInfo.email': report.email }] : []),
+          { company: { $regex: new RegExp(`^${report.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        ],
+      }).lean();
+      if (vendor) {
+        profileGaps = computeProfileGaps(vendor);
+      }
+    } catch (err) {
+      console.error('Profile gap lookup failed silently:', err.message);
+    }
+
+    res.json({ success: true, data: { ...report, profileGaps } });
   } catch (error) {
     console.error('AEO report fetch error:', error.message);
     res.status(500).json({ success: false, error: 'Failed to fetch report' });
@@ -1321,96 +1393,6 @@ router.get('/aeo-report/:reportId/pdf', async (req, res) => {
   }
 });
 
-// ─── Industry average helper ────────────────────────────────────────────────
-
-const AEO_SOLICITOR_CATEGORIES = new Set([
-  'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
-  'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
-]);
-const AEO_ACCOUNTANT_CATEGORIES = new Set([
-  'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
-  'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
-]);
-const AEO_MORTGAGE_CATEGORIES = new Set([
-  'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
-  'equity-release', 'commercial-mortgages', 'protection-insurance',
-]);
-const AEO_ESTATE_AGENT_CATEGORIES = new Set([
-  'sales', 'lettings', 'property-management', 'block-management',
-  'auctions', 'commercial-property', 'inventory',
-]);
-const AEO_EQUIPMENT_CATEGORIES = new Set(['copiers', 'telecoms', 'cctv', 'it']);
-
-function getAeoVendorType(category) {
-  if (category === 'other') return 'other';
-  if (AEO_SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
-  if (AEO_ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';
-  if (AEO_MORTGAGE_CATEGORIES.has(category)) return 'mortgage-advisor';
-  if (AEO_ESTATE_AGENT_CATEGORIES.has(category)) return 'estate-agent';
-  return 'equipment';
-}
-
-const VENDOR_TYPE_CATEGORIES = {
-  solicitor: AEO_SOLICITOR_CATEGORIES,
-  accountant: AEO_ACCOUNTANT_CATEGORIES,
-  'mortgage-advisor': AEO_MORTGAGE_CATEGORIES,
-  'estate-agent': AEO_ESTATE_AGENT_CATEGORIES,
-  equipment: AEO_EQUIPMENT_CATEGORIES,
-};
-
-const VENDOR_TYPE_LABELS = {
-  solicitor: 'solicitor firm',
-  accountant: 'accountancy practice',
-  'mortgage-advisor': 'mortgage advisory firm',
-  'estate-agent': 'estate agency',
-  equipment: 'office equipment vendor',
-  other: 'business',
-};
-
-const FALLBACK_AVERAGES = {
-  solicitor: 22,
-  accountant: 20,
-  'mortgage-advisor': 18,
-  'estate-agent': 21,
-  equipment: 24,
-  other: 20,
-};
-
-const averageCache = {};
-
-async function getIndustryAverage(category) {
-  const vendorType = getAeoVendorType(category);
-  const vendorTypeLabel = VENDOR_TYPE_LABELS[vendorType];
-
-  // 'other' has no aggregation data — return fallback directly
-  if (vendorType === 'other') {
-    return { vendorType, vendorTypeLabel, average: FALLBACK_AVERAGES.other, count: 0 };
-  }
-
-  // Check cache (24h TTL)
-  const cached = averageCache[vendorType];
-  if (cached && cached.expiry > Date.now()) {
-    return { vendorType, vendorTypeLabel, average: cached.value, count: cached.count };
-  }
-
-  const categoriesForType = [...VENDOR_TYPE_CATEGORIES[vendorType]];
-  const result = await AeoReport.aggregate([
-    { $match: { category: { $in: categoriesForType }, score: { $ne: null } } },
-    { $group: { _id: null, avg: { $avg: '$score' }, count: { $sum: 1 } } },
-  ]);
-
-  let average, count;
-  if (!result.length || result[0].count < 10) {
-    average = FALLBACK_AVERAGES[vendorType];
-    count = result.length ? result[0].count : 0;
-  } else {
-    average = Math.round(result[0].avg);
-    count = result[0].count;
-  }
-
-  averageCache[vendorType] = { value: average, count, expiry: Date.now() + 24 * 60 * 60 * 1000 };
-  return { vendorType, vendorTypeLabel, average, count };
-}
 
 // ============================================================
 // AEO REPORT — Public generation (full report with PDF)
@@ -1549,10 +1531,10 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           if (!name || name.toLowerCase().includes(companyLower)) continue;
           // Normalise key: trim, collapse whitespace
           const key = name.trim().replace(/\s+/g, ' ');
-          if (!key || key.length < 2 || key.length > 120) continue;
-          // Filter junk entries that are advice strings, not company names
-          const junkPrefixes = ['Ask', 'Asking'];
-          if (junkPrefixes.some(p => key.startsWith(p))) continue;
+
+          // Production competitor filter — validates business name quality
+          if (!isValidBusinessName(key)) continue;
+
           const existing = competitorFreq.get(key);
           if (existing) {
             existing.count++;
@@ -1568,7 +1550,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
 
       // Build competitor objects using the existing schema structure
-      const aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
+      let aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
         const platformList = data.platforms.join(', ');
         return {
           name,
@@ -1578,6 +1560,29 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
           strengths: data.platforms.map(p => `Mentioned by ${p}`),
         };
       });
+
+      // Perplexity fallback: if fewer than 2 real competitors found,
+      // run a targeted Perplexity web search for local businesses
+      if (aggregatedCompetitors.length < 2 && process.env.PERPLEXITY_API_KEY) {
+        try {
+          const fallbackNames = await queryPerplexityForCompetitors(categoryLabel, city, companyName);
+          const existingNames = new Set(aggregatedCompetitors.map(c => c.name.toLowerCase()));
+          for (const fbName of fallbackNames) {
+            if (existingNames.has(fbName.toLowerCase())) continue;
+            if (aggregatedCompetitors.length >= 6) break;
+            aggregatedCompetitors.push({
+              name: fbName,
+              description: 'Found via Perplexity web search',
+              reason: `Discovered by Perplexity when searching for ${categoryLabel} in ${city}`,
+              website: null,
+              strengths: ['Mentioned by Perplexity'],
+            });
+            existingNames.add(fbName.toLowerCase());
+          }
+        } catch (err) {
+          console.error('[PerplexityFallback] Failed:', err.message);
+        }
+      }
 
       if (aggregatedCompetitors.length > 0) {
         reportData.competitors = aggregatedCompetitors;
@@ -1592,9 +1597,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     // 1b. Compute industry average for PDF context
     try {
-      const avg = await getIndustryAverage(category);
+      const avg = await computeIndustryAverage(category);
       reportData.industryAverage = avg.average;
-      reportData.industryTypeLabel = avg.vendorTypeLabel;
+      reportData.industryTypeLabel = avg.category;
     } catch (e) {
       console.error('Failed to fetch industry average for PDF:', e.message);
     }
@@ -1717,6 +1722,40 @@ a{color:#7c3aed;text-decoration:none;margin-top:16px;display:inline-block;font-s
 <p>${message}</p>
 ${success ? '<a href="https://www.tendorai.com">Go to TendorAI</a>' : ''}
 </div></body></html>`;
+}
+
+/**
+ * Perplexity fallback: targeted web search for local competitors when
+ * the main platform queries return fewer than 2 real business names.
+ * Perplexity has live web search, unlike the other LLM platforms.
+ */
+async function queryPerplexityForCompetitors(categoryLabel, city, companyName) {
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [{
+        role: 'user',
+        content: `List the names of up to 5 real businesses that provide ${categoryLabel} services in ${city}, UK. Real business trading names only, one per line. No advice, no tips, no descriptions. Just business names.`,
+      }],
+      max_tokens: 200,
+    }),
+  });
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || '';
+
+  // Extract names — one per line
+  const names = text.split('\n')
+    .map(line => line.replace(/^\d+[.)]\s*/, '').replace(/^[-•*]\s*/, '').replace(/\*\*/g, '').trim())
+    .filter(n => isValidBusinessName(n) &&
+             !n.toLowerCase().includes(companyName.toLowerCase()));
+
+  return names.slice(0, 5);
 }
 
 export default router;

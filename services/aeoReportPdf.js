@@ -583,6 +583,23 @@ function drawCompetitorsPage(ctx, report) {
     // Company name
     page.drawText(sanitize(comp.name), { x: MARGIN + 30, y, size: 13, font: bold, color: DARK });
 
+    // Platform badges inline after name
+    if (comp.strengths && comp.strengths.length > 0) {
+      const nameW = bold.widthOfTextAtSize(sanitize(comp.name), 13);
+      let badgeX = MARGIN + 30 + nameW + 8;
+      for (const strength of comp.strengths) {
+        const platformName = sanitize(strength.replace('Mentioned by ', ''));
+        const badgeW = font.widthOfTextAtSize(platformName, 7) + 10;
+        if (badgeX + badgeW > PAGE_W - MARGIN) break;
+        const isPerplexity = strength.toLowerCase().includes('perplexity');
+        const badgeColor = isPerplexity ? GREEN : LIGHT_GREY;
+        const badgeTextColor = isPerplexity ? WHITE : DARK;
+        page.drawRectangle({ x: badgeX, y: y - 3, width: badgeW, height: 14, color: badgeColor });
+        page.drawText(platformName, { x: badgeX + 5, y: y, size: 7, font, color: badgeTextColor });
+        badgeX += badgeW + 4;
+      }
+    }
+
     // Website URL (clickable)
     if (comp.website) {
       y -= 16;
@@ -596,15 +613,10 @@ function drawCompetitorsPage(ctx, report) {
     y -= 16;
     y = drawWrappedText(page, comp.description || '', MARGIN + 30, y, font, 10, GREY, CONTENT_W - 40, 14);
 
-    // Strengths
-    if (comp.strengths && comp.strengths.length > 0) {
-      y -= 4;
-      for (const strength of comp.strengths) {
-        if (y < 80) break;
-        page.drawText(sanitize(`-  ${strength}`), { x: MARGIN + 40, y, size: 9, font, color: DARK });
-        y -= 14;
-      }
-    }
+    // Impact line
+    y -= 4;
+    page.drawText(sanitize('They appear in AI results. You don\'t.'), { x: MARGIN + 30, y, size: 9, font: bold, color: RED });
+    y -= 4;
 
     y -= 15;
   }

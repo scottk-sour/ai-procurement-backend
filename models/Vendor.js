@@ -68,6 +68,39 @@ const vendorSchema = new mongoose.Schema({
   mtdCompliant: { type: Boolean, default: false },
   responseTime: { type: String, trim: true },
 
+  // Solicitor additions
+  noWinNoFee: { type: Boolean, default: false },
+  courtCoverageAreas: [{ type: String, trim: true }],
+
+  // Accountant additions
+  accaNumber: { type: String, trim: true },
+  practiceCertificateNumber: { type: String, trim: true },
+  minimumFeeThreshold: { type: Number },
+  rdTaxCreditsSpecialist: { type: Boolean, default: false },
+
+  // Mortgage Adviser additions
+  wholeOfMarket: { type: Boolean },
+  numberOfLenders: { type: Number },
+  typicalCompletionTime: { type: String, trim: true },
+  feeModel: { type: String, enum: ['fee', 'fee-free', 'both'] },
+  maximumLoanSize: { type: Number },
+
+  // Estate Agent additions
+  averageSaleTime: { type: String, trim: true },
+  achievedVsAskingPercent: { type: Number },
+  managementFeePercent: { type: Number },
+  tenantFindOrFullManagement: { type: String, enum: ['tenant-find', 'full-management', 'both'] },
+  epcAssessor: { type: Boolean, default: false },
+  propertyTypesHandled: [{ type: String, trim: true }],
+
+  // Office Equipment additions
+  leaseVsPurchase: { type: String, enum: ['lease', 'purchase', 'both'] },
+  managedPrintService: { type: Boolean, default: false },
+  monthlyCostRange: { type: String, trim: true },
+
+  // Shared across all verticals
+  feeStructureType: { type: String, enum: ['fixed', 'hourly', 'retainer', 'mixed'] },
+
   // Import / Claim
   source: { type: String, trim: true },
   claimed: { type: Boolean, default: false },

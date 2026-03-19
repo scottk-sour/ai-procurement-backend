@@ -34,6 +34,36 @@ async function queryWithTimeout(platform, params) {
 }
 
 /**
+ * Query a single platform by key.
+ * @param {string} platformKey - e.g. 'chatgpt', 'perplexity'
+ * @param {Object} params - { companyName, categoryLabel, city }
+ * @returns {Promise<Object>} Platform result object with status field
+ */
+export async function querySinglePlatform(platformKey, { companyName, categoryLabel, city }) {
+  const platform = PLATFORMS.find(p => p.key === platformKey && process.env[p.envKey]);
+  if (!platform) {
+    throw new Error(`Platform "${platformKey}" not found or not configured`);
+  }
+
+  try {
+    const result = await queryWithTimeout(platform, { companyName, categoryLabel, city });
+    return { ...result, status: 'checked' };
+  } catch (err) {
+    return {
+      platform: platform.key,
+      platformLabel: platform.label,
+      mentioned: null,
+      status: err.message.startsWith('Timeout') ? 'timeout' : 'error',
+      position: null,
+      snippet: null,
+      competitors: [],
+      rawResponse: null,
+      error: err.message,
+    };
+  }
+}
+
+/**
  * Query all enabled AI platforms in parallel.
  * @param {Object} params - { companyName, category, city, categoryLabel }
  * @returns {Promise<Array>} Array of platform result objects
@@ -51,10 +81,15 @@ export async function queryAllPlatforms({ companyName, category, city, categoryL
   const results = await Promise.allSettled(
     enabledPlatforms.map(platform =>
       queryWithTimeout(platform, { companyName, categoryLabel, city })
+        .then(result => ({
+          ...result,
+          status: 'checked',
+        }))
         .catch(err => ({
           platform: platform.key,
           platformLabel: platform.label,
-          mentioned: false,
+          mentioned: null,
+          status: err.message.startsWith('Timeout') ? 'timeout' : 'error',
           position: null,
           snippet: null,
           competitors: [],
@@ -72,7 +107,8 @@ export async function queryAllPlatforms({ companyName, category, city, categoryL
     return {
       platform: enabledPlatforms[i].key,
       platformLabel: enabledPlatforms[i].label,
-      mentioned: false,
+      mentioned: null,
+      status: 'error',
       position: null,
       snippet: null,
       competitors: [],
