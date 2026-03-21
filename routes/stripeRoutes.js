@@ -5,6 +5,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import Vendor from '../models/Vendor.js';
 import logger from '../services/logger.js';
+import { sendEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -449,7 +450,40 @@ async function handleCheckoutComplete(session) {
       subscriptionId: session.subscription
     });
 
-    // TODO: Send confirmation email
+    // Send checkout confirmation email
+    if (vendor.email) {
+      try {
+        await sendEmail({
+          to: vendor.email,
+          subject: `Welcome to TendorAI Pro \u2014 ${vendor.company}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1a1a2e;">Welcome to TendorAI Pro!</h2>
+              <p>Hi ${vendor.name || vendor.company},</p>
+              <p>Your subscription is now active. Here\u2019s what happens next:</p>
+              <ol style="color: #333; line-height: 1.8;">
+                <li><strong>Complete your profile</strong> \u2014 add your fees, accreditations, and practice areas</li>
+                <li><strong>We install schema on your website</strong> \u2014 within 48 hours of receiving your CMS login</li>
+                <li><strong>Weekly AI visibility reports</strong> \u2014 your first report arrives next Monday</li>
+              </ol>
+              <p>
+                <a href="https://www.tendorai.com/vendor-dashboard" style="display: inline-block; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                  Go to Your Dashboard
+                </a>
+              </p>
+              <p style="color: #666; font-size: 14px;">
+                Scott will be in touch personally within 24 hours to arrange your schema installation.
+              </p>
+              <p style="color: #999; font-size: 12px;">TendorAI \u2014 AI Visibility for UK Professional Services</p>
+            </div>
+          `,
+          text: `Welcome to TendorAI Pro, ${vendor.name || vendor.company}! Your subscription is active. Complete your profile and we'll install schema on your website within 48 hours. Dashboard: https://www.tendorai.com/vendor-dashboard`,
+        });
+        logger.info(`Checkout confirmation email sent to ${vendor.email}`);
+      } catch (emailErr) {
+        logger.error('Failed to send checkout confirmation email:', { error: emailErr.message });
+      }
+    }
   } catch (error) {
     logger.error('Error handling checkout completion:', { error: error.message, vendorId });
   }
@@ -573,7 +607,36 @@ async function handlePaymentFailed(invoice) {
       invoiceId: invoice.id
     });
 
-    // TODO: Send payment failed notification email
+    // Send payment failed notification email
+    if (vendor.email) {
+      try {
+        await sendEmail({
+          to: vendor.email,
+          subject: `Payment failed \u2014 action required for your TendorAI subscription`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #1a1a2e;">Payment Issue</h2>
+              <p>Hi ${vendor.name || vendor.company},</p>
+              <p>We were unable to process your latest payment for TendorAI Pro. Your subscription is currently marked as <strong>past due</strong>.</p>
+              <p>To keep your AI visibility features active, please update your payment method:</p>
+              <p>
+                <a href="https://www.tendorai.com/vendor-dashboard/settings?tab=subscription" style="display: inline-block; padding: 12px 24px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                  Update Payment Method
+                </a>
+              </p>
+              <p style="color: #666; font-size: 14px;">
+                If your payment isn\u2019t resolved within 7 days, your account will revert to the free tier and schema auto-updates will stop.
+              </p>
+              <p style="color: #999; font-size: 12px;">If you believe this is an error, reply to this email or contact scott.davies@tendorai.com.</p>
+            </div>
+          `,
+          text: `Hi ${vendor.name || vendor.company}, your latest TendorAI Pro payment failed. Please update your payment method at https://www.tendorai.com/vendor-dashboard/settings?tab=subscription to keep your features active.`,
+        });
+        logger.info(`Payment failed email sent to ${vendor.email}`);
+      } catch (emailErr) {
+        logger.error('Failed to send payment failed email:', { error: emailErr.message });
+      }
+    }
   } catch (error) {
     logger.error('Error handling payment failure:', { error: error.message });
   }

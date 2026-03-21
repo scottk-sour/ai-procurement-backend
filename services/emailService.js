@@ -308,21 +308,79 @@ export const sendNewLeadNotification = async (vendorEmail, { vendorName, service
 // =====================================================
 
 export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, customerName, customerMessage, customerEmail }) => {
-  console.log(`📧 Vendor contact request: ${customerName} -> ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+
+  // Look up vendor email
+  const Vendor = (await import('../models/Vendor.js')).default;
+  const vendor = await Vendor.findById(vendorId).select('email name company').lean();
+  if (!vendor?.email) {
+    console.warn(`Cannot send contact request — no email for vendor ${vendorId}`);
+    return { success: false, error: 'No vendor email' };
+  }
+
+  return sendEmail({
+    to: vendor.email,
+    subject: `New enquiry from ${customerName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a2e;">Hi ${vendor.name || vendor.company},</h2>
+        <p>You have a new enquiry from <strong>${customerName}</strong>.</p>
+        ${customerMessage ? `<blockquote style="border-left: 3px solid #6366f1; padding: 10px 16px; background: #f8f7ff; margin: 16px 0; color: #333;">${customerMessage}</blockquote>` : ''}
+        <p>Reply to: <a href="mailto:${customerEmail}">${customerEmail}</a></p>
+        <p>
+          <a href="${dashboardUrl}" style="display: inline-block; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            View in Dashboard
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px;">You're receiving this because you have an active profile on TendorAI.</p>
+      </div>
+    `,
+    text: `Hi ${vendor.name || vendor.company}, you have a new enquiry from ${customerName}. ${customerMessage || ''} Reply to: ${customerEmail}. View in dashboard: ${dashboardUrl}`,
+  });
 };
 
 export const sendQuoteAcceptedNotification = async ({ vendorEmail, vendorName, customerName, quoteDetails }) => {
-  console.log(`📧 Quote accepted notification: ${customerName} accepted quote from ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  return sendEmail({
+    to: vendorEmail,
+    subject: `${customerName} accepted your quote`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a2e;">Good news, ${vendorName}!</h2>
+        <p><strong>${customerName}</strong> has accepted your quote.</p>
+        ${quoteDetails ? `<p style="color: #666;">Quote details: ${typeof quoteDetails === 'string' ? quoteDetails : JSON.stringify(quoteDetails)}</p>` : ''}
+        <p>You can follow up with them directly to arrange next steps.</p>
+        <p>
+          <a href="https://www.tendorai.com/vendor-dashboard/quotes" style="display: inline-block; padding: 12px 24px; background-color: #16a34a; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            View in Dashboard
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px;">You're receiving this because a customer responded to your quote on TendorAI.</p>
+      </div>
+    `,
+    text: `Good news, ${vendorName}! ${customerName} has accepted your quote. View details: https://www.tendorai.com/vendor-dashboard/quotes`,
+  });
 };
 
 export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, customerName, reason }) => {
-  console.log(`📧 Quote declined notification: ${customerName} declined quote from ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  return sendEmail({
+    to: vendorEmail,
+    subject: `${customerName} declined your quote`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a2e;">Hi ${vendorName},</h2>
+        <p><strong>${customerName}</strong> has declined your quote.</p>
+        ${reason ? `<p style="color: #666;">Reason given: "${reason}"</p>` : '<p style="color: #666;">No reason was provided.</p>'}
+        <p>Don't worry — keep your profile complete and competitive. The next enquiry could be the one.</p>
+        <p>
+          <a href="https://www.tendorai.com/vendor-dashboard/quotes" style="display: inline-block; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            View in Dashboard
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px;">You're receiving this because a customer responded to your quote on TendorAI.</p>
+      </div>
+    `,
+    text: `Hi ${vendorName}, ${customerName} has declined your quote. ${reason ? `Reason: ${reason}` : ''} View dashboard: https://www.tendorai.com/vendor-dashboard/quotes`,
+  });
 };
 
 // =====================================================
