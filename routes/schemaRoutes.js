@@ -180,6 +180,31 @@ router.get('/:file([a-f0-9]{24}\\.json)', async (req, res) => {
 });
 
 /**
+ * GET /api/schema/:vendorId/export
+ * Returns complete JSON-LD as a downloadable file.
+ * Requires vendorAuth (any tier that can view schema).
+ */
+router.get('/:vendorId/export', vendorAuth, async (req, res) => {
+  try {
+    const { vendor, products, reviews } = await loadVendorData(req.params.vendorId);
+
+    if (!vendor) {
+      return res.status(404).json({ error: 'Vendor not found' });
+    }
+
+    const schema = generateVendorSchema(vendor, products, reviews);
+    const filename = `${vendor.company.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-schema.json`;
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.json(schema);
+  } catch (err) {
+    console.error('[SchemaExport] Error:', err.message);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
+
+/**
  * GET /api/schema/:vendorId/validate
  * Fetch vendor's website and check if TendorAI schema is installed.
  * Requires vendorAuth + pro tier.
