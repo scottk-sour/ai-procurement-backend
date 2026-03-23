@@ -42,21 +42,46 @@ const SERVICE_TO_SLUG = {
 
 /**
  * Derive the AEO report category slug from a vendor's data.
- * Returns null if no valid mapping is found.
+ * Falls back to vendorType if no exact mapping is found — never skips a vendor.
  */
 function deriveCategory(vendor) {
   const vendorType = vendor.vendorType || 'office-equipment';
 
   if (vendorType === 'solicitor' || vendorType === 'accountant') {
     const area = (vendor.practiceAreas || [])[0];
-    if (!area) return null;
-    return PRACTICE_AREA_TO_SLUG[area] || null;
+    if (area) {
+      const slug = PRACTICE_AREA_TO_SLUG[area];
+      if (slug) return slug;
+    }
+    // Fallback: use vendorType as category
+    return vendorType === 'solicitor' ? 'conveyancing' : 'tax-advisory';
   }
 
-  // office-equipment, mortgage-advisor, estate-agent
+  // mortgage-advisor, estate-agent, office-equipment
+  if (vendorType === 'mortgage-advisor') {
+    const area = (vendor.practiceAreas || [])[0];
+    if (area) {
+      const slug = PRACTICE_AREA_TO_SLUG[area];
+      if (slug) return slug;
+    }
+    return 'residential-mortgages';
+  }
+
+  if (vendorType === 'estate-agent') {
+    const area = (vendor.practiceAreas || [])[0];
+    if (area) {
+      const slug = PRACTICE_AREA_TO_SLUG[area];
+      if (slug) return slug;
+    }
+    return 'sales';
+  }
+
   const service = (vendor.services || [])[0];
-  if (!service) return null;
-  return SERVICE_TO_SLUG[service] || null;
+  if (service) {
+    const slug = SERVICE_TO_SLUG[service];
+    if (slug) return slug;
+  }
+  return vendorType;
 }
 
 /**

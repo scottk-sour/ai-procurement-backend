@@ -18,6 +18,66 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.tendorai.com';
 const BACKEND_URL = process.env.BACKEND_URL || 'https://ai-procurement-backend-q35u.onrender.com';
 const JWT_SECRET = process.env.JWT_SECRET || process.env.VENDOR_JWT_SECRET || 'tendorai-secret';
 
+function getVerticalLabel(vendor) {
+  const practiceArea = vendor.practiceAreas?.[0]?.toLowerCase() || '';
+  const typeLabels = {
+    solicitor: practiceArea || 'solicitor',
+    accountant: practiceArea || 'accountant',
+    'mortgage-advisor': 'mortgage adviser',
+    'estate-agent': 'estate agent',
+    'financial-advisor': 'financial adviser',
+    'insurance-broker': 'insurance broker',
+    'office-equipment': 'office equipment',
+  };
+  return typeLabels[vendor.vendorType] || vendor.vendorType || 'professional services';
+}
+
+const VERTICAL_TIPS = {
+  solicitor: [
+    { message: 'Add your CQS accreditation to your profile — clients specifically ask AI for CQS-certified firms', action: 'Go to Settings' },
+    { message: 'Publish your fixed fees — the most common AI query is "how much does conveyancing cost in [city]"', action: 'Go to Settings' },
+    { message: 'List your court coverage areas — AI uses this to match you to specific court queries', action: 'Go to Settings' },
+    { message: 'Add team members with specialisms — AI recommends named solicitors with expertise', action: 'Go to Settings' },
+    { message: 'Get more Google reviews — review count is a top AI ranking signal for solicitors', action: null },
+  ],
+  accountant: [
+    { message: 'Add your ICAEW or ACCA number — AI uses regulatory registration as a trust signal', action: 'Go to Settings' },
+    { message: 'List your accounting software (Xero, QuickBooks) — clients search for "Xero accountant near me"', action: 'Go to Settings' },
+    { message: 'Declare MTD authorised agent status — Making Tax Digital compliance is a major client concern', action: 'Go to Settings' },
+    { message: 'Add industry specialisms — AI matches accountants to industries like construction or hospitality', action: 'Go to Settings' },
+    { message: 'Publish your minimum fee threshold — helps AI match you to appropriately sized clients', action: 'Go to Settings' },
+  ],
+  'mortgage-advisor': [
+    { message: 'Declare whole of market status — the most common qualifier clients ask AI about', action: 'Go to Settings' },
+    { message: 'Add your lender count — AI uses this to rank advisers by market access', action: 'Go to Settings' },
+    { message: 'Publish your fee model — "fee free mortgage adviser near me" is a high volume AI query', action: 'Go to Settings' },
+    { message: 'List your FCA number prominently — AI uses regulatory verification as a trust signal', action: 'Go to Settings' },
+    { message: 'Get more Google reviews — review count is a top AI ranking signal for mortgage advisers', action: null },
+  ],
+  'estate-agent': [
+    { message: 'Add average sale time — sellers in a hurry ask AI for fast-selling agents', action: 'Go to Settings' },
+    { message: 'Publish achieved vs asking price percentage — the single most important metric sellers ask about', action: 'Go to Settings' },
+    { message: 'List coverage postcodes — AI uses location data to match you to hyperlocal queries', action: 'Go to Settings' },
+    { message: 'Add management fee percentage — landlords ask AI to compare management fees', action: 'Go to Settings' },
+    { message: 'Get more Google reviews — review count is a top AI ranking signal for estate agents', action: null },
+  ],
+  'office-equipment': [
+    { message: 'List the brands you supply — businesses search for specific brands like "Konica Minolta dealer near me"', action: 'Go to Products' },
+    { message: 'Declare managed print service availability — MPS is a high-value recurring contract query', action: 'Go to Products' },
+    { message: 'Add monthly cost range — businesses use AI to budget for equipment', action: 'Go to Products' },
+    { message: 'Specify lease vs purchase options — declaring both doubles your query coverage', action: 'Go to Products' },
+    { message: 'List your service coverage postcodes — local queries are the highest converting for office equipment', action: 'Go to Settings' },
+  ],
+};
+
+const DEFAULT_TIPS = [
+  { message: 'Complete your profile — more fields means more AI recommendation opportunities', action: 'Go to Settings' },
+  { message: 'Add your fees — price transparency is the most common AI query factor', action: 'Go to Settings' },
+  { message: 'Get more Google reviews — review count is a top AI ranking signal', action: null },
+  { message: 'Publish your location coverage — AI matches firms to local queries', action: 'Go to Settings' },
+  { message: 'Add your accreditations — trust signals increase recommendation confidence', action: 'Go to Settings' },
+];
+
 /**
  * Generate unsubscribe token (no expiry)
  */
@@ -127,8 +187,11 @@ export async function generateWeeklyEmail(vendorId) {
   const vendorName = vendor.company || vendor.name || 'there';
   const tier = (vendor.tier || 'free').toLowerCase();
   const isPaid = ['basic', 'visible', 'managed', 'enterprise', 'verified'].includes(tier);
-  const category = vendor.services?.[0] || 'your category';
   const location = vendor.location?.city || 'your area';
+
+  // Vertical-specific label
+  const verticalLabel = getVerticalLabel(vendor);
+  const category = vendor.practiceAreas?.[0] || verticalLabel;
 
   // Week date
   const weekOf = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -139,14 +202,14 @@ export async function generateWeeklyEmail(vendorId) {
   const dashboardUrl = `${FRONTEND_URL}/vendor-dashboard`;
   const upgradeUrl = `${FRONTEND_URL}/vendor-dashboard/upgrade`;
 
-  // Subject line — competitor count hooks
+  // Subject line — vertical-specific with competitor hooks
   let subject;
-  if (mentions.totalCompetitorMentions > 0 && mentions.mentionsThisWeek === 0) {
-    subject = `${vendorName}: Your competitors were mentioned ${mentions.totalCompetitorMentions} times this week`;
-  } else if (mentions.mentionsThisWeek > 0) {
-    subject = `AI search update: Here's where you stand, ${vendorName}`;
+  if (mentions.mentionsThisWeek > 0) {
+    subject = `AI recommended your ${verticalLabel} firm ${mentions.mentionsThisWeek} time${mentions.mentionsThisWeek === 1 ? '' : 's'} this week`;
+  } else if (mentions.totalCompetitorMentions > 0) {
+    subject = `${mentions.totalCompetitorMentions} ${verticalLabel} competitor${mentions.totalCompetitorMentions === 1 ? '' : 's'} appeared in AI this week — you didn't`;
   } else {
-    subject = `Your AI Visibility Report — Week of ${weekOf}`;
+    subject = `Your ${location} ${verticalLabel} AI visibility report — week of ${weekOf}`;
   }
 
   // Score change indicator
@@ -160,7 +223,10 @@ export async function generateWeeklyEmail(vendorId) {
   const scoreColour = scoreData.colour || '#7c3aed';
 
   // Top tip
-  const topTip = scoreData.tips?.[0];
+  // Use vertical-specific tip if available, fall back to score-based tip
+  const verticalTips = VERTICAL_TIPS[vendor.vendorType] || DEFAULT_TIPS;
+  const weekIndex = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000)) % verticalTips.length;
+  const topTip = verticalTips[weekIndex] || scoreData.tips?.[0];
 
   // Build HTML (tables + inline CSS for email clients)
   const html = `<!DOCTYPE html>

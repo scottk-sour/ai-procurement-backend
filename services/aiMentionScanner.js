@@ -1,6 +1,10 @@
 import Vendor from '../models/Vendor.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import VendorScoreHistory from '../models/VendorScoreHistory.js';
+import VendorProduct from '../models/VendorProduct.js';
+import Review from '../models/Review.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
+import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import { sendEmail } from './emailService.js';
 
 // Map vendorType to readable label and prompt templates
@@ -283,6 +287,105 @@ export async function runSingleVendorScan(vendorId) {
 }
 
 /**
+ * Send a real-time mention notification email when Perplexity recommends a Pro vendor.
+ */
+async function sendMentionNotificationEmail(vendor, platformLabel, categoryLabel, snippet, score) {
+  const frontendUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
+  const dashboardUrl = `${frontendUrl}/vendor-dashboard`;
+  const profileUrl = `${frontendUrl}/vendor-dashboard/settings`;
+
+  await sendEmail({
+    to: vendor.email,
+    subject: `🎯 ${platformLabel} recommended ${vendor.company} this week`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1a1a2e;">Hi ${vendor.name || vendor.company},</h2>
+        <p>Good news — this week when we asked ${platformLabel} to recommend a ${categoryLabel} in ${vendor.location?.city || 'your area'}, they recommended <strong>${vendor.company}</strong>.</p>
+        <p>Here's what ${platformLabel} said:</p>
+        <blockquote style="border-left: 3px solid #6366f1; padding: 10px 16px; background: #f8f7ff; margin: 16px 0; color: #333; font-style: italic;">
+          "${snippet || 'Your firm was mentioned in the AI response.'}"
+        </blockquote>
+        <p>This means potential clients asking the same question are likely seeing your firm recommended right now.</p>
+        <p style="font-weight: bold; color: #1a1a2e;">Your current AI Visibility Score: ${score}/100</p>
+        <p>
+          <a href="${dashboardUrl}" style="display: inline-block; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 8px;">
+            View Your Full Visibility Dashboard
+          </a>
+        </p>
+        <p>
+          <a href="${profileUrl}" style="display: inline-block; padding: 10px 20px; background-color: #1B4F72; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            Complete Your Profile to Get More Recommendations
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px; margin-top: 24px;">The TendorAI Team</p>
+        <p style="color: #999; font-size: 12px;">P.S. Share this with your team — being recommended by AI is worth shouting about.</p>
+      </div>
+    `,
+    text: `Hi ${vendor.name || vendor.company}, good news — ${platformLabel} recommended ${vendor.company} this week when asked for a ${categoryLabel} in ${vendor.location?.city || 'your area'}. Your AI Visibility Score: ${score}/100. View your dashboard: ${dashboardUrl}`,
+  });
+}
+
+/**
+ * Save the current visibility score to history for trend tracking.
+ */
+async function saveScoreHistory(vendor, weekStarting) {
+  try {
+    const products = await VendorProduct.find({
+      $or: [{ vendorId: vendor._id }, { vendorId: vendor._id.toString() }],
+    }).lean();
+
+    // Mention data for last 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+    const [mentions30d, mentionsThisWeek, mentionsLastWeek] = await Promise.all([
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: thirtyDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: sevenDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+    ]);
+
+    const reviewData = await Review.aggregate([
+      { $match: { vendor: vendor._id } },
+      { $group: { _id: null, count: { $sum: 1 }, avgRating: { $avg: '$rating' } } },
+    ]);
+
+    const result = calculateVisibilityScore(
+      vendor,
+      products,
+      { totalMentions30d: mentions30d, mentionsThisWeek, mentionsLastWeek },
+      { reviewCount: reviewData[0]?.count || 0, averageRating: reviewData[0]?.avgRating || 0 },
+      {},
+      {}
+    );
+
+    await VendorScoreHistory.findOneAndUpdate(
+      { vendorId: vendor._id, weekStarting },
+      {
+        vendorId: vendor._id,
+        score: result.score,
+        breakdown: {
+          profile: result.breakdown.profile.earned,
+          products: result.breakdown.products.earned,
+          reviews: result.breakdown.reviews.earned,
+          aiMentions: result.breakdown.mentions.earned,
+          engagement: result.breakdown.engagement.earned,
+          tier: result.breakdown.plan.earned,
+          verified: result.breakdown.verified.earned,
+        },
+        weekStarting,
+      },
+      { upsert: true, new: true }
+    );
+
+    return result.score;
+  } catch (err) {
+    console.error(`  Failed to save score history for ${vendor.company}:`, err.message);
+    return null;
+  }
+}
+
+/**
  * Run the weekly AI mention scanner for all paid vendors.
  */
 export async function runWeeklyMentionScan() {
@@ -313,12 +416,22 @@ export async function runWeeklyMentionScan() {
   console.log(`Found ${vendors.length} paid vendors to scan (free vendors excluded)`);
 
   const scanDate = new Date();
+  // Calculate weekStarting as this Monday (or today if Monday)
+  const weekStarting = new Date(scanDate);
+  const dayOfWeek = weekStarting.getDay();
+  const diffToMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
+  weekStarting.setDate(weekStarting.getDate() + diffToMonday);
+  weekStarting.setHours(0, 0, 0, 0);
+
   let totalRecords = 0;
   let totalMentions = 0;
   let platformErrors = 0;
   let alertsSent = 0;
   const vendorsScanned = new Set();
-  const vendorsNotified = new Set();
+  const vendorsNotified = new Set(); // Track which vendors got a mention email this cycle
+
+  // Pro tier values for notification email eligibility
+  const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
 
   for (let i = 0; i < vendors.length; i++) {
     const vendor = vendors[i];
@@ -352,6 +465,11 @@ export async function runWeeklyMentionScan() {
             mentionDocs.length
           );
           alertsSent++;
+        }
+
+        // Save score history for this vendor (if not already saved via notification path)
+        if (!vendorsNotified.has(vendor._id.toString())) {
+          await saveScoreHistory(vendor, weekStarting);
         }
       }
 
