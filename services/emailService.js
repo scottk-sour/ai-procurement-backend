@@ -303,26 +303,106 @@ export const sendNewLeadNotification = async (vendorEmail, { vendorName, service
 };
 
 // =====================================================
-// QUOTE NOTIFICATION STUBS (for quoteRoutes.js compatibility)
-// These are called with optional chaining, so they won't crash if they fail
+// VENDOR CONTACT REQUEST
 // =====================================================
 
 export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, customerName, customerMessage, customerEmail }) => {
-  console.log(`📧 Vendor contact request: ${customerName} -> ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+
+  // Look up vendor email from vendorId
+  let vendorEmail;
+  try {
+    const { default: Vendor } = await import('../models/Vendor.js');
+    const vendor = await Vendor.findById(vendorId).select('email').lean();
+    vendorEmail = vendor?.email;
+  } catch {
+    console.error(`Could not look up vendor email for ${vendorId}`);
+  }
+
+  if (!vendorEmail) {
+    console.warn(`No email found for vendor ${vendorId} — skipping contact request email`);
+    return { success: false, reason: 'no_vendor_email' };
+  }
+
+  return sendEmail({
+    to: vendorEmail,
+    subject: `New enquiry from ${customerName} via TendorAI`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">New Enquiry via TendorAI</h2>
+        <p style="color: #374151; line-height: 1.6;">
+          <strong>${customerName}</strong> has sent you an enquiry through your TendorAI profile.
+        </p>
+        <div style="background: #f5f3ff; border-left: 4px solid #7c3aed; padding: 12px 16px; margin: 16px 0; color: #374151;">
+          ${customerMessage || 'No message provided.'}
+        </div>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tr><td style="padding: 8px 0; color: #6b7280;">Customer</td><td style="padding: 8px 0; font-weight: 600;">${customerName}</td></tr>
+          <tr><td style="padding: 8px 0; color: #6b7280;">Reply to</td><td style="padding: 8px 0; font-weight: 600;">${customerEmail}</td></tr>
+        </table>
+        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View in Dashboard</a>
+      </div>
+    `,
+    text: `New enquiry from ${customerName} (${customerEmail}) via TendorAI: "${customerMessage || 'No message'}". View at ${dashboardUrl}`
+  });
 };
+
+// =====================================================
+// QUOTE ACCEPTED NOTIFICATION
+// =====================================================
 
 export const sendQuoteAcceptedNotification = async ({ vendorEmail, vendorName, customerName, quoteDetails }) => {
-  console.log(`📧 Quote accepted notification: ${customerName} accepted quote from ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+  const service = quoteDetails?.service || 'your service';
+
+  return sendEmail({
+    to: vendorEmail,
+    subject: `Good news — ${customerName} accepted your quote`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">Quote Accepted!</h2>
+        <p style="color: #374151; line-height: 1.6;">
+          Great news, ${vendorName} — <strong>${customerName}</strong> has accepted your quote for <strong>${service}</strong>.
+        </p>
+        <h3 style="color: #374151; margin-top: 24px;">Next steps</h3>
+        <ul style="color: #374151; line-height: 1.8;">
+          <li>Reach out to ${customerName} to confirm details</li>
+          <li>Agree a start date and timeline</li>
+          <li>Mark the quote as won in your dashboard</li>
+        </ul>
+        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View in Dashboard</a>
+      </div>
+    `,
+    text: `Good news, ${vendorName} — ${customerName} accepted your quote for ${service}. View details at ${dashboardUrl}`
+  });
 };
 
+// =====================================================
+// QUOTE DECLINED NOTIFICATION
+// =====================================================
+
 export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, customerName, reason }) => {
-  console.log(`📧 Quote declined notification: ${customerName} declined quote from ${vendorName}`);
-  // TODO: Implement actual email sending
-  return { success: true, simulated: true };
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+  const reasonText = reason ? `<p style="color: #374151; line-height: 1.6;"><strong>Reason given:</strong> ${reason}</p>` : '';
+
+  return sendEmail({
+    to: vendorEmail,
+    subject: `Quote update from ${customerName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #7c3aed;">Quote Update</h2>
+        <p style="color: #374151; line-height: 1.6;">
+          ${customerName} has decided not to proceed with your quote this time.
+        </p>
+        ${reasonText}
+        <p style="color: #374151; line-height: 1.6;">
+          Don't worry — every quote improves your visibility on TendorAI. Keep your profile up to date and you'll be matched with more enquiries.
+        </p>
+        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View Your Quotes</a>
+      </div>
+    `,
+    text: `Quote update: ${customerName} has decided not to proceed this time.${reason ? ` Reason: ${reason}.` : ''} View your quotes at ${dashboardUrl}`
+  });
 };
 
 // =====================================================

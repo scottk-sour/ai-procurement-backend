@@ -2,6 +2,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import logger from '../services/logger.js';
+import adminAuth from '../middleware/adminAuth.js';
 
 const router = express.Router();
 
@@ -91,9 +92,9 @@ router.post('/ai-referral', async (req, res) => {
 
 /**
  * GET /api/analytics/ai-referrals
- * Get AI referral statistics (admin only - TODO: add auth)
+ * Get AI referral statistics (admin only)
  */
-router.get('/ai-referrals', async (req, res) => {
+router.get('/ai-referrals', adminAuth, async (req, res) => {
   try {
     const { startDate, endDate, source } = req.query;
 

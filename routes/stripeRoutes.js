@@ -5,6 +5,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import Vendor from '../models/Vendor.js';
 import logger from '../services/logger.js';
+import { sendEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -449,7 +450,58 @@ async function handleCheckoutComplete(session) {
       subscriptionId: session.subscription
     });
 
-    // TODO: Send confirmation email
+    // Send Pro upgrade confirmation email
+    if (vendor.email) {
+      const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+      try {
+        await sendEmail({
+          to: vendor.email,
+          subject: `You're now on TendorAI Pro — here's what happens next`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #7c3aed;">Welcome to TendorAI Pro!</h2>
+              <p style="color: #374151; line-height: 1.6;">
+                Your payment of <strong>&pound;299/month</strong> has been confirmed. Here's what happens next:
+              </p>
+              <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+                <tr>
+                  <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; width: 40px; vertical-align: top;">1.</td>
+                  <td style="padding: 12px 0; color: #374151;">
+                    <strong>Complete your profile</strong> at <a href="${dashboardUrl}/settings" style="color: #7c3aed;">${dashboardUrl}/settings</a> &mdash; the more data you add, the more AI recommends you.
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; vertical-align: top;">2.</td>
+                  <td style="padding: 12px 0; color: #374151;">
+                    <strong>Reply to this email with your website login</strong> &mdash; we'll install your AI-optimised schema within 48 hours.
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; vertical-align: top;">3.</td>
+                  <td style="padding: 12px 0; color: #374141;">
+                    <strong>Your first AI Visibility Report</strong> arrives Monday morning &mdash; see which platforms recommend you across ChatGPT, Perplexity, Claude, Gemini, Grok, and Meta AI.
+                  </td>
+                </tr>
+              </table>
+              <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <p style="color: #374151; margin: 0; font-size: 14px;">
+                  <strong>90-day guarantee:</strong> If your AI Visibility Score doesn't improve within 90 days, we'll refund you in full.
+                </p>
+              </div>
+              <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Go to Dashboard</a>
+              <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+                Questions? Reply to this email or contact hello@tendorai.com
+              </p>
+            </div>
+          `,
+          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. 90-day guarantee — score improves or full refund. Questions? hello@tendorai.com`,
+          from: 'TendorAI <hello@tendorai.com>',
+        });
+        logger.info('Pro upgrade email sent', { vendorId: vendor._id, email: vendor.email });
+      } catch (emailErr) {
+        logger.error('Failed to send Pro upgrade email', { error: emailErr.message, vendorId: vendor._id });
+      }
+    }
   } catch (error) {
     logger.error('Error handling checkout completion:', { error: error.message, vendorId });
   }
@@ -573,7 +625,35 @@ async function handlePaymentFailed(invoice) {
       invoiceId: invoice.id
     });
 
-    // TODO: Send payment failed notification email
+    // Send payment failed notification email
+    if (vendor.email) {
+      const settingsUrl = 'https://www.tendorai.com/vendor-dashboard/settings';
+      try {
+        await sendEmail({
+          to: vendor.email,
+          subject: 'Action required — TendorAI payment failed',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #7c3aed;">Payment Failed</h2>
+              <p style="color: #374151; line-height: 1.6;">
+                We were unable to process your payment of <strong>&pound;299</strong> for TendorAI Pro.
+              </p>
+              <p style="color: #374151; line-height: 1.6;">
+                Please update your payment method to keep your Pro features active. If not updated within 7 days, your account will revert to the free tier.
+              </p>
+              <a href="${settingsUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Update Payment Method</a>
+              <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+                Need help? Contact hello@tendorai.com
+              </p>
+            </div>
+          `,
+          text: `TendorAI payment of £299 failed. Update your payment method at ${settingsUrl} to keep Pro features. Account reverts to free in 7 days if not updated. Contact hello@tendorai.com for help.`,
+        });
+        logger.info('Payment failed email sent', { vendorId: vendor._id });
+      } catch (emailErr) {
+        logger.error('Failed to send payment failed email', { error: emailErr.message, vendorId: vendor._id });
+      }
+    }
   } catch (error) {
     logger.error('Error handling payment failure:', { error: error.message });
   }
