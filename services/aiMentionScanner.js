@@ -1,6 +1,7 @@
 import Vendor from '../models/Vendor.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
+import { sendEmail } from './emailService.js';
 
 // Map vendorType to readable label and prompt templates
 const VENDOR_TYPE_CONFIG = {
@@ -92,6 +93,64 @@ const PLATFORM_KEY_MAP = {
   grok: 'grok',
   meta: 'metaai',
 };
+
+// Human-readable platform names for email subjects
+const PLATFORM_DISPLAY_NAME = {
+  chatgpt: 'ChatGPT',
+  perplexity: 'Perplexity',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  grok: 'Grok',
+  metaai: 'Meta AI',
+  meta: 'Meta AI',
+};
+
+/**
+ * Send an email alert when a Pro vendor is mentioned by any AI platform.
+ */
+async function sendMentionAlert(vendor, platformKey, query, mentionCount, totalPlatforms) {
+  const platformName = PLATFORM_DISPLAY_NAME[platformKey] || platformKey;
+  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/analytics';
+  // Approximate AI Visibility Score: percentage of platforms that mentioned the vendor
+  const visibilityScore = Math.round((mentionCount / totalPlatforms) * 100);
+
+  const subject = `${platformName} recommended ${vendor.company} this week`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #7c3aed;">${platformName} Recommended You This Week</h2>
+      <p style="color: #374151; line-height: 1.6;">
+        Great news — <strong>${platformName}</strong> recommended <strong>${vendor.company}</strong> when asked:
+      </p>
+      <blockquote style="border-left: 4px solid #7c3aed; margin: 16px 0; padding: 12px 16px; background: #f5f3ff; color: #374151; font-style: italic;">
+        "${query}"
+      </blockquote>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">Platform</td>
+          <td style="padding: 8px 0; font-weight: 600;">${platformName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #6b7280;">AI Visibility Score</td>
+          <td style="padding: 8px 0; font-weight: 600;">${visibilityScore}/100</td>
+        </tr>
+      </table>
+      <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View Full Results</a>
+      <p style="color: #9ca3af; font-size: 12px; margin-top: 24px;">
+        You're receiving this because your TendorAI Pro plan includes AI mention alerts across all 6 platforms.
+      </p>
+    </div>
+  `;
+
+  const text = `${platformName} recommended ${vendor.company} this week. Query: "${query}". Your AI Visibility Score: ${visibilityScore}/100. View full results: ${dashboardUrl}`;
+
+  try {
+    await sendEmail({ to: vendor.email, subject, html, text });
+    console.log(`  📧 Mention alert sent to ${vendor.email} (${platformName})`);
+  } catch (err) {
+    console.error(`  ❌ Failed to send mention alert to ${vendor.email}:`, err.message);
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -230,6 +289,10 @@ export async function runWeeklyMentionScan() {
   console.log('=== AI Mention Scanner Starting ===');
   console.log(`Time: ${new Date().toISOString()}`);
 
+  // Tiers eligible for email mention alerts
+  const PRO_ALERT_TIERS = ['pro', 'managed', 'enterprise'];
+  const PRO_ALERT_ACCOUNT_TIERS = ['gold', 'platinum', 'pro'];
+
   // Pull only PAID vendors
   const PAID_TIERS = ['starter', 'basic', 'visible', 'pro', 'managed', 'verified', 'enterprise'];
   const PAID_ACCOUNT_TIERS = ['silver', 'bronze', 'gold', 'platinum', 'starter', 'pro', 'verified'];
@@ -245,7 +308,7 @@ export async function runWeeklyMentionScan() {
         { 'location.city': { $exists: true, $ne: '' } },
       ] },
     ],
-  }).select('_id company vendorType services practiceAreas location tier account.tier').lean();
+  }).select('_id company vendorType services practiceAreas location tier account.tier email').lean();
 
   console.log(`Found ${vendors.length} paid vendors to scan (free vendors excluded)`);
 
@@ -253,7 +316,9 @@ export async function runWeeklyMentionScan() {
   let totalRecords = 0;
   let totalMentions = 0;
   let platformErrors = 0;
+  let alertsSent = 0;
   const vendorsScanned = new Set();
+  const vendorsNotified = new Set();
 
   for (let i = 0; i < vendors.length; i++) {
     const vendor = vendors[i];
@@ -265,8 +330,29 @@ export async function runWeeklyMentionScan() {
       if (mentionDocs.length > 0) {
         await AIMentionScan.insertMany(mentionDocs, { ordered: false });
         totalRecords += mentionDocs.length;
-        totalMentions += mentionDocs.filter(d => d.mentioned).length;
+        const mentions = mentionDocs.filter(d => d.mentioned);
+        totalMentions += mentions.length;
         platformErrors += mentionDocs.filter(d => d.responseSnippet?.startsWith('API error')).length;
+
+        // Send email alerts for Pro vendors mentioned by any platform
+        const vendorTier = (vendor.tier || '').toLowerCase();
+        const accountTier = (vendor.account?.tier || '').toLowerCase();
+        const isProTier = PRO_ALERT_TIERS.includes(vendorTier) || PRO_ALERT_ACCOUNT_TIERS.includes(accountTier);
+        const vendorKey = vendor._id.toString();
+
+        if (isProTier && vendor.email && mentions.length > 0 && !vendorsNotified.has(vendorKey)) {
+          vendorsNotified.add(vendorKey);
+          // Send one alert for the first platform that mentioned them
+          const firstMention = mentions[0];
+          await sendMentionAlert(
+            vendor,
+            firstMention.platform,
+            firstMention.prompt,
+            mentions.length,
+            mentionDocs.length
+          );
+          alertsSent++;
+        }
       }
 
       vendorsScanned.add(vendor._id.toString());
@@ -283,7 +369,7 @@ export async function runWeeklyMentionScan() {
   }
 
   console.log('\n=== Scan Complete ===');
-  console.log(`Weekly scan complete: ${vendorsScanned.size} vendors scanned, ${totalMentions} mentions found, ${platformErrors} platform errors`);
+  console.log(`Weekly scan complete: ${vendorsScanned.size} vendors scanned, ${totalMentions} mentions found, ${platformErrors} platform errors, ${alertsSent} email alerts sent`);
   console.log(`Total records saved: ${totalRecords}`);
 
   return {
@@ -291,5 +377,6 @@ export async function runWeeklyMentionScan() {
     totalMentions,
     recordsSaved: totalRecords,
     platformErrors,
+    alertsSent,
   };
 }
