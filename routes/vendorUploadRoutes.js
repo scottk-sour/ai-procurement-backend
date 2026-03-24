@@ -102,6 +102,17 @@ router.post('/signup', signupLimiter, async (req, res) => {
         const existingVendor = await Vendor.findOne({ email });
         if (existingVendor) return res.status(400).json({ message: 'Vendor already exists.' });
 
+        // Generate URL slug from company name and city
+        const generateSlug = (company, city) => {
+            const base = `${company} ${city || ''}`
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
+                .trim();
+            return base;
+        };
+
         // Don't hash password here - the Vendor model's pre-save hook handles hashing
         const newVendor = new Vendor({
             name,
@@ -109,6 +120,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
             password,  // Plain password - will be hashed by model pre-save hook
             company,
             services,
+            slug: generateSlug(company),
             account: {
                 status: 'active'
             }
