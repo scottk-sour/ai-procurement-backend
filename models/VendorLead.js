@@ -15,7 +15,15 @@ const vendorLeadSchema = new mongoose.Schema({
   // Service requirements
   service: {
     type: String,
-    enum: ['Photocopiers', 'Telecoms', 'CCTV', 'IT', 'Security', 'Software', 'Other'],
+    enum: [
+      'Conveyancing', 'Family Law', 'Criminal Law', 'Commercial Law',
+      'Wills & Probate', 'Employment Law', 'Immigration', 'Personal Injury',
+      'Tax Advisory', 'Bookkeeping', 'Payroll', 'Audit',
+      'Residential Mortgage', 'Buy-to-Let', 'Remortgage', 'First-Time Buyer',
+      'Property Sales', 'Lettings',
+      'Photocopiers', 'Telecoms', 'CCTV', 'IT Services',
+      'General Enquiry',
+    ],
     required: true
   },
   equipmentType: String,
