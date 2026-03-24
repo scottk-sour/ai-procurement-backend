@@ -3,6 +3,9 @@ import express from 'express';
 import mongoose from 'mongoose';
 import logger from '../services/logger.js';
 import adminAuth from '../middleware/adminAuth.js';
+import vendorAuth from '../middleware/vendorAuth.js';
+import ProfileView from '../models/ProfileView.js';
+import VendorAnalytics from '../models/VendorAnalytics.js';
 
 const router = express.Router();
 
@@ -164,6 +167,143 @@ router.get('/ai-referrals', adminAuth, async (req, res) => {
   } catch (error) {
     logger.error('Failed to get AI referral stats', { error: error.message });
     res.status(500).json({ success: false, error: 'Failed to get statistics' });
+  }
+});
+
+/**
+ * GET /api/analytics/ai-referrals/me
+ * Get AI referral stats for the authenticated vendor
+ */
+router.get('/ai-referrals/me', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [total, byPlatform, recent] = await Promise.all([
+      AIReferral.countDocuments({ vendorId: new mongoose.Types.ObjectId(vendorId), timestamp: { $gte: thisMonthStart } }),
+      AIReferral.aggregate([
+        { $match: { vendorId: new mongoose.Types.ObjectId(vendorId), timestamp: { $gte: thisMonthStart } } },
+        { $group: { _id: '$source', count: { $sum: 1 } } },
+      ]),
+      AIReferral.find({ vendorId: new mongoose.Types.ObjectId(vendorId) })
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .select({ source: 1, timestamp: 1, page: 1, action: 1 })
+        .lean(),
+    ]);
+
+    const platformMap = { chatgpt: 0, perplexity: 0, gemini: 0, claude: 0, grok: 0, copilot: 0 };
+    byPlatform.forEach((p) => {
+      if (p._id in platformMap) platformMap[p._id] = p.count;
+    });
+
+    res.json({
+      success: true,
+      total,
+      byPlatform: platformMap,
+      recent: recent.map((r) => ({
+        source: r.source,
+        timestamp: r.timestamp,
+        page: r.page,
+      })),
+    });
+  } catch (error) {
+    logger.error('Failed to get vendor AI referral stats', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to get stats' });
+  }
+});
+
+/**
+ * POST /api/analytics/profile-view
+ * Track a vendor profile page view (public, no auth)
+ * Rate limited: 1 view per IP per vendor per hour
+ */
+router.post('/profile-view', async (req, res) => {
+  try {
+    const { vendorId, source } = req.body;
+
+    if (!vendorId || !mongoose.Types.ObjectId.isValid(vendorId)) {
+      return res.status(400).json({ success: false, error: 'Invalid vendorId' });
+    }
+
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    // Rate limit: 1 view per IP per vendor per hour
+    const existing = await ProfileView.findOne({
+      vendorId,
+      ip,
+      timestamp: { $gte: oneHourAgo },
+    });
+
+    if (existing) {
+      return res.json({ success: true, message: 'Already tracked' });
+    }
+
+    await ProfileView.create({
+      vendorId,
+      source: source || 'unknown',
+      userAgent: req.get('User-Agent'),
+      ip,
+    });
+
+    // Also write to vendor_analytics for the analytics dashboard
+    try {
+      await VendorAnalytics.create({
+        vendorId,
+        eventType: 'view',
+        source: { referrer: source || 'unknown', page: '/suppliers/vendor' },
+        timestamp: new Date(),
+      });
+    } catch (dualWriteErr) {
+      logger.warn('Dual-write to vendor_analytics failed', { error: dualWriteErr.message });
+    }
+
+    console.log(`Profile view tracked: vendor=${vendorId}, source=${source || 'unknown'}, ip=${ip}`);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Failed to track profile view', { error: error.message });
+    res.json({ success: true, message: 'Acknowledged' });
+  }
+});
+
+/**
+ * GET /api/analytics/profile-views/me
+ * Get profile view stats for the authenticated vendor
+ */
+router.get('/profile-views/me', vendorAuth, async (req, res) => {
+  try {
+    const vendorId = req.vendorId;
+    const now = new Date();
+
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    const [thisMonth, lastMonth, bySource] = await Promise.all([
+      ProfileView.countDocuments({ vendorId, timestamp: { $gte: thisMonthStart } }),
+      ProfileView.countDocuments({ vendorId, timestamp: { $gte: lastMonthStart, $lte: lastMonthEnd } }),
+      ProfileView.aggregate([
+        { $match: { vendorId: new mongoose.Types.ObjectId(vendorId), timestamp: { $gte: thisMonthStart } } },
+        { $group: { _id: '$source', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const sourceMap = { google: 0, bing: 0, direct: 0, ai_referral: 0, tendorai_search: 0, unknown: 0 };
+    bySource.forEach((s) => {
+      if (s._id in sourceMap) sourceMap[s._id] = s.count;
+    });
+
+    res.json({
+      success: true,
+      thisMonth,
+      lastMonth,
+      bySource: sourceMap,
+    });
+  } catch (error) {
+    logger.error('Failed to get profile view stats', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to get stats' });
   }
 });
 
