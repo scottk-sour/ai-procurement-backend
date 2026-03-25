@@ -4,7 +4,9 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { authRateLimiter } from '../middleware/authRateLimiter.js';
+import adminAuth from '../middleware/adminAuth.js';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
 import QuoteRequest from '../models/QuoteRequest.js';
@@ -37,27 +39,6 @@ const router = express.Router();
 
 const { ADMIN_EMAIL, ADMIN_PASSWORD_HASH, ADMIN_JWT_SECRET } = process.env;
 
-// Middleware for admin authentication
-const adminAuth = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, ADMIN_JWT_SECRET);
-    if (decoded.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Access denied. Not authorized.' });
-    }
-    req.admin = decoded;
-    next();
-  } catch (error) {
-    console.error('Token verification error:', error.message);
-    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
-  }
-};
-
 // Admin Login (bcrypt-hashed password, rate limited)
 router.post('/login', authRateLimiter, async (req, res) => {
   try {
@@ -67,13 +48,6 @@ router.post('/login', authRateLimiter, async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Email and password are required.' });
     }
 
-    console.log('[Admin Login] Env check:', {
-      hasEmail: !!ADMIN_EMAIL,
-      hasHash: !!ADMIN_PASSWORD_HASH,
-      hasSecret: !!ADMIN_JWT_SECRET,
-      secretLength: ADMIN_JWT_SECRET?.length,
-    });
-
     if (email === ADMIN_EMAIL && ADMIN_PASSWORD_HASH && await bcrypt.compare(password, ADMIN_PASSWORD_HASH)) {
       const token = jwt.sign({ role: 'admin' }, ADMIN_JWT_SECRET, { expiresIn: '8h' });
       return res.status(200).json({ status: 'success', token, message: 'Login successful.' });
@@ -81,8 +55,8 @@ router.post('/login', authRateLimiter, async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Invalid credentials.' });
     }
   } catch (error) {
-    console.error('[Admin Login] Error:', error.message, error.stack);
-    return res.status(500).json({ status: 'error', message: 'Login failed: ' + error.message });
+    console.error('[Admin Login] Error:', error.message);
+    return res.status(500).json({ status: 'error', message: 'Login failed.' });
   }
 });
 
@@ -158,11 +132,10 @@ router.get('/stats', adminAuth, async (req, res) => {
     if (!revenueSource) {
       // Fallback: estimate from vendor tiers
       activeSubscriptions = await Vendor.countDocuments({
-        tier: { $in: ['visible', 'verified', 'basic', 'managed', 'enterprise'] }
+        tier: { $in: ['visible', 'verified', 'pro', 'basic', 'managed', 'enterprise'] }
       });
-      const visibleCount = tierBreakdown.visible + tierBreakdown.basic;
-      const verifiedCount = tierBreakdown.verified + tierBreakdown.managed + tierBreakdown.enterprise;
-      monthlyRevenue = (visibleCount * 99) + (verifiedCount * 149);
+      const proCount = tierBreakdown.pro || 0;
+      monthlyRevenue = proCount * 299;
       pastDueSubscriptions = 0;
       revenueSource = 'estimated';
     }
@@ -331,7 +304,7 @@ router.get('/vendors/:id', adminAuth, async (req, res) => {
 router.patch('/vendors/:id/tier', adminAuth, async (req, res) => {
   try {
     const { tier } = req.body;
-    const validTiers = ['free', 'visible', 'verified'];
+    const validTiers = ['free', 'basic', 'starter', 'pro', 'visible', 'verified', 'listed', 'managed', 'enterprise'];
 
     if (!validTiers.includes(tier)) {
       return res.status(400).json({ success: false, message: 'Invalid tier.' });
@@ -348,7 +321,7 @@ router.patch('/vendors/:id/tier', adminAuth, async (req, res) => {
     }
     await vendor.save();
 
-    console.log(`Admin changed vendor ${vendor._id} tier to ${tier}`);
+    console.log(`[ADMIN ACTION] tier_change | vendorId: ${vendor._id} | tier: ${tier} | time: ${new Date().toISOString()}`);
 
     res.json({
       success: true,
@@ -392,6 +365,8 @@ router.patch('/vendors/:id/status', adminAuth, async (req, res) => {
 
     await vendor.save();
 
+    console.log(`[ADMIN ACTION] status_change | vendorId: ${vendor._id} | status: ${status} | time: ${new Date().toISOString()}`);
+
     // Send welcome email when activating a vendor
     if (status === 'active') {
       try {
@@ -433,7 +408,7 @@ router.delete('/vendors/:id', adminAuth, async (req, res) => {
 
     await Vendor.findByIdAndDelete(id);
 
-    console.log(`Admin deleted vendor ${id} (${vendor.company})`);
+    console.log(`[ADMIN ACTION] vendor_delete | vendorId: ${id} | company: ${vendor.company} | time: ${new Date().toISOString()}`);
     res.json({ success: true, message: 'Vendor deleted' });
   } catch (error) {
     console.error('Error deleting vendor:', error.message);
@@ -448,6 +423,9 @@ router.post('/vendors/bulk-delete', adminAuth, async (req, res) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'ids array is required.' });
     }
+    if (ids.length > 50) {
+      return res.status(400).json({ success: false, message: 'Bulk delete limited to 50 vendors at a time.' });
+    }
 
     // Delete all associated data in parallel
     await Promise.all([
@@ -461,7 +439,7 @@ router.post('/vendors/bulk-delete', adminAuth, async (req, res) => {
 
     const result = await Vendor.deleteMany({ _id: { $in: ids } });
 
-    console.log(`Admin bulk-deleted ${result.deletedCount} vendors`);
+    console.log(`[ADMIN ACTION] bulk_delete | count: ${result.deletedCount} | ids: ${ids.join(',')} | time: ${new Date().toISOString()}`);
     res.json({ success: true, message: `${result.deletedCount} vendors deleted`, count: result.deletedCount });
   } catch (error) {
     console.error('Error bulk-deleting vendors:', error.message);
@@ -469,21 +447,28 @@ router.post('/vendors/bulk-delete', adminAuth, async (req, res) => {
   }
 });
 
-// Get all leads/enquiries
+// Get all leads/enquiries (paginated)
 router.get('/leads', adminAuth, async (req, res) => {
   try {
-    const { status, limit = 50 } = req.query;
+    const { status } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
     const query = {};
     if (status && status !== 'all') {
       query.status = status;
     }
 
-    const leads = await Lead.find(query)
-      .populate('vendorId', 'company email')
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .lean();
+    const [leads, total] = await Promise.all([
+      Lead.find(query)
+        .populate('vendorId', 'company email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Lead.countDocuments(query),
+    ]);
 
     const leadsWithDetails = leads.map(l => ({
       id: l._id,
@@ -501,22 +486,26 @@ router.get('/leads', adminAuth, async (req, res) => {
       createdAt: l.createdAt
     }));
 
-    res.json({ success: true, data: leadsWithDetails });
+    res.json({ success: true, data: leadsWithDetails, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Error fetching leads:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching leads.' });
   }
 });
 
-// Get all quote requests
+// Get all quote requests (paginated)
 router.get('/quotes', adminAuth, async (req, res) => {
   try {
-    const quotes = await QuoteRequest.find({})
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-    res.json({ success: true, data: quotes });
+    const [quotes, total] = await Promise.all([
+      QuoteRequest.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      QuoteRequest.countDocuments(),
+    ]);
+
+    res.json({ success: true, data: quotes, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Error fetching quotes:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching quotes.' });
@@ -576,28 +565,38 @@ router.get('/vendors/export/csv', adminAuth, async (req, res) => {
   }
 });
 
-// Get all newsletter subscribers
+// Get all newsletter subscribers (paginated)
 router.get('/subscribers', adminAuth, async (req, res) => {
   try {
-    const subscribers = await Subscriber.find({})
-      .sort({ subscribedAt: -1 })
-      .lean();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-    res.json({ success: true, data: subscribers });
+    const [subscribers, total] = await Promise.all([
+      Subscriber.find({}).sort({ subscribedAt: -1 }).skip(skip).limit(limit).lean(),
+      Subscriber.countDocuments(),
+    ]);
+
+    res.json({ success: true, data: subscribers, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Error fetching subscribers:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching subscribers.' });
   }
 });
 
-// Get all AEO report submissions
+// Get all AEO report submissions (paginated)
 router.get('/aeo-reports', adminAuth, async (req, res) => {
   try {
-    const reports = await AeoReport.find({})
-      .sort({ createdAt: -1 })
-      .lean();
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
 
-    res.json({ success: true, data: reports });
+    const [reports, total] = await Promise.all([
+      AeoReport.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      AeoReport.countDocuments(),
+    ]);
+
+    res.json({ success: true, data: reports, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
     console.error('Error fetching AEO reports:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching AEO reports.' });
@@ -941,6 +940,8 @@ router.patch('/schema-requests/:id', adminAuth, async (req, res) => {
 
     await request.save();
 
+    console.log(`[ADMIN ACTION] schema_request_update | requestId: ${request._id} | status: ${request.status} | time: ${new Date().toISOString()}`);
+
     res.json({
       success: true,
       data: {
@@ -980,6 +981,246 @@ router.get('/schema-requests/:id/credentials', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching schema credentials:', error.message);
     res.status(500).json({ success: false, message: 'Error fetching credentials.' });
+  }
+});
+
+// ============================================================
+// VENDOR DETAIL EDITING
+// ============================================================
+
+/**
+ * PATCH /api/admin/vendors/:id/details
+ * Update vendor details (company, email, contact, location, etc.)
+ */
+router.patch('/vendors/:id/details', adminAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.params.id);
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: 'Vendor not found.' });
+    }
+
+    const { company, email, phone, website, city, address, description, vendorType, tier } = req.body;
+
+    // Validate email format if provided
+    if (email && !/.+@.+\..+/.test(email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email format.' });
+    }
+
+    if (company !== undefined) vendor.company = company;
+    if (email !== undefined) vendor.email = email;
+    if (vendorType !== undefined) vendor.vendorType = vendorType;
+    if (tier !== undefined) vendor.tier = tier;
+
+    if (phone !== undefined) {
+      if (!vendor.contactInfo) vendor.contactInfo = {};
+      vendor.contactInfo.phone = phone;
+    }
+    if (website !== undefined) {
+      if (!vendor.contactInfo) vendor.contactInfo = {};
+      vendor.contactInfo.website = website;
+    }
+    if (city !== undefined) {
+      if (!vendor.location) vendor.location = {};
+      vendor.location.city = city;
+    }
+    if (address !== undefined) {
+      if (!vendor.location) vendor.location = {};
+      vendor.location.address = address;
+    }
+    if (description !== undefined) {
+      if (!vendor.businessProfile) vendor.businessProfile = {};
+      vendor.businessProfile.description = description;
+    }
+
+    await vendor.save();
+
+    console.log(`[ADMIN ACTION] vendor_edit | vendorId: ${vendor._id} | time: ${new Date().toISOString()}`);
+
+    res.json({
+      success: true,
+      message: 'Vendor details updated',
+      vendor: {
+        id: vendor._id,
+        company: vendor.company,
+        email: vendor.email,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating vendor details:', error.message);
+    res.status(500).json({ success: false, message: 'Error updating vendor details.' });
+  }
+});
+
+// ============================================================
+// VENDOR PASSWORD RESET
+// ============================================================
+
+/**
+ * POST /api/admin/vendors/:id/reset-password
+ * Generate a reset token and send email to vendor.
+ */
+router.post('/vendors/:id/reset-password', adminAuth, async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.params.id);
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: 'Vendor not found.' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    vendor.passwordResetToken = hashedToken;
+    vendor.passwordResetExpires = expiry;
+    await vendor.save();
+
+    const resetUrl = `https://www.tendorai.com/vendor-reset-password?token=${token}`;
+
+    await sendEmail(vendor.email, 'Reset your TendorAI password', `
+      <h2>Password Reset</h2>
+      <p>Hi ${vendor.name || vendor.company},</p>
+      <p>A password reset was requested for your TendorAI account.</p>
+      <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Reset Password</a></p>
+      <p>This link expires in 1 hour.</p>
+      <p>If you did not request this, please ignore this email.</p>
+    `);
+
+    console.log(`[ADMIN ACTION] password_reset_sent | vendorId: ${vendor._id} | email: ${vendor.email} | time: ${new Date().toISOString()}`);
+
+    res.json({ success: true, message: `Password reset email sent to ${vendor.email}` });
+  } catch (error) {
+    console.error('Error sending password reset:', error.message);
+    res.status(500).json({ success: false, message: 'Error sending password reset.' });
+  }
+});
+
+// ============================================================
+// CONTENT MODERATION — Vendor Posts
+// ============================================================
+
+/**
+ * GET /api/admin/posts
+ * List all vendor posts (paginated, filterable by status).
+ */
+router.get('/posts', adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    const query = {};
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
+    const [posts, total] = await Promise.all([
+      VendorPost.find(query)
+        .populate('vendor', 'company email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      VendorPost.countDocuments(query),
+    ]);
+
+    const data = posts.map(p => ({
+      id: p._id,
+      title: p.title,
+      slug: p.slug,
+      status: p.status || 'draft',
+      vendor: p.vendor ? { id: p.vendor._id, company: p.vendor.company, email: p.vendor.email } : null,
+      createdAt: p.createdAt,
+    }));
+
+    res.json({ success: true, data, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  } catch (error) {
+    console.error('Error fetching posts:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching posts.' });
+  }
+});
+
+/**
+ * PATCH /api/admin/posts/:id
+ * Update post status (publish/unpublish).
+ */
+router.patch('/posts/:id', adminAuth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['published', 'draft'];
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be published or draft.' });
+    }
+
+    const post = await VendorPost.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found.' });
+    }
+
+    console.log(`[ADMIN ACTION] post_status_change | postId: ${post._id} | status: ${status} | time: ${new Date().toISOString()}`);
+
+    res.json({ success: true, message: `Post ${status === 'published' ? 'published' : 'unpublished'}`, data: { id: post._id, status: post.status } });
+  } catch (error) {
+    console.error('Error updating post:', error.message);
+    res.status(500).json({ success: false, message: 'Error updating post.' });
+  }
+});
+
+/**
+ * DELETE /api/admin/posts/:id
+ * Delete a vendor post permanently.
+ */
+router.delete('/posts/:id', adminAuth, async (req, res) => {
+  try {
+    const post = await VendorPost.findByIdAndDelete(req.params.id);
+    if (!post) {
+      return res.status(404).json({ success: false, message: 'Post not found.' });
+    }
+
+    console.log(`[ADMIN ACTION] post_delete | postId: ${req.params.id} | time: ${new Date().toISOString()}`);
+
+    res.json({ success: true, message: 'Post deleted' });
+  } catch (error) {
+    console.error('Error deleting post:', error.message);
+    res.status(500).json({ success: false, message: 'Error deleting post.' });
+  }
+});
+
+// ============================================================
+// RECENT SIGNUPS
+// ============================================================
+
+/**
+ * GET /api/admin/recent-signups
+ * Returns last 20 vendors created.
+ */
+router.get('/recent-signups', adminAuth, async (req, res) => {
+  try {
+    const vendors = await Vendor.find({})
+      .select('company email vendorType tier location.city createdAt')
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+
+    const data = vendors.map(v => ({
+      id: v._id,
+      company: v.company,
+      email: v.email,
+      vendorType: v.vendorType || 'office-equipment',
+      tier: v.tier || 'free',
+      city: v.location?.city || 'N/A',
+      createdAt: v.createdAt,
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching recent signups:', error.message);
+    res.status(500).json({ success: false, message: 'Error fetching recent signups.' });
   }
 });
 
