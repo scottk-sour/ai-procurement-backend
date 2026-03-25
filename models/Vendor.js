@@ -394,6 +394,25 @@ vendorSchema.pre('save', async function(next) {
   }
 });
 
+// Auto-generate slug if missing
+vendorSchema.pre('save', function(next) {
+  if (!this.slug && this.company) {
+    this.slug = this.company
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+    if (this.location?.city) {
+      this.slug += '-' + this.location.city
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-');
+    }
+  }
+  next();
+});
+
 // Normalize website URL - add https:// if missing
 vendorSchema.pre('save', function(next) {
   if (this.contactInfo?.website) {

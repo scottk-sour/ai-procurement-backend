@@ -15,7 +15,8 @@ const requiredEnvVars = [
   'JWT_SECRET',
   'OPENAI_API_KEY',
   'PORT',
-  'FRONTEND_URL'
+  'FRONTEND_URL',
+  'ADMIN_JWT_SECRET'
 ];
 
 // Validate all required variables exist
