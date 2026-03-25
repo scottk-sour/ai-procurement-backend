@@ -199,6 +199,81 @@ async function generateVendorReports(tier) {
 }
 
 /**
+ * Downgrade vendors with past_due subscriptions older than 7 days.
+ * Runs daily at 9am UTC.
+ */
+async function downgradePastDueVendors() {
+  logger.info('[ScheduledReports] Checking for past_due vendors to downgrade...');
+
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const vendors = await Vendor.find({
+      subscriptionStatus: 'past_due',
+      updatedAt: { $lt: sevenDaysAgo },
+    });
+
+    if (vendors.length === 0) {
+      logger.info('[ScheduledReports] No past_due vendors to downgrade.');
+      return;
+    }
+
+    logger.info(`[ScheduledReports] Found ${vendors.length} past_due vendor(s) to downgrade.`);
+
+    for (const vendor of vendors) {
+      try {
+        const previousTier = vendor.tier;
+        vendor.tier = 'free';
+        vendor.subscriptionStatus = 'cancelled';
+        vendor.stripeSubscriptionId = null;
+
+        if (vendor.account) {
+          vendor.account.tier = 'standard';
+        }
+
+        await vendor.save();
+
+        logger.info(`[ADMIN ACTION] auto_downgrade | vendorId: ${vendor._id} | previousTier: ${previousTier} | reason: past_due_7_days | time: ${new Date().toISOString()}`);
+
+        // Send downgrade notification email
+        if (vendor.email) {
+          try {
+            await sendEmail({
+              to: vendor.email,
+              subject: 'Your TendorAI Pro subscription has been cancelled',
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h2 style="color: #7c3aed;">Subscription Cancelled</h2>
+                  <p style="color: #374151; line-height: 1.6;">
+                    Your TendorAI Pro subscription has been cancelled due to a failed payment that was not resolved within 7 days.
+                  </p>
+                  <p style="color: #374151; line-height: 1.6;">
+                    Your account has been moved to the free tier. You can resubscribe at any time to restore your Pro features.
+                  </p>
+                  <a href="https://www.tendorai.com/for-vendors" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Resubscribe</a>
+                  <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+                    Questions? Contact hello@tendorai.com
+                  </p>
+                </div>
+              `,
+              text: `Your TendorAI Pro subscription has been cancelled due to failed payment. Your account has been moved to the free tier. Resubscribe at https://www.tendorai.com/for-vendors. Contact hello@tendorai.com for help.`,
+            });
+          } catch (emailErr) {
+            logger.error(`[ScheduledReports] Downgrade email failed for ${vendor.company}:`, emailErr.message);
+          }
+        }
+      } catch (err) {
+        logger.error(`[ScheduledReports] Error downgrading vendor ${vendor._id}:`, err.message);
+      }
+    }
+
+    logger.info(`[ScheduledReports] Past_due downgrade complete: ${vendors.length} vendor(s) processed.`);
+  } catch (error) {
+    logger.error('[ScheduledReports] Error in downgradePastDueVendors:', error.message);
+  }
+}
+
+/**
  * Register cron jobs and start the scheduler.
  */
 export function startScheduledReports() {
@@ -225,8 +300,15 @@ export function startScheduledReports() {
     generateVendorReports('pro');
   });
 
+  // Past-due subscription downgrade: daily at 9am UTC
+  cron.schedule('0 9 * * *', () => {
+    logger.info('[ScheduledReports] Triggering past_due vendor downgrade check...');
+    downgradePastDueVendors();
+  });
+
   logger.info('[ScheduledReports] Cron jobs registered:');
   logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
   logger.info('  - Pro (monthly): 1st of every month at 06:00 UTC');
   logger.info('  - Pro (weekly): every Monday at 06:00 UTC');
+  logger.info('  - Past_due downgrade (daily): every day at 09:00 UTC');
 }

@@ -401,6 +401,12 @@ router.post('/webhook', requireStripe, async (req, res) => {
         break;
       }
 
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        await handleChargeRefunded(charge);
+        break;
+      }
+
       default:
         logger.info('Unhandled Stripe event type', { type: event.type });
     }
@@ -656,6 +662,71 @@ async function handlePaymentFailed(invoice) {
     }
   } catch (error) {
     logger.error('Error handling payment failure:', { error: error.message });
+  }
+}
+
+async function handleChargeRefunded(charge) {
+  const customerId = charge.customer;
+
+  try {
+    const vendor = await Vendor.findOne({ stripeCustomerId: customerId });
+    if (!vendor) {
+      logger.warn('Vendor not found for refund', { customerId });
+      return;
+    }
+
+    const previousTier = vendor.tier;
+    vendor.tier = 'free';
+    vendor.subscriptionStatus = 'cancelled';
+    vendor.stripeSubscriptionId = null;
+
+    if (vendor.account) {
+      vendor.account.tier = 'standard';
+    }
+
+    // Add note to vendor record
+    if (!vendor.notes) vendor.notes = [];
+    vendor.notes.push({
+      note: `Refund processed on ${new Date().toISOString().split('T')[0]}. Charge: ${charge.id}. Amount: £${(charge.amount_refunded / 100).toFixed(2)}`,
+      type: 'system',
+      priority: 'high',
+      addedAt: new Date(),
+    });
+
+    await vendor.save();
+
+    logger.info(`[ADMIN ACTION] refund_processed | vendorId: ${vendor._id} | previousTier: ${previousTier} | chargeId: ${charge.id} | amount: £${(charge.amount_refunded / 100).toFixed(2)} | time: ${new Date().toISOString()}`);
+
+    // Send refund confirmation email
+    if (vendor.email) {
+      try {
+        await sendEmail({
+          to: vendor.email,
+          subject: 'Your TendorAI refund has been processed',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #7c3aed;">Refund Processed</h2>
+              <p style="color: #374151; line-height: 1.6;">
+                Your refund of <strong>&pound;${(charge.amount_refunded / 100).toFixed(2)}</strong> has been processed. It may take 5-10 business days to appear on your statement.
+              </p>
+              <p style="color: #374151; line-height: 1.6;">
+                Your account has been moved to the free tier. You can resubscribe at any time.
+              </p>
+              <a href="https://www.tendorai.com/for-vendors" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Resubscribe</a>
+              <p style="color: #9ca3af; font-size: 13px; margin-top: 24px;">
+                Questions? Contact hello@tendorai.com
+              </p>
+            </div>
+          `,
+          text: `Your TendorAI refund of £${(charge.amount_refunded / 100).toFixed(2)} has been processed. Your account has been moved to the free tier. Resubscribe at https://www.tendorai.com/for-vendors. Contact hello@tendorai.com for help.`,
+        });
+        logger.info('Refund email sent', { vendorId: vendor._id });
+      } catch (emailErr) {
+        logger.error('Failed to send refund email', { error: emailErr.message, vendorId: vendor._id });
+      }
+    }
+  } catch (error) {
+    logger.error('Error handling charge refund:', { error: error.message });
   }
 }
 
