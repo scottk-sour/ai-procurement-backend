@@ -83,14 +83,21 @@ router.get('/upcoming', async (req, res) => {
   }
 });
 
-// GET /stats — aggregate status counts + distinct cities
+// GET /stats — aggregate status counts + distinct cities + overdue/due today
 router.get('/stats', async (req, res) => {
   try {
-    const [statusCounts, cities] = await Promise.all([
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+    const [statusCounts, cities, dueToday, overdue, total] = await Promise.all([
       OutreachLog.aggregate([
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       OutreachLog.distinct('reportCity'),
+      OutreachLog.countDocuments({ nextActionDate: { $gte: startOfDay, $lt: endOfDay } }),
+      OutreachLog.countDocuments({ nextActionDate: { $lt: startOfDay }, nextAction: { $ne: 'none', $ne: '' } }),
+      OutreachLog.countDocuments({}),
     ]);
 
     const counts = {};
@@ -98,11 +105,19 @@ router.get('/stats', async (req, res) => {
       counts[s._id] = s.count;
     });
 
+    const won = counts['won'] || counts['signed-up'] || 0;
+    const conversionRate = total > 0 ? Math.round((won / total) * 100) : 0;
+
     res.json({
       success: true,
       data: {
+        total,
         counts,
         cities: cities.filter(Boolean).sort(),
+        dueToday,
+        overdue,
+        won,
+        conversionRate,
       },
     });
   } catch (err) {
@@ -183,29 +198,120 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST / — create new record
+// POST / — create new record with auto-defaults
 router.post('/', async (req, res) => {
   try {
     if (!req.body.firmName) {
       return res.status(400).json({ success: false, error: 'firmName is required' });
     }
-    const record = await OutreachLog.create(req.body);
+    const data = { ...req.body };
+    if (!data.status) data.status = 'prospect';
+    if (!data.nextAction) data.nextAction = 'run_aeo';
+    if (!data.nextActionDate) data.nextActionDate = new Date();
+    if (!data.history) {
+      data.history = [{ action: 'created', note: 'Prospect added to outreach', date: new Date(), completedBy: 'admin' }];
+    }
+    const record = await OutreachLog.create(data);
     res.status(201).json({ success: true, data: record });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// PUT /:id — update record
+// Status → next action auto-mapping
+function getNextStep(status) {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const inTwoDays = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+  const map = {
+    'aeo_sent':            { nextAction: 'send_email', nextActionDate: tomorrow },
+    'email_sent':          { nextAction: 'call',       nextActionDate: now },
+    'email-sent':          { nextAction: 'call',       nextActionDate: now },
+    'called':              { nextAction: 'send_followup', nextActionDate: inTwoDays },
+    'email_followup_sent': { nextAction: 'call_followup', nextActionDate: inTwoDays },
+    'called_followup':     { nextAction: 'none',       nextActionDate: null },
+    'interested':          { nextAction: 'none',       nextActionDate: null },
+    'meeting_booked':      { nextAction: 'none',       nextActionDate: null },
+    'won':                 { nextAction: 'none',       nextActionDate: null },
+    'signed-up':           { nextAction: 'none',       nextActionDate: null },
+    'lost':                { nextAction: 'none',       nextActionDate: null },
+    'not-interested':      { nextAction: 'none',       nextActionDate: null },
+    'no_response':         { nextAction: 'none',       nextActionDate: null },
+  };
+  return map[status] || null;
+}
+
+// PUT /:id — update record with auto-advance
 router.put('/:id', async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, error: 'Invalid ID' });
     }
+
+    const updateData = { ...req.body };
+
+    // Auto-advance sales sequence when status changes
+    if (updateData.status) {
+      const step = getNextStep(updateData.status);
+      if (step) {
+        if (!updateData.nextAction) updateData.nextAction = step.nextAction;
+        if (!updateData.nextActionDate) updateData.nextActionDate = step.nextActionDate;
+      }
+      // Push to history
+      updateData.$push = {
+        history: {
+          action: `status_${updateData.status}`,
+          note: `Status changed to ${updateData.status}`,
+          date: new Date(),
+          completedBy: 'admin',
+        },
+      };
+      // Remove status from $set to avoid conflict
+      const { status, ...rest } = updateData;
+      delete rest.$push;
+      const record = await OutreachLog.findByIdAndUpdate(
+        req.params.id,
+        {
+          $set: { status, ...rest },
+          $push: updateData.$push,
+        },
+        { new: true, runValidators: true }
+      );
+      if (!record) {
+        return res.status(404).json({ success: false, error: 'Record not found' });
+      }
+      return res.json({ success: true, data: record });
+    }
+
     const record = await OutreachLog.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
+    );
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Record not found' });
+    }
+    res.json({ success: true, data: record });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /:id/history — add a history entry
+router.post('/:id/history', async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid ID' });
+    }
+    const { action, note } = req.body;
+    if (!action) {
+      return res.status(400).json({ success: false, error: 'action is required' });
+    }
+    const record = await OutreachLog.findByIdAndUpdate(
+      req.params.id,
+      { $push: { history: { action, note: note || '', date: new Date(), completedBy: 'admin' } } },
+      { new: true }
     );
     if (!record) {
       return res.status(404).json({ success: false, error: 'Record not found' });
