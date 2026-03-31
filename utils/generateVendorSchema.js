@@ -67,10 +67,17 @@ function buildAdditionalTypes(vendor) {
  * Fix 2: Build areaServed with real place names from postcode areas.
  */
 function buildAreaServed(vendor) {
+  const seenNames = new Set();
   const areas = [];
 
+  function addArea(type, name) {
+    if (!name || seenNames.has(name)) return;
+    seenNames.add(name);
+    areas.push({ '@type': type, name });
+  }
+
   if (vendor.location?.city) {
-    areas.push({ '@type': 'City', name: vendor.location.city });
+    addArea('City', vendor.location.city);
   }
 
   const codes = vendor.postcodeAreas?.length > 0
@@ -78,7 +85,6 @@ function buildAreaServed(vendor) {
     : (vendor.location?.coverage || []);
 
   for (const code of codes) {
-    // Try exact match first, then extract alpha prefix for postcode districts (e.g. WR10 → WR)
     let placeName = UK_POSTCODE_AREA_MAP[code];
     let areaCode = code;
     if (!placeName) {
@@ -88,10 +94,7 @@ function buildAreaServed(vendor) {
         areaCode = prefix;
       }
     }
-    areas.push({
-      '@type': 'AdministrativeArea',
-      name: placeName ? `${placeName} (${areaCode})` : code,
-    });
+    addArea('AdministrativeArea', placeName ? `${placeName} (${areaCode})` : code);
   }
 
   return areas.length > 0 ? areas : undefined;
