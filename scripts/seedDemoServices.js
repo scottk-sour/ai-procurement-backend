@@ -13,7 +13,7 @@ async function main() {
   const secureview = await Vendor.findOne({ email: 'demo-secureview@tendorai.com' });
 
   if (!dragon) {
-    console.error('Dragon Law vendor not found');
+    console.error('Dragon Office Solutions vendor not found');
     process.exit(1);
   }
   if (!secureview) {
@@ -21,7 +21,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`Dragon Law: ${dragon._id} (${dragon.company})`);
+  console.log(`Dragon Office Solutions: ${dragon._id} (${dragon.company})`);
   console.log(`SecureView: ${secureview._id} (${secureview.company})`);
 
   // Delete old products for both vendors
@@ -30,8 +30,11 @@ async function main() {
   });
   console.log(`Deleted ${deleted.deletedCount} old products`);
 
-  // Insert solicitor services for Dragon Law
+  // NOTE: Dragon Office Solutions is an office-equipment vendor, NOT a solicitor.
+  // These solicitor products were incorrectly assigned here.
+  // Skipping solicitor services — they do not belong on this vendor.
   const solicitorServices = [
+    /* REMOVED: solicitor services do not belong on Dragon Office Solutions
     {
       vendorId: dragon._id,
       serviceCategory: 'Solicitor',
@@ -80,6 +83,7 @@ async function main() {
         turnaroundTime: '1-2 weeks',
       },
     },
+  REMOVED */
   ];
 
   // Insert accountant services for SecureView

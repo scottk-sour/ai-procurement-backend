@@ -67,10 +67,17 @@ function buildAdditionalTypes(vendor) {
  * Fix 2: Build areaServed with real place names from postcode areas.
  */
 function buildAreaServed(vendor) {
+  const seenNames = new Set();
   const areas = [];
 
+  function addArea(type, name) {
+    if (!name || seenNames.has(name)) return;
+    seenNames.add(name);
+    areas.push({ '@type': type, name });
+  }
+
   if (vendor.location?.city) {
-    areas.push({ '@type': 'City', name: vendor.location.city });
+    addArea('City', vendor.location.city);
   }
 
   const codes = vendor.postcodeAreas?.length > 0
@@ -78,7 +85,6 @@ function buildAreaServed(vendor) {
     : (vendor.location?.coverage || []);
 
   for (const code of codes) {
-    // Try exact match first, then extract alpha prefix for postcode districts (e.g. WR10 → WR)
     let placeName = UK_POSTCODE_AREA_MAP[code];
     let areaCode = code;
     if (!placeName) {
@@ -88,10 +94,7 @@ function buildAreaServed(vendor) {
         areaCode = prefix;
       }
     }
-    areas.push({
-      '@type': 'AdministrativeArea',
-      name: placeName ? `${placeName} (${areaCode})` : code,
-    });
+    addArea('AdministrativeArea', placeName ? `${placeName} (${areaCode})` : code);
   }
 
   return areas.length > 0 ? areas : undefined;
@@ -406,7 +409,10 @@ function buildAdditionalProperties(vendor) {
  */
 export function generateVendorSchema(vendor, products = [], reviews = []) {
   const vendorId = vendor._id?.toString() || '';
-  const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorId}`;
+  const slug = vendor.slug;
+  const profileUrl = slug
+    ? `https://www.tendorai.com/suppliers/vendor/${slug}`
+    : `https://www.tendorai.com/suppliers/profile/${vendorId}`;
   const schemaType = mapSchemaType(vendor.vendorType);
 
   // Fix 1: additionalType for office-equipment vendors
@@ -416,18 +422,35 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
   const rawWebsite = vendor.contactInfo?.website || '';
   const website = rawWebsite && !rawWebsite.startsWith('http') ? `https://${rawWebsite}` : rawWebsite;
 
-  // Fix 10: Deduplicate sameAs
-  const sameAsSet = new Set([profileUrl]);
+  // sameAs: vendor website + LinkedIn + regulatory register URLs only (not TendorAI profile)
+  const sameAsSet = new Set();
   if (website) sameAsSet.add(website);
   if (vendor.contactInfo?.linkedIn) sameAsSet.add(vendor.contactInfo.linkedIn);
+  if (vendor.sraNumber) sameAsSet.add(`https://www.sra.org.uk/consumers/register/organisation/?sraNumber=${vendor.sraNumber}`);
+  if (vendor.fcaNumber) sameAsSet.add(`https://register.fca.org.uk/s/firm?id=${vendor.fcaNumber}`);
   const sameAs = [...sameAsSet];
 
-  // Build knowsAbout from services, practiceAreas, specializations
-  const knowsAbout = [
+  // Build knowsAbout — deduplicated
+  const knowsAboutSet = new Set([
     ...(vendor.services || []),
     ...(vendor.practiceAreas || []),
     ...(vendor.businessProfile?.specializations || []),
-  ].filter(Boolean);
+  ].filter(Boolean));
+  const knowsAbout = [...knowsAboutSet];
+
+  // Vendor email — skip placeholders
+  const vendorEmail = vendor.email && !vendor.email.includes('placeholder.tendorai.com') ? vendor.email : undefined;
+
+  // Build employee from individualSolicitors
+  const employees = (vendor.individualSolicitors || [])
+    .filter(s => s?.name?.trim())
+    .map(s => ({ '@type': 'Person', name: s.name, ...(s.role?.trim() && { jobTitle: s.role }) }));
+
+  // numberOfEmployees
+  const numEmployees = vendor.businessProfile?.numEmployees;
+  const numberOfEmployees = numEmployees && numEmployees > 0
+    ? { '@type': 'QuantitativeValue', value: numEmployees }
+    : undefined;
 
   // Build offers catalog from products
   let offers = products.slice(0, 20).map(p => ({
@@ -508,6 +531,8 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
     description: buildDescription(vendor),
     url: website || profileUrl,
     telephone: vendor.contactInfo?.phone || undefined,
+    ...(vendorEmail && { email: vendorEmail }),
+    isPartOf: { '@type': 'WebSite', name: 'TendorAI', url: 'https://www.tendorai.com' },
     address: {
       '@type': 'PostalAddress',
       streetAddress: vendor.location?.address || undefined,
@@ -527,6 +552,8 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
       description: 'The UK\u2019s AI Visibility Platform \u2014 verified business profiles optimised for AI recommendations',
     },
     knowsAbout: knowsAbout.length > 0 ? knowsAbout : undefined,
+    ...(employees.length > 0 && { employee: employees }),
+    ...(numberOfEmployees && { numberOfEmployees }),
     ...(vendor.businessProfile?.yearsInBusiness && {
       foundingDate: String(new Date().getFullYear() - vendor.businessProfile.yearsInBusiness),
     }),
@@ -542,11 +569,7 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
     potentialAction: {
       '@type': 'CommunicateAction',
       name: 'Request a Quote',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${profileUrl}?quote=true`,
-        actionPlatform: 'https://schema.org/DesktopWebPlatform',
-      },
+      target: profileUrl,
       description: `Request a quote from ${vendor.company} via TendorAI`,
     },
     areaServed: buildAreaServed(vendor),

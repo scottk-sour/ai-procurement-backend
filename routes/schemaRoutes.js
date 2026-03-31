@@ -83,7 +83,9 @@ router.get('/:file([a-f0-9]{24}\\.badge\\.js)', async (req, res) => {
     const tier = vendor.tier || vendor.account?.tier || 'free';
     const badgeType = tier === 'verified' ? 'verified' : 'starter';
     const vendorIdStr = vendor._id.toString();
-    const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
+    const profileUrl = vendor.slug
+      ? `https://www.tendorai.com/suppliers/vendor/${vendor.slug}`
+      : `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
 
     const script = generateBadgeScript({
       vendorId: vendorIdStr,
@@ -127,7 +129,9 @@ router.get('/:file([a-f0-9]{24}\\.js)', async (req, res) => {
     const schema = generateVendorSchema(vendor, products, reviews);
     const jsonString = JSON.stringify(schema);
     const vendorIdStr = vendor._id.toString();
-    const profileUrl = `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
+    const profileUrl = vendor.slug
+      ? `https://www.tendorai.com/suppliers/vendor/${vendor.slug}`
+      : `https://www.tendorai.com/suppliers/profile/${vendorIdStr}`;
 
     const script = generateBadgeScript({
       vendorId: vendorIdStr,
