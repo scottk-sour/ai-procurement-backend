@@ -139,6 +139,15 @@ function buildIdentifiers(vendor) {
     });
   }
 
+  if (vendor.companyNumber) {
+    identifiers.push({
+      '@type': 'PropertyValue',
+      name: 'Companies House Number',
+      propertyID: 'https://find-and-update.company-information.service.gov.uk',
+      value: vendor.companyNumber,
+    });
+  }
+
   // TendorAI Verified identifier
   const tier = vendor.tier || vendor.account?.tier || 'free';
   if (tier === 'verified') {
@@ -427,6 +436,7 @@ export function generateVendorSchema(vendor, products = [], reviews = []) {
   if (website) sameAsSet.add(website);
   if (vendor.contactInfo?.linkedIn) sameAsSet.add(vendor.contactInfo.linkedIn);
   if (vendor.sraNumber) sameAsSet.add(`https://www.sra.org.uk/consumers/register/organisation/?sraNumber=${vendor.sraNumber}`);
+  if (vendor.icaewFirmNumber) sameAsSet.add(`https://www.icaew.com/about-icaew/find-a-chartered-accountant?id=${vendor.icaewFirmNumber}`);
   if (vendor.fcaNumber) sameAsSet.add(`https://register.fca.org.uk/s/firm?id=${vendor.fcaNumber}`);
   const sameAs = [...sameAsSet];
 
