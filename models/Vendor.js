@@ -47,6 +47,9 @@ const vendorSchema = new mongoose.Schema({
   practiceAreas: [{ type: String, trim: true }],
   organisationType: { type: String, trim: true },
   companyNumber: { type: String, trim: true },
+  chMatchConfidence: { type: Number },
+  chMatchMethod: { type: String, trim: true },
+  chMatchedAt: { type: Date },
   officeCount: { type: Number },
 
   // Professional services fields (solicitors & accountants)
