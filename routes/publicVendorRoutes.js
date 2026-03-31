@@ -175,7 +175,15 @@ router.get('/vendors', async (req, res) => {
         'subscription.priorityBoost': 1,
         'listingStatus': 1,
         'account.loginCount': 1,
-        'createdAt': 1
+        'createdAt': 1,
+        'vendorType': 1,
+        'practiceAreas': 1,
+        'sraNumber': 1,
+        'icaewFirmNumber': 1,
+        'fcaNumber': 1,
+        'propertymarkNumber': 1,
+        'regulatoryBody': 1,
+        'slug': 1,
       })
       .lean();
 
