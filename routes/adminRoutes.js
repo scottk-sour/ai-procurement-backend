@@ -631,6 +631,7 @@ router.get('/all-leads', adminAuth, async (req, res) => {
             source: 'aeo',
             category: r.category || '',
             city: r.city || '',
+            score: r.score ?? null,
             date: r.createdAt
           }));
         }
