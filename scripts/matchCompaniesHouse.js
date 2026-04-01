@@ -137,13 +137,8 @@ async function main() {
 
   const query = { companyNumber: { $in: [null, '', undefined] } };
   const totalCount = await Vendor.countDocuments(query);
-  const limit = TEST_MODE ? 20 : 0;
-
-  const cursor = Vendor.find(query)
-    .select({ company: 1, location: 1, companyNumber: 1 })
-    .lean()
-    .limit(limit || totalCount)
-    .cursor();
+  const maxVendors = TEST_MODE ? 20 : totalCount;
+  const BATCH_SIZE = 200;
 
   let processed = 0;
   let autoMatched = 0;
@@ -151,7 +146,16 @@ async function main() {
   let skipped = 0;
   const pendingReview = [];
 
-  for await (const vendor of cursor) {
+  for (let skip = 0; skip < maxVendors; skip += BATCH_SIZE) {
+    const batch = await Vendor.find(query)
+      .select({ company: 1, location: 1, companyNumber: 1 })
+      .lean()
+      .skip(skip)
+      .limit(Math.min(BATCH_SIZE, maxVendors - skip));
+
+    if (batch.length === 0) break;
+
+    for (const vendor of batch) {
     processed++;
 
     if (!vendor.company || vendor.company.trim().length < 2) {
@@ -221,6 +225,7 @@ async function main() {
     }
 
     await sleep(RATE_LIMIT_MS);
+    }
   }
 
   // Summary
