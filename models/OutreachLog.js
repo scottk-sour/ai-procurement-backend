@@ -65,6 +65,8 @@ const outreachLogSchema = new mongoose.Schema({
   emailSentAt: { type: Date },
   emailOpenedAt: { type: Date },
   lastCalledAt: { type: Date },
+  email1SentAt: { type: Date, default: null },
+  email2SentAt: { type: Date, default: null },
   notes: [noteSchema],
   callHistory: [callHistorySchema],
   history: [historySchema],
