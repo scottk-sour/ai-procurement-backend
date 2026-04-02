@@ -177,15 +177,8 @@ router.post('/:id/run', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Campaign is already running' });
     }
 
-    // Mark as active
-    campaign.status = 'active';
-    campaign.startedAt = new Date();
-    await campaign.save();
-
-    // Vendor imported at top of file
+    // Build query and count eligible firms before confirmation
     const query = buildVendorQuery(campaign);
-
-    // Get emails already in outreach to avoid duplicates
     const existingEmails = await OutreachLog.distinct('contactEmail');
     const existingSet = new Set(existingEmails.filter(Boolean).map(e => e.toLowerCase()));
 
@@ -196,6 +189,19 @@ router.post('/:id/run', async (req, res) => {
     const eligible = vendors.filter(v => v.email && !existingSet.has(v.email.toLowerCase()));
     const toProcess = eligible.slice(0, campaign.maxFirms);
 
+    // Confirmation gate — return preview if not confirmed
+    if (!req.body.confirmed) {
+      return res.json({
+        success: true,
+        requiresConfirmation: true,
+        message: `This will send Email 1 to ${toProcess.length} firms. Send { confirmed: true } to proceed.`,
+        firmsToContact: toProcess.length,
+      });
+    }
+
+    // Confirmed — mark as active and proceed
+    campaign.status = 'active';
+    campaign.startedAt = new Date();
     campaign.firmsMatched = eligible.length;
     await campaign.save();
 
@@ -240,7 +246,7 @@ router.post('/:id/run', async (req, res) => {
 
 I wanted to share something we found about ${vendor.company}.
 
-We ran a quick AI visibility check and your firm is currently scoring 0/100 — which means AI tools like ChatGPT and Perplexity are unlikely to recommend you when potential clients search for a ${sector} in ${city}.
+We ran a quick AI visibility check and your firm isn't currently appearing when AI tools like ChatGPT and Perplexity are asked to recommend a ${sector} in ${city}.
 
 We've already created a profile for ${vendor.company} on TendorAI — the UK's AI visibility platform for regulated professional services firms. It's free to claim.
 

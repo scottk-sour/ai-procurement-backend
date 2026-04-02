@@ -67,6 +67,9 @@ router.post('/send-email', async (req, res) => {
       const score = record.reportScore || 0;
 
       let subject, body;
+      const scoreLine = score > 0
+        ? `We ran a quick AI visibility check and your firm is currently scoring ${score}/100 — which means AI tools like ChatGPT and Perplexity are unlikely to recommend you when potential clients search for a ${sector} in ${city}.`
+        : `We ran a quick AI visibility check and your firm isn't currently appearing when AI tools like ChatGPT and Perplexity are asked to recommend a ${sector} in ${city}.`;
 
       if (emailType === 'email1') {
         subject = `${record.firmName} — your AI visibility score`;
@@ -74,7 +77,7 @@ router.post('/send-email', async (req, res) => {
 
 I wanted to share something we found about ${record.firmName}.
 
-We ran a quick AI visibility check and your firm is currently scoring ${score}/100 — which means AI tools like ChatGPT and Perplexity are unlikely to recommend you when potential clients search for a ${sector} in ${city}.
+${scoreLine}
 
 We've already created a profile for ${record.firmName} on TendorAI — the UK's AI visibility platform for regulated professional services firms. It's free to claim.
 
