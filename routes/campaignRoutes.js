@@ -240,26 +240,33 @@ router.post('/:id/run', async (req, res) => {
           history: [{ action: 'created', note: `Added via campaign: ${campaign.name}`, date: new Date(), completedBy: 'campaign' }],
         });
 
-        // Send Email 1
-        const subject = `${vendor.company} — your AI visibility score`;
+        // Send Email 1 — campaigns have no score, always use 0-score wording
+        const scoreLine = `Right now your firm isn't appearing in those results — so potential clients using AI to find a ${sector} in ${city} won't come across ${vendor.company}.`;
+        const subject = `${vendor.company} — you're not appearing in AI search results`;
         const body = `Hi,
 
-I wanted to share something we found about ${vendor.company}.
+I was checking how ${vendor.company} appears when people use AI tools like ChatGPT, Perplexity, and Google AI to find a ${sector} in ${city}.
 
-We ran a quick AI visibility check and your firm isn't currently appearing when AI tools like ChatGPT and Perplexity are asked to recommend a ${sector} in ${city}.
+${scoreLine}
 
-We've already created a profile for ${vendor.company} on TendorAI — the UK's AI visibility platform for regulated professional services firms. It's free to claim.
+Most firms are in this position right now. The difference is, some are starting to get picked up and recommended — and that's where enquiries are beginning to shift.
 
-TendorAI Pro (£299/month) goes further — we install the correct Schema.org markup on your website and track your AI citations across all major platforms.
+We've already created a profile for ${vendor.company} on TendorAI using public regulator data (SRA / ICAEW / FCA). It just hasn't been claimed yet.
 
-You can see your full report here:
+It's free to claim, takes a couple of minutes, and lets you:
+- Check and control how your firm appears to AI
+- See your current visibility score
+- Understand what's stopping you being recommended
+
+If you want, I can show you exactly what AI is seeing and where you're being missed.
+
+Just reply to this email or check your report here:
 https://www.tendorai.com/aeo-report
 
-Happy to walk you through it on a quick call.
-
 Scott Davies
-TendorAI
-tendorai.com`;
+Founder, TendorAI
+tendorai.com
+scott@tendorai.com`;
 
         await sendEmail({
           to: vendor.email,

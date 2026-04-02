@@ -68,29 +68,35 @@ router.post('/send-email', async (req, res) => {
 
       let subject, body;
       const scoreLine = score > 0
-        ? `We ran a quick AI visibility check and your firm is currently scoring ${score}/100 — which means AI tools like ChatGPT and Perplexity are unlikely to recommend you when potential clients search for a ${sector} in ${city}.`
-        : `We ran a quick AI visibility check and your firm isn't currently appearing when AI tools like ChatGPT and Perplexity are asked to recommend a ${sector} in ${city}.`;
+        ? `Right now you're scoring ${score}/100 for AI visibility — which means AI can see your firm, but isn't confident enough to recommend it.`
+        : `Right now your firm isn't appearing in those results — so potential clients using AI to find a ${sector} in ${city} won't come across ${record.firmName}.`;
 
       if (emailType === 'email1') {
-        subject = `${record.firmName} — your AI visibility score`;
+        subject = `${record.firmName} — you're not appearing in AI search results`;
         body = `Hi,
 
-I wanted to share something we found about ${record.firmName}.
+I was checking how ${record.firmName} appears when people use AI tools like ChatGPT, Perplexity, and Google AI to find a ${sector} in ${city}.
 
 ${scoreLine}
 
-We've already created a profile for ${record.firmName} on TendorAI — the UK's AI visibility platform for regulated professional services firms. It's free to claim.
+Most firms are in this position right now. The difference is, some are starting to get picked up and recommended — and that's where enquiries are beginning to shift.
 
-TendorAI Pro (£299/month) goes further — we install the correct Schema.org markup on your website and track your AI citations across all major platforms.
+We've already created a profile for ${record.firmName} on TendorAI using public regulator data (SRA / ICAEW / FCA). It just hasn't been claimed yet.
 
-You can see your full report here:
+It's free to claim, takes a couple of minutes, and lets you:
+- Check and control how your firm appears to AI
+- See your current visibility score
+- Understand what's stopping you being recommended
+
+If you want, I can show you exactly what AI is seeing and where you're being missed.
+
+Just reply to this email or check your report here:
 https://www.tendorai.com/aeo-report
 
-Happy to walk you through it on a quick call.
-
 Scott Davies
-TendorAI
-tendorai.com`;
+Founder, TendorAI
+tendorai.com
+scott@tendorai.com`;
       } else {
         subject = `Following up — ${record.firmName} AI visibility`;
         body = `Hi,
