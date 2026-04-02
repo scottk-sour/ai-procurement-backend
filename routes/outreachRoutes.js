@@ -98,21 +98,37 @@ Founder, TendorAI
 tendorai.com
 scott@tendorai.com`;
       } else {
-        subject = `Following up — ${record.firmName} AI visibility`;
+        subject = `${record.firmName} — quick follow up on AI search`;
         body = `Hi,
 
-Just following up on my email from last week about ${record.firmName}'s AI visibility score.
+Just following up on my last email about how ${record.firmName} appears in AI search — I know how easy these get buried.
 
-AI search is moving fast — firms that get set up now will have a significant advantage over those that wait. We're still offering early access at £299/month (rising to £599 as we scale).
+The short version:
 
-If you'd like to see exactly where ${record.firmName} stands and what it would take to appear in AI recommendations, I'm happy to run through it with you.
+When someone asks ChatGPT, Perplexity or Google AI for a ${sector} in ${city}, your firm isn't currently being recommended.
 
-Just reply to this email or book a call:
-https://www.tendorai.com/contact
+That's not unusual — most firms aren't set up properly for AI yet.
+
+But a small number are starting to show up consistently, and they're the ones getting the early advantage.
+
+We've already created a profile for ${record.firmName} using public regulator data — it just hasn't been claimed or optimised yet.
+
+TendorAI Pro (£299/month) handles that by:
+- Structuring your firm so AI can properly understand it
+- Installing schema on your website (no dev work needed)
+- Tracking where you appear across ChatGPT, Perplexity, etc.
+- Showing which firms are being recommended instead of you
+
+No ongoing work needed once it's set up.
+
+If it's not a priority right now, no problem at all.
+
+But if you'd like to see exactly how ${record.firmName} looks to AI and what's missing, just reply and I'll send it over.
 
 Scott Davies
-TendorAI
-tendorai.com`;
+Founder, TendorAI
+tendorai.com
+scott@tendorai.com`;
       }
 
       try {
