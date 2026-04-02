@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import OutreachLog from '../models/OutreachLog.js';
+import Vendor from '../models/Vendor.js';
 import { sendEmail } from '../services/emailService.js';
 
 const router = express.Router();
@@ -121,6 +122,8 @@ tendorai.com`;
         const historyEntry = {
           action: `${emailType}_sent`,
           note: `${emailType === 'email1' ? 'Email 1 — Initial Outreach' : 'Email 2 — Follow Up'} sent via Resend to ${record.contactEmail}`,
+          subject,
+          body,
           date: new Date(),
           completedBy: 'admin',
         };
@@ -294,7 +297,7 @@ router.get('/', async (req, res) => {
     }
     // Tier filter: requires a lookup against the Vendor collection via vendorId
     if (tier === 'free') {
-      const Vendor = mongoose.model('Vendor');
+      // Vendor imported at top of file
       const freeVendorIds = await Vendor.find({ tier: 'free' }).distinct('_id');
       filter.$or = [
         { vendorId: { $in: freeVendorIds } },
@@ -302,7 +305,7 @@ router.get('/', async (req, res) => {
         { vendorId: { $exists: false } },
       ];
     } else if (tier === 'pro') {
-      const Vendor = mongoose.model('Vendor');
+      // Vendor imported at top of file
       const proVendorIds = await Vendor.find({ tier: { $in: ['pro', 'basic', 'managed', 'verified', 'enterprise'] } }).distinct('_id');
       filter.vendorId = { $in: proVendorIds };
     }

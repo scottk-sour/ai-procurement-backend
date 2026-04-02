@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import Campaign from '../models/Campaign.js';
 import OutreachLog from '../models/OutreachLog.js';
+import Vendor from '../models/Vendor.js';
 import { sendEmail } from '../services/emailService.js';
 
 const router = express.Router();
@@ -82,7 +83,7 @@ router.post('/preview', async (req, res) => {
     const { sector, city, tierFilter } = req.body;
     const query = buildVendorQuery({ sector: sector || 'all', city: city || '', tierFilter: tierFilter || 'all' });
 
-    const Vendor = mongoose.model('Vendor');
+    // Vendor imported at top of file
 
     // Get emails already in outreach
     const existingEmails = await OutreachLog.distinct('contactEmail');
@@ -181,7 +182,7 @@ router.post('/:id/run', async (req, res) => {
     campaign.startedAt = new Date();
     await campaign.save();
 
-    const Vendor = mongoose.model('Vendor');
+    // Vendor imported at top of file
     const query = buildVendorQuery(campaign);
 
     // Get emails already in outreach to avoid duplicates
@@ -265,7 +266,7 @@ tendorai.com`;
         // Update outreach record with email sent
         await OutreachLog.findByIdAndUpdate(outreach._id, {
           $set: { email1SentAt: new Date(), status: 'email_sent', nextAction: 'call', nextActionDate: new Date() },
-          $push: { history: { action: 'email1_sent', note: `Email 1 sent via campaign: ${campaign.name}`, date: new Date(), completedBy: 'campaign' } },
+          $push: { history: { action: 'email1_sent', note: `Email 1 sent via campaign: ${campaign.name}`, subject, body, date: new Date(), completedBy: 'campaign' } },
         });
 
         outreachIds.push(outreach._id);
@@ -279,7 +280,7 @@ tendorai.com`;
     // Update campaign
     campaign.firmsContacted = sent;
     campaign.emailsSent = sent;
-    campaign.errors = errors;
+    campaign.errorCount = errors;
     campaign.outreachIds = outreachIds;
 
     if (paused) {

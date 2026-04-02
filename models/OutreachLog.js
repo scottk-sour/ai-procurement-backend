@@ -19,6 +19,8 @@ const callHistorySchema = new mongoose.Schema({
 const historySchema = new mongoose.Schema({
   action: { type: String, required: true },
   note: { type: String, default: '' },
+  subject: { type: String },
+  body: { type: String },
   date: { type: Date, default: Date.now },
   completedBy: { type: String, default: 'admin' },
 }, { _id: false });

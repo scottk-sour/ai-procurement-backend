@@ -23,7 +23,7 @@ const campaignSchema = new mongoose.Schema({
   firmsMatched: { type: Number, default: 0 },
   firmsContacted: { type: Number, default: 0 },
   emailsSent: { type: Number, default: 0 },
-  errors: { type: Number, default: 0 },
+  errorCount: { type: Number, default: 0 },
   outreachIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'OutreachLog' }],
   startedAt: { type: Date },
   completedAt: { type: Date },
