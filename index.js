@@ -35,6 +35,7 @@ import aiMentionRoutes from './routes/aiMentionRoutes.js';
 import aiSearchTestRoutes from './routes/aiSearchTestRoutes.js';
 import aeoAuditRoutes from './routes/aeoAuditRoutes.js';
 import outreachRoutes from './routes/outreachRoutes.js';
+import campaignRoutes from './routes/campaignRoutes.js';
 import publicApiRoutes from './routes/publicApiRoutes.js';
 import schemaRoutes from './routes/schemaRoutes.js';
 import notFoundHandler from './middleware/notFoundHandler.js';
@@ -300,6 +301,7 @@ app.use('/api/aeo-audit', aeoAuditRoutes);
 app.use('/api/geo-audit', (req, res) => res.redirect(307, '/api/aeo-audit' + req.url));
 app.use('/api/schema', schemaRoutes);
 app.use('/api/outreach', outreachRoutes);
+app.use('/api/campaigns', campaignRoutes);
 app.use('/api/v1', publicApiRoutes);
 app.use('/', sitemapRoutes);
 
