@@ -265,15 +265,15 @@ https://www.tendorai.com/aeo-report
 
 Scott Davies
 Founder, TendorAI
-tendorai.co.uk
-scott@tendorai.co.uk`;
+tendorai.com
+scott.davies@tendorai.com`;
 
         await sendEmail({
           to: vendor.email,
           subject,
           text: body,
           html: body.replace(/\n/g, '<br>'),
-          from: 'Scott Davies <scott@tendorai.co.uk>',
+          from: 'Scott Davies <scott.davies@tendorai.com>',
         });
 
         // Update outreach record with email sent

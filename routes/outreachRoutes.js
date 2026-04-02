@@ -95,8 +95,8 @@ https://www.tendorai.com/aeo-report
 
 Scott Davies
 Founder, TendorAI
-tendorai.co.uk
-scott@tendorai.co.uk`;
+tendorai.com
+scott.davies@tendorai.com`;
       } else {
         subject = `${record.firmName} — quick follow up on AI search`;
         body = `Hi,
@@ -127,8 +127,8 @@ But if you'd like to see exactly how ${record.firmName} looks to AI and what's m
 
 Scott Davies
 Founder, TendorAI
-tendorai.co.uk
-scott@tendorai.co.uk`;
+tendorai.com
+scott.davies@tendorai.com`;
       }
 
       try {
@@ -137,7 +137,7 @@ scott@tendorai.co.uk`;
           subject,
           text: body,
           html: body.replace(/\n/g, '<br>'),
-          from: 'Scott Davies <scott@tendorai.co.uk>',
+          from: 'Scott Davies <scott.davies@tendorai.com>',
         });
 
         const updateFields = emailType === 'email1'
