@@ -34,7 +34,7 @@ const getResendClient = () => {
 };
 
 // Helper to send email
-export const sendEmail = async ({ to, subject, html, text, from: customFrom }) => {
+export const sendEmail = async ({ to, subject, html, text, from: customFrom, reply_to }) => {
   const resend = getResendClient();
   const from = customFrom || process.env.EMAIL_FROM || 'TendorAI <noreply@tendorai.com>';
 
@@ -45,13 +45,15 @@ export const sendEmail = async ({ to, subject, html, text, from: customFrom }) =
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const sendPayload = {
       from,
       to,
       subject,
       html,
       text: text || subject,
-    });
+    };
+    if (reply_to) sendPayload.reply_to = reply_to;
+    const { data, error } = await resend.emails.send(sendPayload);
 
     if (error) {
       console.error(`❌ Failed to send email to ${to}:`, error.message);

@@ -274,6 +274,7 @@ scott.davies@tendorai.com`;
           text: body,
           html: body.replace(/\n/g, '<br>'),
           from: 'Scott Davies <scott.davies@tendorai.com>',
+          reply_to: ['scott.davies@tendorai.com'],
         });
 
         // Update outreach record with email sent
