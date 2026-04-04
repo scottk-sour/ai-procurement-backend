@@ -85,20 +85,25 @@ router.post('/preview', async (req, res) => {
 
     // Vendor imported at top of file
 
-    // Get emails already in outreach
-    const existingEmails = await OutreachLog.distinct('contactEmail');
-    const existingSet = new Set(existingEmails.filter(Boolean).map(e => e.toLowerCase()));
+    // Exclude firms where Email 1 was actually sent, or status is won/not-interested
+    const excludedEmails = await OutreachLog.distinct('contactEmail', {
+      $or: [
+        { email1SentAt: { $ne: null } },
+        { status: { $in: ['won', 'not-interested'] } },
+      ],
+    });
+    const excludedSet = new Set(excludedEmails.filter(Boolean).map(e => e.toLowerCase()));
 
     const vendors = await Vendor.find(query)
       .select('email company vendorType location.city tier')
       .lean();
 
-    const eligible = vendors.filter(v => v.email && !existingSet.has(v.email.toLowerCase()));
+    const eligible = vendors.filter(v => v.email && !excludedSet.has(v.email.toLowerCase()));
 
     res.json({
       success: true,
       totalMatching: vendors.length,
-      alreadyInOutreach: vendors.length - eligible.length,
+      alreadyContacted: vendors.length - eligible.length,
       eligible: eligible.length,
     });
   } catch (err) {
@@ -179,14 +184,20 @@ router.post('/:id/run', async (req, res) => {
 
     // Build query and count eligible firms before confirmation
     const query = buildVendorQuery(campaign);
-    const existingEmails = await OutreachLog.distinct('contactEmail');
-    const existingSet = new Set(existingEmails.filter(Boolean).map(e => e.toLowerCase()));
+    // Exclude firms where Email 1 was actually sent, or status is won/not-interested
+    const excludedEmails = await OutreachLog.distinct('contactEmail', {
+      $or: [
+        { email1SentAt: { $ne: null } },
+        { status: { $in: ['won', 'not-interested'] } },
+      ],
+    });
+    const excludedSet = new Set(excludedEmails.filter(Boolean).map(e => e.toLowerCase()));
 
     const vendors = await Vendor.find(query)
       .select('_id email company vendorType location.city contactInfo.phone contactInfo.website tier')
       .lean();
 
-    const eligible = vendors.filter(v => v.email && !existingSet.has(v.email.toLowerCase()));
+    const eligible = vendors.filter(v => v.email && !excludedSet.has(v.email.toLowerCase()));
     const toProcess = eligible.slice(0, campaign.maxFirms);
 
     // Confirmation gate — return preview if not confirmed
