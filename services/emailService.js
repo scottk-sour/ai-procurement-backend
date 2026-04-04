@@ -243,6 +243,8 @@ export const sendAeoReportEmail = async (email, reportData) => {
   return sendEmail({
     to: email,
     subject,
+    from: 'Scott Davies <scott.davies@tendorai.com>',
+    reply_to: ['scott.davies@tendorai.com'],
     html: aeoReportTemplate({
       name: reportData.name,
       companyName: reportData.companyName,

@@ -10,7 +10,7 @@ import VendorProduct from '../models/VendorProduct.js';
 import VendorPost from '../models/VendorPost.js';
 import AeoReport from '../models/AeoReport.js';
 import Subscriber from '../models/Subscriber.js';
-import { sendAeoReportEmail } from '../services/emailService.js';
+import { sendAeoReportEmail, sendEmail } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuery/index.js';
@@ -1647,6 +1647,22 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
     }).catch((err) =>
       console.error('Failed to send AI Visibility report email:', err.message)
     );
+
+    // 4b. Send admin notification (skip internal/test submissions)
+    if (companyName && !email.includes('@tendorai.com') && !email.includes('@placeholder.tendorai.com')) {
+      try {
+        await sendEmail({
+          to: 'scott.davies@tendorai.com',
+          from: 'Scott Davies <scott.davies@tendorai.com>',
+          reply_to: ['scott.davies@tendorai.com'],
+          subject: `New AEO Report — ${companyName} (${city})`,
+          text: `A firm just ran their AEO report.\n\nFirm: ${companyName}\nCategory: ${category}\nCity: ${city}\nEmail: ${email}\nName: ${name || 'Not provided'}\nSource: ${source || 'Not provided'}\nScore: ${report.score}/100\n\nView in admin:\nhttps://www.tendorai.com/admin/leads`,
+          html: `<p>A firm just ran their AEO report.</p><p><strong>Firm:</strong> ${companyName}<br><strong>Category:</strong> ${category}<br><strong>City:</strong> ${city}<br><strong>Email:</strong> ${email}<br><strong>Name:</strong> ${name || 'Not provided'}<br><strong>Source:</strong> ${source || 'Not provided'}<br><strong>Score:</strong> ${report.score}/100</p><p><a href="https://www.tendorai.com/admin/leads">View in admin</a></p>`,
+        });
+      } catch (adminErr) {
+        console.error('Failed to send admin notification:', adminErr.message);
+      }
+    }
 
     // 5. Return reportId for frontend redirect
     res.json({
