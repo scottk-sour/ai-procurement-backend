@@ -61,10 +61,11 @@ export const passwordResetTemplate = ({ vendorName, resetUrl, expiresIn = '1 hou
         Can't click the button? Copy this link into your browser:<br>
         <a href="${resetUrl}" style="color: #7c3aed; word-break: break-all;">${resetUrl}</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>This email was sent by <a href="https://www.tendorai.com">TendorAI</a></p>
-      <p>The UK's B2B procurement comparison platform</p>
+      <p>This email was sent by <a href="https://tendorai.com">TendorAI</a></p>
+      <p>The UK's B2B procurement platform</p>
     </div>
   </div>
 `);
@@ -76,20 +77,20 @@ export const passwordResetTemplate = ({ vendorName, resetUrl, expiresIn = '1 hou
 export const vendorWelcomeTemplate = ({ vendorName, loginUrl, dashboardUrl }) => wrapTemplate(`
   <div class="container">
     <div class="header">
-      <h1>Welcome to TendorAI!</h1>
+      <h1>Welcome to TendorAI</h1>
       <p>Your vendor account is ready</p>
     </div>
     <div class="content">
       <h2>Hi ${vendorName},</h2>
-      <p>Thank you for joining TendorAI! Your vendor account has been created successfully.</p>
-      <p>You're now part of the UK's leading B2B procurement platform, connecting suppliers with businesses looking for photocopiers, CCTV, telecoms, and more.</p>
+      <p>Thank you for joining TendorAI. Your vendor account has been created successfully.</p>
+      <p>TendorAI is a B2B procurement platform that connects suppliers with businesses across the UK. Here's how to get started:</p>
 
       <div class="info-box">
-        <h3>What's Next?</h3>
+        <h3>Next Steps</h3>
         <ul style="margin: 0; padding-left: 20px;">
-          <li><strong>Complete your profile</strong> - Add your services, coverage areas, and company details</li>
-          <li><strong>Upload products</strong> - Add your product catalogue to appear in searches</li>
-          <li><strong>Respond to leads</strong> - Quote requests will arrive directly in your dashboard</li>
+          <li><strong>Complete your profile</strong> — add your services, coverage areas, and company details</li>
+          <li><strong>Upload products</strong> — add your product catalogue so buyers can find you in searches</li>
+          <li><strong>Respond to leads</strong> — quote requests will arrive directly in your dashboard</li>
         </ul>
       </div>
 
@@ -97,11 +98,12 @@ export const vendorWelcomeTemplate = ({ vendorName, loginUrl, dashboardUrl }) =>
         <a href="${dashboardUrl}" class="button">Go to Dashboard</a>
       </p>
 
-      <p>Need help getting started? Check out our <a href="https://www.tendorai.com/for-vendors" style="color: #7c3aed;">Vendor Guide</a> or reply to this email.</p>
+      <p>Need help getting started? Visit our <a href="https://tendorai.com/for-vendors" style="color: #7c3aed;">Vendor Guide</a> or contact us at support@tendorai.com.</p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>Welcome to <a href="https://www.tendorai.com">TendorAI</a></p>
-      <p>Questions? Contact us at scott.davies@tendorai.com</p>
+      <p><a href="https://tendorai.com">TendorAI</a></p>
+      <p>Questions? Contact us at support@tendorai.com</p>
     </div>
   </div>
 `);
@@ -118,7 +120,7 @@ export const quoteRequestTemplate = ({ vendorName, customerName, customerCompany
     </div>
     <div class="content">
       <h2>Hi ${vendorName},</h2>
-      <p>Good news! You've received a new quote request through TendorAI.</p>
+      <p>You've received a new quote request through TendorAI.</p>
 
       <div class="info-box">
         <h3>Customer Details</h3>
@@ -132,14 +134,15 @@ export const quoteRequestTemplate = ({ vendorName, customerName, customerCompany
         </table>
       </div>
 
-      <p><strong>Tip:</strong> Responding quickly increases your chances of winning this business. The average winning quote is submitted within 2 hours.</p>
+      <p>We recommend responding promptly to maximise your chances of winning this business.</p>
 
       <p style="text-align: center;">
-        <a href="${dashboardUrl}/quotes${quoteId ? `/${quoteId}` : ''}" class="button">View & Respond</a>
+        <a href="${dashboardUrl}/quotes${quoteId ? `/${quoteId}` : ''}" class="button">View and Respond</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>This lead was sent via <a href="https://www.tendorai.com">TendorAI</a></p>
+      <p>This lead was sent via <a href="https://tendorai.com">TendorAI</a></p>
       <p>Manage your notifications in <a href="${dashboardUrl}/settings">account settings</a></p>
     </div>
   </div>
@@ -160,7 +163,7 @@ export const reviewNotificationTemplate = ({ vendorName, reviewerName, rating, t
     </div>
     <div class="content">
       <h2>Hi ${vendorName},</h2>
-      <p>You've received a new review on TendorAI!</p>
+      <p>You've received a new review on TendorAI.</p>
 
       <div class="info-box">
         <p style="margin-bottom: 10px;"><span class="rating-stars">${stars}</span> <strong>${rating}/5</strong></p>
@@ -169,14 +172,15 @@ export const reviewNotificationTemplate = ({ vendorName, reviewerName, rating, t
         <p style="margin: 0; color: #6b7280; font-size: 13px;">— ${reviewerName}</p>
       </div>
 
-      <p>This review is pending moderation and will appear on your profile once approved. You'll be able to respond to it from your dashboard.</p>
+      <p>This review is pending moderation and will appear on your profile once approved. You can respond to it from your dashboard.</p>
 
       <p style="text-align: center;">
         <a href="${dashboardUrl}/reviews" class="button">View All Reviews</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p><a href="https://www.tendorai.com">TendorAI</a> - Building trust through transparency</p>
+      <p><a href="https://tendorai.com">TendorAI</a></p>
     </div>
   </div>
 `);
@@ -202,9 +206,14 @@ export const reviewResponseTemplate = ({ reviewerName, vendorName, responseConte
       </div>
 
       <p>Thank you for taking the time to share your experience. Your feedback helps other businesses make informed decisions.</p>
+
+      <p style="text-align: center;">
+        <a href="https://tendorai.com" class="button">Visit TendorAI</a>
+      </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>You received this email because you left a review on <a href="https://www.tendorai.com">TendorAI</a></p>
+      <p>You received this email because you left a review on <a href="https://tendorai.com">TendorAI</a></p>
     </div>
   </div>
 `);
@@ -215,13 +224,13 @@ export const reviewResponseTemplate = ({ reviewerName, vendorName, responseConte
 
 export const leadNotificationTemplate = ({ vendorName, customerInfo, service, requirements, dashboardUrl, leadId }) => wrapTemplate(`
   <div class="container">
-    <div class="header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
-      <h1>New Lead!</h1>
+    <div class="header">
+      <h1>New Lead</h1>
       <p>A business is interested in your ${service} services</p>
     </div>
     <div class="content">
       <h2>Hi ${vendorName},</h2>
-      <p>A new lead has been generated for your business through TendorAI.</p>
+      <p>A new lead has been matched to your business through TendorAI.</p>
 
       <div class="info-box">
         <h3>Lead Details</h3>
@@ -241,14 +250,15 @@ export const leadNotificationTemplate = ({ vendorName, customerInfo, service, re
       </div>
       ` : ''}
 
-      <p><strong>Act fast!</strong> This lead may have been sent to other suppliers in your area.</p>
+      <p>We recommend reaching out promptly to introduce yourself and discuss their requirements.</p>
 
       <p style="text-align: center;">
-        <a href="${dashboardUrl}/leads${leadId ? `/${leadId}` : ''}" class="button" style="background: #059669;">View Lead Details</a>
+        <a href="${dashboardUrl}/leads${leadId ? `/${leadId}` : ''}" class="button">View Lead Details</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>Lead generated via <a href="https://www.tendorai.com">TendorAI</a></p>
+      <p>Lead generated via <a href="https://tendorai.com">TendorAI</a></p>
     </div>
   </div>
 `);
@@ -266,10 +276,10 @@ export const reviewRequestTemplate = ({ customerName, vendorName, category, revi
     <div class="content">
       <h2>Hi ${customerName},</h2>
       <p>You recently requested a ${category.toLowerCase()} quote from <strong>${vendorName}</strong> through TendorAI.</p>
-      <p>We'd love to hear how it went. Your review helps other businesses find great suppliers — and it only takes 30 seconds.</p>
+      <p>We'd appreciate hearing how it went. Your review helps other businesses find reliable suppliers.</p>
 
       <p style="text-align: center; margin: 32px 0;">
-        <a href="${reviewUrl}" class="button">Leave a Review →</a>
+        <a href="${reviewUrl}" class="button">Leave a Review</a>
       </p>
 
       <div class="info-box">
@@ -282,10 +292,11 @@ export const reviewRequestTemplate = ({ customerName, vendorName, category, revi
         This link is unique to your quote request and expires in 30 days.<br>
         Can't click the button? Copy this link: <a href="${reviewUrl}" style="color: #7c3aed; word-break: break-all;">${reviewUrl}</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>You received this email because you requested a quote on <a href="https://www.tendorai.com">TendorAI</a></p>
-      <p>The UK's B2B procurement comparison platform</p>
+      <p>You received this email because you requested a quote on <a href="https://tendorai.com">TendorAI</a></p>
+      <p>The UK's B2B procurement platform</p>
     </div>
   </div>
 `);
@@ -299,17 +310,17 @@ export const verifiedReviewNotificationTemplate = ({ vendorName, reviewerName, r
 
   return wrapTemplate(`
   <div class="container">
-    <div class="header" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
-      <h1>New Verified Review!</h1>
+    <div class="header">
+      <h1>New Verified Review</h1>
       <p>A customer you quoted has left feedback</p>
     </div>
     <div class="content">
       <h2>Hi ${vendorName},</h2>
-      <p>Great news! A customer you quoted through TendorAI has left a <strong>verified review</strong>:</p>
+      <p>A customer you quoted through TendorAI has left a <strong>verified review</strong>:</p>
 
       <div class="info-box" style="background: #ecfdf5; border: 1px solid #10b981;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-          <span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">✓ Verified Quote</span>
+          <span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">Verified Quote</span>
         </div>
         <p style="margin-bottom: 10px;"><span class="rating-stars">${stars}</span> <strong>${rating}/5</strong></p>
         <h3 style="margin: 10px 0 5px; text-transform: none; font-size: 16px;">"${title}"</h3>
@@ -320,11 +331,12 @@ export const verifiedReviewNotificationTemplate = ({ vendorName, reviewerName, r
       <p>This review has been automatically published on your profile because it comes from a verified quote request.</p>
 
       <p style="text-align: center;">
-        <a href="${dashboardUrl}/reviews" class="button" style="background: #059669;">View & Respond →</a>
+        <a href="${dashboardUrl}/reviews" class="button">View and Respond</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p><a href="https://www.tendorai.com">TendorAI</a> - Building trust through verified reviews</p>
+      <p><a href="https://tendorai.com">TendorAI</a></p>
     </div>
   </div>
 `);
@@ -425,7 +437,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
           <!-- Logo bar -->
           <tr>
             <td style="background:#ffffff;padding:24px 40px 16px;text-align:center;border-bottom:1px solid #e5e7eb;">
-              <img src="https://www.tendorai.com/logo.png" alt="TendorAI" width="140" style="display:inline-block;max-width:140px;height:auto;" />
+              <img src="https://tendorai.com/logo.png" alt="TendorAI" width="140" style="display:inline-block;max-width:140px;height:auto;" />
             </td>
           </tr>
 
@@ -501,7 +513,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
                 <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;font-weight:600;">Scott Davies</p>
                 <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">Founder, TendorAI</p>
                 <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="mailto:scott.davies@tendorai.com" style="color:#1A56A0;text-decoration:none;">scott.davies@tendorai.com</a></p>
-                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a></p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="https://tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a></p>
               </div>
 
               <!-- P.S. -->
@@ -515,7 +527,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
             <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
               <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">TendorAI is the UK&rsquo;s AI visibility platform for regulated professional services. This report uses publicly available information from the SRA register and AI platform analysis.</p>
               <p style="margin:12px 0 0;color:#9ca3af;font-size:11px;">
-                <a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a>
+                <a href="https://tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a>
               </p>
             </td>
           </tr>
@@ -567,19 +579,180 @@ export const newLeadNotificationTemplate = ({ vendorName, service, postcode, req
       </p>
       ` : ''}
 
-      <p><strong>Respond quickly</strong> — leads contacted within 2 hours are 3x more likely to convert.</p>
+      <p>We recommend responding promptly to maximise your chances of winning this business.</p>
 
       <p style="text-align: center;">
         <a href="${dashboardUrl}" class="button">View Lead</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>This lead was sent via <a href="https://www.tendorai.com">TendorAI</a></p>
-      <p>Manage your notifications in <a href="https://www.tendorai.com/vendor-dashboard/settings">account settings</a></p>
+      <p>This lead was sent via <a href="https://tendorai.com">TendorAI</a></p>
+      <p>Manage your notifications in <a href="https://tendorai.com/vendor-dashboard/settings">account settings</a></p>
     </div>
   </div>
 `);
 };
+
+// =====================================================
+// VENDOR CONTACT REQUEST (customer enquiry to vendor)
+// =====================================================
+
+export const vendorContactRequestTemplate = ({ customerName, customerMessage, customerEmail, dashboardUrl }) => wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>New Enquiry</h1>
+      <p>A customer has contacted you through TendorAI</p>
+    </div>
+    <div class="content">
+      <h2>Hi there,</h2>
+      <p><strong>${customerName}</strong> has sent you an enquiry through your TendorAI profile.</p>
+
+      <div class="info-box">
+        <h3>Message</h3>
+        <p style="color: #374151;">${customerMessage || 'No message provided.'}</p>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 8px 0; color: #6b7280;">Customer</td><td style="padding: 8px 0; font-weight: 600;">${customerName}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Reply to</td><td style="padding: 8px 0; font-weight: 600;">${customerEmail}</td></tr>
+      </table>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">View in Dashboard</a>
+      </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a></p>
+    </div>
+  </div>
+`);
+
+// =====================================================
+// QUOTE ACCEPTED
+// =====================================================
+
+export const quoteAcceptedTemplate = ({ vendorName, customerName, service, dashboardUrl }) => wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>Quote Accepted</h1>
+      <p>${customerName} has accepted your quote</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${vendorName},</h2>
+      <p><strong>${customerName}</strong> has accepted your quote for <strong>${service}</strong>.</p>
+
+      <div class="info-box">
+        <h3>Next Steps</h3>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Contact ${customerName} to confirm the details</li>
+          <li>Agree a start date and timeline</li>
+          <li>Mark the quote as won in your dashboard</li>
+        </ul>
+      </div>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">View in Dashboard</a>
+      </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a></p>
+    </div>
+  </div>
+`);
+
+// =====================================================
+// QUOTE DECLINED
+// =====================================================
+
+export const quoteDeclinedTemplate = ({ vendorName, customerName, reason, dashboardUrl }) => {
+  const reasonBlock = reason ? `
+      <div class="info-box">
+        <h3>Reason Given</h3>
+        <p style="margin: 0;">${reason}</p>
+      </div>` : '';
+
+  return wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>Quote Update</h1>
+      <p>An update on your quote for ${customerName}</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${vendorName},</h2>
+      <p>${customerName} has decided not to proceed with your quote at this time.</p>
+      ${reasonBlock}
+      <p>Keep your profile and pricing up to date so you continue to receive well-matched enquiries.</p>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">View Your Quotes</a>
+      </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a></p>
+    </div>
+  </div>
+`);
+};
+
+// =====================================================
+// SCHEMA INSTALL — ADMIN NOTIFICATION
+// =====================================================
+
+export const schemaInstallAdminTemplate = ({ vendorName, vendorEmail, websiteUrl, cmsPlatform, dashboardUrl }) => wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>Schema Install Request</h1>
+      <p>New request from ${vendorName}</p>
+    </div>
+    <div class="content">
+      <h2>New schema install request</h2>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 8px 0; color: #6b7280; width: 120px;">Vendor</td><td style="padding: 8px 0; font-weight: 600;">${vendorName}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Email</td><td style="padding: 8px 0;">${vendorEmail}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Website</td><td style="padding: 8px 0;">${websiteUrl}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">CMS</td><td style="padding: 8px 0;">${cmsPlatform}</td></tr>
+      </table>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">View in Admin Dashboard</a>
+      </p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a> — Admin notification</p>
+    </div>
+  </div>
+`);
+
+// =====================================================
+// SCHEMA INSTALL — COMPLETE NOTIFICATION (to vendor)
+// =====================================================
+
+export const schemaInstallCompleteTemplate = ({ vendorName, websiteUrl, dashboardUrl }) => wrapTemplate(`
+  <div class="container">
+    <div class="header">
+      <h1>Schema Installed</h1>
+      <p>Your TendorAI schema markup is live</p>
+    </div>
+    <div class="content">
+      <h2>Hi ${vendorName},</h2>
+      <p>We have successfully installed your TendorAI Schema.org markup on <strong>${websiteUrl}</strong>.</p>
+      <p>AI assistants such as ChatGPT, Claude, and Perplexity can now read your structured data, which helps them recommend your business with greater confidence.</p>
+      <p>You can verify it is working by running the Schema Test from your dashboard.</p>
+
+      <p style="text-align: center;">
+        <a href="${dashboardUrl}" class="button">Go to Dashboard</a>
+      </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
+    </div>
+    <div class="footer">
+      <p><a href="https://tendorai.com">TendorAI</a></p>
+    </div>
+  </div>
+`);
 
 // Export all templates
 export default {
@@ -592,5 +765,10 @@ export default {
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
   aeoReportTemplate,
-  newLeadNotificationTemplate
+  newLeadNotificationTemplate,
+  vendorContactRequestTemplate,
+  quoteAcceptedTemplate,
+  quoteDeclinedTemplate,
+  schemaInstallAdminTemplate,
+  schemaInstallCompleteTemplate
 };

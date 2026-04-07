@@ -12,7 +12,12 @@ import {
   aeoReportTemplate,
   formatCompanyName,
   buildAeoSubject,
-  newLeadNotificationTemplate
+  newLeadNotificationTemplate,
+  vendorContactRequestTemplate,
+  quoteAcceptedTemplate,
+  quoteDeclinedTemplate,
+  schemaInstallAdminTemplate,
+  schemaInstallCompleteTemplate
 } from './emailTemplates.js';
 import { getIndustryConfig } from './industryConfig.js';
 
@@ -31,6 +36,17 @@ const getResendClient = () => {
 
   resendClient = new Resend(process.env.RESEND_API_KEY);
   return resendClient;
+};
+
+// Escape HTML to prevent XSS in user-supplied content
+const escapeHtml = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 };
 
 // Helper to send email
@@ -73,7 +89,7 @@ export const sendEmail = async ({ to, subject, html, text, from: customFrom, rep
 // =====================================================
 
 export const sendPasswordResetEmail = async (email, { vendorName, resetToken }) => {
-  const resetUrl = `https://www.tendorai.com/vendor-reset-password?token=${resetToken}`;
+  const resetUrl = `https://tendorai.com/vendor-reset-password?token=${resetToken}`;
 
   return sendEmail({
     to: email,
@@ -88,14 +104,14 @@ export const sendPasswordResetEmail = async (email, { vendorName, resetToken }) 
 // =====================================================
 
 export const sendVendorWelcomeEmail = async (email, { vendorName }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
-  const loginUrl = 'https://www.tendorai.com/vendor-login';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
+  const loginUrl = 'https://tendorai.com/vendor-login';
 
   return sendEmail({
     to: email,
-    subject: 'Welcome to TendorAI - Your vendor account is ready!',
+    subject: 'Welcome to TendorAI — your vendor account is ready',
     html: vendorWelcomeTemplate({ vendorName, loginUrl, dashboardUrl }),
-    text: `Welcome to TendorAI, ${vendorName}! Your vendor account is ready. Log in at: ${loginUrl}`
+    text: `Welcome to TendorAI, ${vendorName}. Your vendor account is ready. Log in at: ${loginUrl}`
   });
 };
 
@@ -104,11 +120,11 @@ export const sendVendorWelcomeEmail = async (email, { vendorName }) => {
 // =====================================================
 
 export const sendQuoteRequestEmail = async (vendorEmail, quoteDetails) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `New Quote Request - ${quoteDetails.service || 'Equipment'}`,
+    subject: `New quote request — ${quoteDetails.service || 'Equipment'}`,
     html: quoteRequestTemplate({
       vendorName: quoteDetails.vendorName || 'Vendor',
       customerName: quoteDetails.customerName,
@@ -132,11 +148,11 @@ export const sendQuoteNotification = sendQuoteRequestEmail;
 // =====================================================
 
 export const sendReviewNotification = async (vendorEmail, reviewDetails) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `New ${reviewDetails.rating}-star review received`,
+    subject: `New ${reviewDetails.rating}-star review on TendorAI`,
     html: reviewNotificationTemplate({
       vendorName: reviewDetails.vendorName || 'Vendor',
       reviewerName: reviewDetails.reviewerName,
@@ -145,7 +161,7 @@ export const sendReviewNotification = async (vendorEmail, reviewDetails) => {
       content: reviewDetails.content,
       dashboardUrl
     }),
-    text: `You received a ${reviewDetails.rating}-star review from ${reviewDetails.reviewerName}. "${reviewDetails.title}" - View in your dashboard: ${dashboardUrl}/reviews`
+    text: `You received a ${reviewDetails.rating}-star review from ${reviewDetails.reviewerName}. "${reviewDetails.title}" — View in your dashboard: ${dashboardUrl}/reviews`
   });
 };
 
@@ -167,11 +183,11 @@ export const sendReviewResponseNotification = async (reviewerEmail, details) => 
 // =====================================================
 
 export const sendLeadNotification = async (vendorEmail, leadDetails) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `New Lead - ${leadDetails.customerInfo.companyName} needs ${leadDetails.service}`,
+    subject: `New lead — ${leadDetails.customerInfo.companyName} needs ${leadDetails.service}`,
     html: leadNotificationTemplate({
       vendorName: leadDetails.vendorName || 'Vendor',
       customerInfo: leadDetails.customerInfo,
@@ -189,11 +205,11 @@ export const sendLeadNotification = async (vendorEmail, leadDetails) => {
 // =====================================================
 
 export const sendReviewRequestEmail = async (customerEmail, { customerName, vendorName, category, reviewToken }) => {
-  const reviewUrl = `https://www.tendorai.com/review?token=${reviewToken}`;
+  const reviewUrl = `https://tendorai.com/review?token=${reviewToken}`;
 
   return sendEmail({
     to: customerEmail,
-    subject: `How was your experience with ${vendorName}? | TendorAI`,
+    subject: `How was your experience with ${vendorName}? — TendorAI`,
     html: reviewRequestTemplate({
       customerName: customerName || 'there',
       vendorName,
@@ -209,11 +225,11 @@ export const sendReviewRequestEmail = async (customerEmail, { customerName, vend
 // =====================================================
 
 export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `New ${reviewDetails.rating}-Star Verified Review | TendorAI`,
+    subject: `New ${reviewDetails.rating}-star verified review — TendorAI`,
     html: verifiedReviewNotificationTemplate({
       vendorName: reviewDetails.vendorName || 'Vendor',
       reviewerName: reviewDetails.reviewerName,
@@ -223,7 +239,7 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
       content: reviewDetails.content,
       dashboardUrl
     }),
-    text: `You received a ${reviewDetails.rating}-star verified review from ${reviewDetails.reviewerName}. "${reviewDetails.title}" - View in your dashboard: ${dashboardUrl}/reviews`
+    text: `You received a ${reviewDetails.rating}-star verified review from ${reviewDetails.reviewerName}. "${reviewDetails.title}" — View in your dashboard: ${dashboardUrl}/reviews`
   });
 };
 
@@ -267,7 +283,7 @@ export const sendAeoReportEmail = async (email, reportData) => {
 // =====================================================
 
 export const sendNewLeadNotification = async (vendorEmail, { vendorName, service, postcode, requirements, timeline, leadId }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
 
   // Build a human-readable requirements summary
   const summaryParts = [];
@@ -292,8 +308,7 @@ export const sendNewLeadNotification = async (vendorEmail, { vendorName, service
 
   return sendEmail({
     to: vendorEmail,
-    from: 'TendorAI <scott.davies@tendorai.com>',
-    subject: `New Lead: ${service || 'Business'} enquiry in ${postcode || 'your area'}`,
+    subject: `New lead: ${service || 'Business'} enquiry in ${postcode || 'your area'}`,
     html: newLeadNotificationTemplate({
       vendorName: vendorName || 'there',
       service: service || 'Business services',
@@ -311,7 +326,7 @@ export const sendNewLeadNotification = async (vendorEmail, { vendorName, service
 // =====================================================
 
 export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, customerName, customerMessage, customerEmail }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
 
   // Look up vendor email from vendorId
   let vendorEmail;
@@ -331,22 +346,12 @@ export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, 
   return sendEmail({
     to: vendorEmail,
     subject: `New enquiry from ${customerName} via TendorAI`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #7c3aed;">New Enquiry via TendorAI</h2>
-        <p style="color: #374151; line-height: 1.6;">
-          <strong>${customerName}</strong> has sent you an enquiry through your TendorAI profile.
-        </p>
-        <div style="background: #f5f3ff; border-left: 4px solid #7c3aed; padding: 12px 16px; margin: 16px 0; color: #374151;">
-          ${customerMessage || 'No message provided.'}
-        </div>
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          <tr><td style="padding: 8px 0; color: #6b7280;">Customer</td><td style="padding: 8px 0; font-weight: 600;">${customerName}</td></tr>
-          <tr><td style="padding: 8px 0; color: #6b7280;">Reply to</td><td style="padding: 8px 0; font-weight: 600;">${customerEmail}</td></tr>
-        </table>
-        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View in Dashboard</a>
-      </div>
-    `,
+    html: vendorContactRequestTemplate({
+      customerName: escapeHtml(customerName),
+      customerMessage: escapeHtml(customerMessage),
+      customerEmail: escapeHtml(customerEmail),
+      dashboardUrl,
+    }),
     text: `New enquiry from ${customerName} (${customerEmail}) via TendorAI: "${customerMessage || 'No message'}". View at ${dashboardUrl}`
   });
 };
@@ -356,28 +361,19 @@ export const sendVendorContactRequest = async ({ vendorId, vendorName, quoteId, 
 // =====================================================
 
 export const sendQuoteAcceptedNotification = async ({ vendorEmail, vendorName, customerName, quoteDetails }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
   const service = quoteDetails?.service || 'your service';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `Good news — ${customerName} accepted your quote`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #7c3aed;">Quote Accepted!</h2>
-        <p style="color: #374151; line-height: 1.6;">
-          Great news, ${vendorName} — <strong>${customerName}</strong> has accepted your quote for <strong>${service}</strong>.
-        </p>
-        <h3 style="color: #374151; margin-top: 24px;">Next steps</h3>
-        <ul style="color: #374151; line-height: 1.8;">
-          <li>Reach out to ${customerName} to confirm details</li>
-          <li>Agree a start date and timeline</li>
-          <li>Mark the quote as won in your dashboard</li>
-        </ul>
-        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View in Dashboard</a>
-      </div>
-    `,
-    text: `Good news, ${vendorName} — ${customerName} accepted your quote for ${service}. View details at ${dashboardUrl}`
+    subject: `${customerName} accepted your quote — TendorAI`,
+    html: quoteAcceptedTemplate({
+      vendorName,
+      customerName,
+      service,
+      dashboardUrl,
+    }),
+    text: `${vendorName}, ${customerName} has accepted your quote for ${service}. View details at ${dashboardUrl}`
   });
 };
 
@@ -386,25 +382,17 @@ export const sendQuoteAcceptedNotification = async ({ vendorEmail, vendorName, c
 // =====================================================
 
 export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, customerName, reason }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard/quotes';
-  const reasonText = reason ? `<p style="color: #374151; line-height: 1.6;"><strong>Reason given:</strong> ${reason}</p>` : '';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard/quotes';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `Quote update from ${customerName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #7c3aed;">Quote Update</h2>
-        <p style="color: #374151; line-height: 1.6;">
-          ${customerName} has decided not to proceed with your quote this time.
-        </p>
-        ${reasonText}
-        <p style="color: #374151; line-height: 1.6;">
-          Don't worry — every quote improves your visibility on TendorAI. Keep your profile up to date and you'll be matched with more enquiries.
-        </p>
-        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">View Your Quotes</a>
-      </div>
-    `,
+    subject: `Quote update from ${customerName} — TendorAI`,
+    html: quoteDeclinedTemplate({
+      vendorName,
+      customerName,
+      reason,
+      dashboardUrl,
+    }),
     text: `Quote update: ${customerName} has decided not to proceed this time.${reason ? ` Reason: ${reason}.` : ''} View your quotes at ${dashboardUrl}`
   });
 };
@@ -415,49 +403,34 @@ export const sendQuoteDeclinedNotification = async ({ vendorEmail, vendorName, c
 
 export const sendSchemaInstallAdminNotification = async ({ vendorName, vendorEmail, websiteUrl, cmsPlatform }) => {
   const adminEmail = process.env.ADMIN_EMAIL || 'support@tendorai.com';
-  const dashboardUrl = 'https://www.tendorai.com/admin/schema-requests';
+  const dashboardUrl = 'https://tendorai.com/admin/schema-requests';
 
   return sendEmail({
     to: adminEmail,
-    subject: `New Schema Install Request — ${vendorName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #7c3aed;">New Schema Install Request</h2>
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          <tr><td style="padding: 8px 0; color: #6b7280; width: 120px;">Vendor</td><td style="padding: 8px 0; font-weight: 600;">${vendorName}</td></tr>
-          <tr><td style="padding: 8px 0; color: #6b7280;">Email</td><td style="padding: 8px 0;">${vendorEmail}</td></tr>
-          <tr><td style="padding: 8px 0; color: #6b7280;">Website</td><td style="padding: 8px 0;">${websiteUrl}</td></tr>
-          <tr><td style="padding: 8px 0; color: #6b7280;">CMS</td><td style="padding: 8px 0;">${cmsPlatform}</td></tr>
-        </table>
-        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">View in Admin Dashboard</a>
-      </div>
-    `,
+    subject: `New schema install request — ${vendorName}`,
+    html: schemaInstallAdminTemplate({
+      vendorName,
+      vendorEmail,
+      websiteUrl,
+      cmsPlatform,
+      dashboardUrl,
+    }),
     text: `New schema install request from ${vendorName} (${vendorEmail}). Website: ${websiteUrl}, CMS: ${cmsPlatform}. View at ${dashboardUrl}`
   });
 };
 
 export const sendSchemaInstallCompleteNotification = async (vendorEmail, { vendorName, websiteUrl }) => {
-  const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';
+  const dashboardUrl = 'https://tendorai.com/vendor-dashboard';
 
   return sendEmail({
     to: vendorEmail,
-    subject: `Your TendorAI Schema is Live — ${vendorName}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #7c3aed;">Your Schema is Live!</h2>
-        <p style="color: #374151; line-height: 1.6;">
-          Great news — we've successfully installed your TendorAI Schema.org markup on <strong>${websiteUrl}</strong>.
-        </p>
-        <p style="color: #374151; line-height: 1.6;">
-          AI assistants like ChatGPT, Claude, and Perplexity can now read your structured data, which helps them recommend your business with confidence.
-        </p>
-        <p style="color: #374151; line-height: 1.6;">
-          You can verify it's working by running the Schema Test from your dashboard.
-        </p>
-        <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px;">Go to Dashboard</a>
-      </div>
-    `,
-    text: `Your TendorAI Schema is now live on ${websiteUrl}. You can verify it's working by running the Schema Test from your dashboard at ${dashboardUrl}.`
+    subject: `Your TendorAI schema is live — ${vendorName}`,
+    html: schemaInstallCompleteTemplate({
+      vendorName,
+      websiteUrl,
+      dashboardUrl,
+    }),
+    text: `Your TendorAI schema is now live on ${websiteUrl}. You can verify it by running the schema test from your dashboard at ${dashboardUrl}.`
   });
 };
 
