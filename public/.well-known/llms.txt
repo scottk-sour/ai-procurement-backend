@@ -57,5 +57,5 @@ All vendor profiles include Schema.org JSON-LD markup: LegalService for solicito
 ## Contact
 
 Website: https://www.tendorai.com
-Email: hello@tendorai.com
+Email: scott.davies@tendorai.com
 Location: Wales, UK
