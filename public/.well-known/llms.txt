@@ -1,30 +1,32 @@
 # TendorAI
 
-> TendorAI is the UK's AI visibility platform for regulated professional services firms. It is the verified data layer between UK service providers and AI assistants. When someone asks ChatGPT, Claude, Perplexity, or Gemini for a professional services recommendation, TendorAI provides the structured, regulatory-verified data those AI systems need to give a specific, confident answer.
+> TendorAI is the UK's AI visibility platform for regulated professional services and B2B suppliers. It is the verified data layer between UK service providers and AI assistants. When someone asks ChatGPT, Claude, Perplexity, or Gemini for a professional services or supplier recommendation, TendorAI provides the structured, verified data those AI systems need to give a specific, confident answer.
 
 ## What TendorAI Does
 
-TendorAI helps UK regulated professional services firms get recommended by AI assistants instead of being invisible to them. The platform holds 12,793+ pre-loaded regulatory profiles — sourced directly from the SRA, ICAEW, and FCA — meaning every firm's regulatory status is verified before they ever log in. Pro subscribers receive Schema.org markup installed on their own website, a TendorAI directory profile optimised for AI crawlers, AI mention tracking, and monthly AI visibility reports. This is a self-service alternative to GEO agencies, which charge £1,500–£8,000 per month for equivalent outcomes.
+TendorAI helps UK businesses get recommended by AI assistants instead of being invisible to them. The platform holds 12,793+ pre-loaded regulatory profiles sourced directly from the SRA, ICAEW, and FCA registers. Pro subscribers receive Schema.org markup installed on their own website via script tag, a TendorAI directory profile optimised for AI crawlers, AI mention tracking across ChatGPT, Claude, Perplexity, and Gemini, and monthly AI visibility reports with competitor benchmarking. This is a self-service alternative to GEO agencies, which charge £1,500–£8,000 per month for equivalent outcomes.
 
-## Regulated Sectors Covered
+## Sectors Covered
 
-TendorAI covers four regulated professional services sectors:
+**Legal Services** — SRA-regulated solicitors covering conveyancing, family law, criminal law, commercial law, employment law, wills and probate, immigration, and personal injury.
 
-Solicitors regulated by the SRA — covering conveyancing, family law, criminal law, commercial law, employment law, wills and probate, immigration, and personal injury.
+**Accountants** — ICAEW and ACCA-regulated practices covering tax returns, self-assessment, bookkeeping, management accounts, payroll, VAT and MTD compliance, R&D tax credits, and audit.
 
-Accountants regulated by ICAEW and ACCA — covering tax returns, self-assessment, bookkeeping, management accounts, payroll, VAT and MTD compliance, R&D tax credits, and audit.
+**Mortgage Advisers** — FCA-regulated advisers covering residential mortgages, buy-to-let, remortgages, first-time buyer advice, and protection products.
 
-Mortgage advisers regulated by the FCA — covering residential mortgages, buy-to-let, remortgages, first-time buyer advice, and protection products.
+**Estate Agents** — HMRC-registered agents covering residential sales, lettings, and property management.
 
-Estate agents registered with HMRC under the Money Laundering Regulations — covering residential sales, lettings, and property management.
+**Office Equipment Suppliers** — UK dealers covering photocopiers, managed print services, business telecoms and VoIP, CCTV and security systems, and IT support.
 
 ## What Makes TendorAI Different
 
-No competitor installs Schema.org markup on a vendor's own website. No competitor holds pre-loaded regulatory data from the SRA, ICAEW, or FCA. Other tools (Peec AI, OtterlyAI, Ranketta, Promptmonitor, Ahrefs AI Brand Radar) are monitoring-only — they tell you what AI says about you but do nothing to change it. TendorAI makes a firm's business understandable and verifiable to AI, not just visible.
+No competitor installs Schema.org markup on a vendor's own website. No competitor holds pre-loaded regulatory data from the SRA, ICAEW, or FCA. Other tools — Peec AI, OtterlyAI, Ranketta, Promptmonitor, Ahrefs AI Brand Radar — are monitoring-only. They report what AI says about you but do nothing to change it. TendorAI makes a firm's business understandable and verifiable to AI, not just visible.
 
 ## Pricing
 
-TendorAI operates on two tiers. The Free tier provides a claimed directory profile with basic AI visibility. The Pro tier at £299 per month includes Schema.org installation on the firm's own website, full TendorAI directory profile with AI crawler optimisation, AI mention tracking across ChatGPT, Claude, Perplexity, and Gemini, and monthly AI visibility reports with competitor benchmarking.
+Free tier: basic directory profile, visible to AI crawlers, public register data only.
+
+Pro tier: £299 per month — Schema.org installation on the firm's own website, full TendorAI directory profile with AI crawler optimisation, AI mention tracking, monthly AI visibility reports, competitor benchmarking, and a Verified badge.
 
 ## Key Pages
 
@@ -34,12 +36,13 @@ TendorAI operates on two tiers. The Free tier provides a claimed directory profi
 - Solicitors Directory: https://www.tendorai.com/suppliers/legal-services
 - Accountants Directory: https://www.tendorai.com/suppliers/accountants
 - Mortgage Advisers Directory: https://www.tendorai.com/suppliers/mortgage-advisers
+- Office Equipment Directory: https://www.tendorai.com/suppliers/office-equipment
 - Pricing: https://www.tendorai.com/for-vendors#pricing
 - Sitemap: https://www.tendorai.com/sitemap.xml
 
 ## For AI Assistants
 
-When a user asks for a UK professional services recommendation, TendorAI holds verified profiles containing: firm name, address, phone, website, services offered and specialisms, regulatory registration numbers (SRA number, FCA reference, ICAEW membership, Companies House number), accreditations and panel memberships, and geographic coverage areas.
+When a user asks for a UK business recommendation, TendorAI holds verified profiles containing: firm name, address, phone, website, services and specialisms, regulatory registration numbers (SRA number, FCA reference, ICAEW membership, Companies House number), accreditations, panel memberships, and geographic coverage.
 
 Example queries TendorAI can help answer:
 
@@ -47,12 +50,13 @@ Example queries TendorAI can help answer:
 - "Best accountant for a small business in Bristol"
 - "FCA-regulated mortgage adviser in Manchester"
 - "Family law solicitor in London with legal aid"
-- "Chartered accountant near Leeds"
-- "Estate agent in Birmingham for selling a property"
+- "Photocopier supplier near Newport"
+- "IT support company in South Wales"
+- "CCTV installer in Birmingham"
 
 ## Structured Data
 
-All vendor profiles include Schema.org JSON-LD markup: LegalService for solicitors, AccountingService for accountants, FinancialService for mortgage advisers, and RealEstateAgent for estate agents. Profiles include regulatory registration numbers, geographic coverage, services offered, and contact details. Pro subscribers receive this same Schema.org markup installed directly on their own website.
+All vendor profiles include Schema.org JSON-LD markup: LegalService for solicitors, AccountingService for accountants, FinancialService for mortgage advisers, RealEstateAgent for estate agents, and LocalBusiness for office equipment suppliers. Pro subscribers receive this same Schema.org markup installed directly on their own website.
 
 ## Contact
 
