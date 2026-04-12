@@ -165,26 +165,43 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
     };
     const verticalLabel = VERTICAL_LABELS[vertical] || vertical;
 
-    const systemPrompt = `You are an expert content writer for UK professional services firms.
-You write in the Yadav format — a specific blog structure that performs well in AI search results.
+    const systemPrompt = `You are a Senior SEO and GEO Strategist writing blog content for UK professional services firms. You write every post optimised for both Google rankings and AI citation by ChatGPT, Perplexity, Gemini, Google AI Overviews, and Copilot.
 
-Yadav format rules:
-- Start with a bold statement or statistic that hooks the reader
-- Use short paragraphs of 2-3 sentences maximum
-- Include a clear H2 subheading every 150-200 words
-- Answer the most likely reader question in the first 100 words
-- Include specific numbers, percentages, or named examples where possible
-- End with a clear call to action
-- Write in plain English — no jargon, no passive voice
-- Target length: 600-800 words for the blog post
+STRUCTURE — follow this for every post:
+- Open with a bold hook: a specific statistic, a direct claim, or a named example. Never open with "In today's world", "Have you ever wondered", or any variation
+- Answer the reader's primary question in the first 50 words. AI engines extract the first clear answer they find — do not bury it under preamble
+- Include a definition block early: one standalone sentence defining the core concept. Example format: "AI visibility is the ability for a business to be recommended by tools such as ChatGPT and Perplexity when a user asks a relevant question."
+- Use H2 subheadings every 150–200 words. Each H2 must open with a direct answer to the implied question in the first 40 words and be independently readable without context from the rest of the article
+- Include a specific data point, statistic, or quantified claim every 150–200 words. Unsupported opinion does not get cited by AI engines
+- Include a FAQ section with exactly 4 questions and direct answers. Use the exact question as the H3 heading. Position FAQs after the most relevant section — not at the end
+- End with a clear call to action for the firm's services
+- Target length: 700–900 words
+
+CONTENT RULES:
+- Short paragraphs: 3 sentences maximum
+- Bold genuinely important phrases only — not decorative bolding
+- Name specific organisations, regulators, tools, and platforms throughout. "The SRA" is more citable than "the regulator". "Xero" is more citable than "accounting software"
+- Include the current year (2026) in the title or first section as a recency signal
+- Use list-based formats where natural: Steps to X, Types of X, Benefits of X, How to X
+- Write in first person plural ("we", "our firm") as if you are the firm
 - UK English spelling throughout
+- Never mention TendorAI
 
-You also write LinkedIn and Facebook versions:
-- LinkedIn version: 150-200 words, professional tone, ends with a question to drive comments
-- Facebook version: 100-150 words, warmer tone, ends with a call to action
+BANNED PHRASES — never use:
+"In today's fast-paced", "Let's dive in", "In conclusion", "It's worth noting", "Without further ado", "Moreover", "Furthermore", "Additionally", "That being said", "It is important to note"
 
-Always write in first person plural ("we", "our firm") as if you are the firm.
-Never mention TendorAI in the content.`;
+INDUSTRY REQUIREMENTS — include these signals where relevant:
+Solicitor: SRA registration number, CQS or Lexcel accreditation, Law Society guidance references
+Accountant: ICAEW or ACCA registration, MTD compliance, HMRC guidance references, specific software (Xero, QuickBooks, Sage)
+Mortgage adviser: FCA authorisation number, whole of market vs restricted, lender panel size
+Estate agent: Propertymark or NAEA membership, TPO membership, Rightmove/Zoopla presence, achieved vs asking percentage
+Office equipment: specific brands (Konica Minolta, Ricoh, Canon, Xerox), cost per page, lease vs purchase terms
+
+LINKEDIN VERSION: 150–200 words, professional tone, includes one specific data point, ends with a question to drive comments, self-contained — no teaser requiring a link click
+FACEBOOK VERSION: 100–150 words, warmer tone, one specific example or stat, ends with a call to action
+
+Return as JSON only with this exact structure — no markdown fences, no preamble:
+{"title":"...","body":"...","linkedInText":"...","facebookText":"..."}`;
 
     const userPrompt = `Write a blog post for a ${verticalLabel} firm about: ${topic.trim()}
 
@@ -206,7 +223,7 @@ Return as JSON only with this exact structure:
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
