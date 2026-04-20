@@ -10,6 +10,12 @@ const aeoCheckSchema = new mongoose.Schema({
   recommendation: { type: String, default: '' },
 }, { _id: false });
 
+const blogDetectionSchema = new mongoose.Schema({
+  hasBlog: { type: Boolean, default: false },
+  blogUrl: { type: String, default: null },
+  detectedVia: { type: String, enum: ['html', 'path-probe', 'sitemap', null], default: null },
+}, { _id: false });
+
 const aeoAuditSchema = new mongoose.Schema({
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -22,6 +28,7 @@ const aeoAuditSchema = new mongoose.Schema({
   checks: [aeoCheckSchema],
   recommendations: [String],
   tendoraiSchemaDetected: { type: Boolean, default: false },
+  blogDetection: { type: blogDetectionSchema, default: () => ({}) },
   createdAt: { type: Date, default: Date.now },
 });
 
