@@ -1534,6 +1534,9 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       reportUrl,
     });
   } catch (error) {
+    if (error.code === 'DETECTOR_FETCH_FAILED') {
+      return res.status(422).json({ success: false, error: error.message });
+    }
     console.error('AEO Report error:', error);
     res.status(500).json({
       success: false,
