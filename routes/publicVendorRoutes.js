@@ -1516,6 +1516,7 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     // ── Dual-path: detector-backed (websiteUrl) vs legacy (LLM) ──
     let reportData;
+    let platformResults = [];
 
     // Validate websiteUrl if provided
     let validWebsiteUrl = null;
@@ -1535,9 +1536,11 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
         websiteUrl: validWebsiteUrl,
         name, source, customIndustry,
       });
+      platformResults = reportData.platformResults || [];
     } else {
       // LEGACY PATH: LLM-generated report + platform queries (unchanged)
-      const [legacyReport, platformResults] = await Promise.all([
+      let legacyReport;
+      [legacyReport, platformResults] = await Promise.all([
         generateFullReport({ companyName, category, city, email, customIndustry }),
         queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
           console.error('[AEO] Platform queries failed:', err.message);
