@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const aeoCheckSchema = new mongoose.Schema({
+export const aeoCheckSchema = new mongoose.Schema({
   name: { type: String, required: true },
   key: { type: String, required: true },
   score: { type: Number, min: 0, max: 10, default: 0 },
@@ -10,7 +10,7 @@ const aeoCheckSchema = new mongoose.Schema({
   recommendation: { type: String, default: '' },
 }, { _id: false });
 
-const blogDetectionSchema = new mongoose.Schema({
+export const blogDetectionSchema = new mongoose.Schema({
   hasBlog: { type: Boolean, default: false },
   blogUrl: { type: String, default: null },
   detectedVia: { type: String, enum: ['html', 'path-probe', 'sitemap', null], default: null },
