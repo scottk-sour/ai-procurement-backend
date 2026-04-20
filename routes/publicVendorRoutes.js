@@ -11,10 +11,8 @@ import VendorPost from '../models/VendorPost.js';
 import AeoReport from '../models/AeoReport.js';
 import Subscriber from '../models/Subscriber.js';
 import { sendAeoReportEmail, sendEmail } from '../services/emailService.js';
-import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { queryAllPlatforms, querySinglePlatform } from '../services/platformQuery/index.js';
-import { isValidBusinessName } from '../services/platformQuery/prompt.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
@@ -1419,54 +1417,17 @@ const aeoRateLimiter = rateLimit({
 /**
  * POST /api/public/aeo-report
  * Generate a full AEO visibility report with score, competitors, gaps, and PDF
+ * Requires websiteUrl — runs real detector (no LLM hallucination).
  * Returns reportId for redirect to /aeo-report/results/[reportId]
  */
-// Category labels for platform query prompts
-const AEO_CATEGORY_LABELS = {
-  copiers: 'photocopier and managed print supplier',
-  telecoms: 'business telecoms and VoIP provider',
-  cctv: 'CCTV and security system installer',
-  it: 'IT support and managed services provider',
-  conveyancing: 'conveyancing solicitor',
-  'family-law': 'family law solicitor',
-  'criminal-law': 'criminal law solicitor',
-  'commercial-law': 'commercial law solicitor',
-  'employment-law': 'employment law solicitor',
-  'wills-and-probate': 'wills and probate solicitor',
-  immigration: 'immigration solicitor',
-  'personal-injury': 'personal injury solicitor',
-  'tax-advisory': 'tax advisory accountant',
-  'audit-assurance': 'audit and assurance accountant',
-  bookkeeping: 'bookkeeping accountant',
-  payroll: 'payroll services accountant',
-  'corporate-finance': 'corporate finance accountant',
-  'business-advisory': 'business advisory accountant',
-  'vat-services': 'VAT services accountant',
-  'financial-planning': 'financial planning accountant',
-  'residential-mortgages': 'residential mortgage advisor',
-  'buy-to-let': 'buy-to-let mortgage advisor',
-  remortgage: 'remortgage advisor',
-  'first-time-buyer': 'first-time buyer mortgage advisor',
-  'equity-release': 'equity release advisor',
-  'commercial-mortgages': 'commercial mortgage advisor',
-  'protection-insurance': 'protection insurance advisor',
-  sales: 'property sales estate agent',
-  lettings: 'lettings agent',
-  'property-management': 'property management agent',
-  'block-management': 'block management agent',
-  auctions: 'property auction house',
-  'commercial-property': 'commercial property agent',
-  inventory: 'inventory services provider',
-};
-
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
     const { companyName, category, city, email, name, source, customIndustry, websiteUrl } = req.body;
 
-    if (!companyName || !category || !city || !email) {
+    if (!companyName || !category || !city || !email || !websiteUrl) {
       return res.status(400).json({
         success: false,
-        error: 'companyName, category, city, and email are required',
+        error: 'companyName, category, city, email, and websiteUrl are required',
       });
     }
 
@@ -1512,137 +1473,12 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
       });
     }
 
-    const categoryLabel = customIndustry || AEO_CATEGORY_LABELS[category] || category;
-
-    // ── Dual-path: detector-backed (websiteUrl) vs legacy (LLM) ──
-    let reportData;
-    let platformResults = [];
-
-    // Validate websiteUrl if provided
-    let validWebsiteUrl = null;
-    if (websiteUrl && typeof websiteUrl === 'string') {
-      try {
-        const parsed = new URL(websiteUrl.trim().startsWith('http') ? websiteUrl.trim() : `https://${websiteUrl.trim()}`);
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-          validWebsiteUrl = parsed.href;
-        }
-      } catch { /* invalid URL — fall through to legacy path */ }
-    }
-
-    if (validWebsiteUrl) {
-      // NEW PATH: real detector via buildPublicReport
-      reportData = await buildPublicReport({
-        companyName, category, city, email,
-        websiteUrl: validWebsiteUrl,
-        name, source, customIndustry,
-      });
-      platformResults = reportData.platformResults || [];
-    } else {
-      // LEGACY PATH: LLM-generated report + platform queries (unchanged)
-      let legacyReport;
-      [legacyReport, platformResults] = await Promise.all([
-        generateFullReport({ companyName, category, city, email, customIndustry }),
-        queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
-          console.error('[AEO] Platform queries failed:', err.message);
-          return [];
-        }),
-      ]);
-
-      reportData = legacyReport;
-      reportData.platformResults = platformResults;
-      reportData.tier = 'free';
-
-      // 1a. Aggregate competitors from actual platform responses
-      // This replaces the Claude web-search competitors with data from
-      // the real AI platform queries (ChatGPT, Perplexity, Claude, etc.)
-      if (platformResults.length > 0) {
-        const companyLower = companyName.toLowerCase();
-        const competitorFreq = new Map(); // name -> { count, platforms[], reason }
-
-        for (const pr of platformResults) {
-          if (pr.error || !pr.competitors || pr.competitors.length === 0) continue;
-          for (const entry of pr.competitors) {
-            // Support both old string format and new { name, reason } format
-            const compName = typeof entry === 'string' ? entry : entry?.name;
-            const compReason = typeof entry === 'string' ? null : (entry?.reason || null);
-            if (!compName || compName.toLowerCase().includes(companyLower)) continue;
-            // Normalise key: trim, collapse whitespace
-            const key = compName.trim().replace(/\s+/g, ' ');
-
-            // Production competitor filter — validates business name quality
-            if (!isValidBusinessName(key)) continue;
-
-            const existing = competitorFreq.get(key);
-            if (existing) {
-              existing.count++;
-              existing.platforms.push(pr.platformLabel);
-              // Keep the first non-null reason
-              if (!existing.reason && compReason) existing.reason = compReason;
-            } else {
-              competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel], reason: compReason });
-            }
-          }
-        }
-
-        // Sort by frequency (most platforms first), then alphabetical
-        const ranked = [...competitorFreq.entries()]
-          .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
-
-        // Build competitor objects using the existing schema structure
-        let aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
-          const platformList = data.platforms.join(', ');
-          return {
-            name,
-            description: `Recommended by ${platformList}`,
-            reason: data.reason || null,
-            website: null,
-            strengths: data.platforms.map(p => `Mentioned by ${p}`),
-          };
-        });
-
-        // Perplexity fallback: if fewer than 2 real competitors found,
-        // run a targeted Perplexity web search for local businesses
-        if (aggregatedCompetitors.length < 2 && process.env.PERPLEXITY_API_KEY) {
-          try {
-            const fallbackNames = await queryPerplexityForCompetitors(categoryLabel, city, companyName);
-            const existingNames = new Set(aggregatedCompetitors.map(c => c.name.toLowerCase()));
-            for (const fbName of fallbackNames) {
-              if (existingNames.has(fbName.toLowerCase())) continue;
-              if (aggregatedCompetitors.length >= 6) break;
-              aggregatedCompetitors.push({
-                name: fbName,
-                description: 'Found via Perplexity web search',
-                reason: `Discovered by Perplexity when searching for ${categoryLabel} in ${city}`,
-                website: null,
-                strengths: ['Mentioned by Perplexity'],
-              });
-              existingNames.add(fbName.toLowerCase());
-            }
-          } catch (err) {
-            console.error('[PerplexityFallback] Failed:', err.message);
-          }
-        }
-
-        if (aggregatedCompetitors.length > 0) {
-          reportData.competitors = aggregatedCompetitors;
-          // Keep backward compat
-          reportData.aiRecommendations = aggregatedCompetitors.map(c => ({
-            name: c.name,
-            description: c.description,
-            reason: c.reason,
-          }));
-        }
-      }
-
-      // 1b. Compute industry average for PDF context
-      try {
-        const avg = await computeIndustryAverage(category);
-        reportData.industryAverage = avg.average;
-        reportData.industryTypeLabel = avg.category;
-      } catch (e) {
-        console.error('Failed to fetch industry average for PDF:', e.message);
-      }
-    }
+    // Generate report via real detector
+    const reportData = await buildPublicReport({
+      companyName, category, city, email,
+      websiteUrl, name, source, customIndustry,
+    });
+    const platformResults = reportData.platformResults || [];
 
     // 2. Generate PDF
     const pdfBuffer = await generateReportPdf(reportData);
@@ -1778,40 +1614,6 @@ a{color:#7c3aed;text-decoration:none;margin-top:16px;display:inline-block;font-s
 <p>${message}</p>
 ${success ? '<a href="https://www.tendorai.com">Go to TendorAI</a>' : ''}
 </div></body></html>`;
-}
-
-/**
- * Perplexity fallback: targeted web search for local competitors when
- * the main platform queries return fewer than 2 real business names.
- * Perplexity has live web search, unlike the other LLM platforms.
- */
-async function queryPerplexityForCompetitors(categoryLabel, city, companyName) {
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [{
-        role: 'user',
-        content: `List the names of up to 5 real businesses that provide ${categoryLabel} services in ${city}, UK. Real business trading names only, one per line. No advice, no tips, no descriptions. Just business names.`,
-      }],
-      max_tokens: 200,
-    }),
-  });
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content || '';
-
-  // Extract names — one per line
-  const names = text.split('\n')
-    .map(line => line.replace(/^\d+[.)]\s*/, '').replace(/^[-•*]\s*/, '').replace(/\*\*/g, '').trim())
-    .filter(n => isValidBusinessName(n) &&
-             !n.toLowerCase().includes(companyName.toLowerCase()));
-
-  return names.slice(0, 5);
 }
 
 export default router;
