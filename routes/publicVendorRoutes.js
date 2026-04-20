@@ -18,6 +18,7 @@ import { isValidBusinessName } from '../services/platformQuery/prompt.js';
 import { lookupPostcode, bulkLookupPostcodes } from '../utils/postcodeUtils.js';
 import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } from '../utils/distanceUtils.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
+import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 
 const router = express.Router();
@@ -1460,7 +1461,7 @@ const AEO_CATEGORY_LABELS = {
 
 router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
   try {
-    const { companyName, category, city, email, name, source, customIndustry } = req.body;
+    const { companyName, category, city, email, name, source, customIndustry, websiteUrl } = req.body;
 
     if (!companyName || !category || !city || !email) {
       return res.status(400).json({
@@ -1513,108 +1514,131 @@ router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
 
     const categoryLabel = customIndustry || AEO_CATEGORY_LABELS[category] || category;
 
-    // 1. Generate full report + platform queries in parallel
-    const [reportData, platformResults] = await Promise.all([
-      generateFullReport({ companyName, category, city, email, customIndustry }),
-      queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
-        console.error('[AEO] Platform queries failed:', err.message);
-        return [];
-      }),
-    ]);
+    // ── Dual-path: detector-backed (websiteUrl) vs legacy (LLM) ──
+    let reportData;
 
-    // Attach platform results
-    reportData.platformResults = platformResults;
-    reportData.tier = 'free';
-
-    // 1a. Aggregate competitors from actual platform responses
-    // This replaces the Claude web-search competitors with data from
-    // the real AI platform queries (ChatGPT, Perplexity, Claude, etc.)
-    if (platformResults.length > 0) {
-      const companyLower = companyName.toLowerCase();
-      const competitorFreq = new Map(); // name -> { count, platforms[], reason }
-
-      for (const pr of platformResults) {
-        if (pr.error || !pr.competitors || pr.competitors.length === 0) continue;
-        for (const entry of pr.competitors) {
-          // Support both old string format and new { name, reason } format
-          const compName = typeof entry === 'string' ? entry : entry?.name;
-          const compReason = typeof entry === 'string' ? null : (entry?.reason || null);
-          if (!compName || compName.toLowerCase().includes(companyLower)) continue;
-          // Normalise key: trim, collapse whitespace
-          const key = compName.trim().replace(/\s+/g, ' ');
-
-          // Production competitor filter — validates business name quality
-          if (!isValidBusinessName(key)) continue;
-
-          const existing = competitorFreq.get(key);
-          if (existing) {
-            existing.count++;
-            existing.platforms.push(pr.platformLabel);
-            // Keep the first non-null reason
-            if (!existing.reason && compReason) existing.reason = compReason;
-          } else {
-            competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel], reason: compReason });
-          }
+    // Validate websiteUrl if provided
+    let validWebsiteUrl = null;
+    if (websiteUrl && typeof websiteUrl === 'string') {
+      try {
+        const parsed = new URL(websiteUrl.trim().startsWith('http') ? websiteUrl.trim() : `https://${websiteUrl.trim()}`);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          validWebsiteUrl = parsed.href;
         }
-      }
-
-      // Sort by frequency (most platforms first), then alphabetical
-      const ranked = [...competitorFreq.entries()]
-        .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
-
-      // Build competitor objects using the existing schema structure
-      let aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
-        const platformList = data.platforms.join(', ');
-        return {
-          name,
-          description: `Recommended by ${platformList}`,
-          reason: data.reason || null,
-          website: null,
-          strengths: data.platforms.map(p => `Mentioned by ${p}`),
-        };
-      });
-
-      // Perplexity fallback: if fewer than 2 real competitors found,
-      // run a targeted Perplexity web search for local businesses
-      if (aggregatedCompetitors.length < 2 && process.env.PERPLEXITY_API_KEY) {
-        try {
-          const fallbackNames = await queryPerplexityForCompetitors(categoryLabel, city, companyName);
-          const existingNames = new Set(aggregatedCompetitors.map(c => c.name.toLowerCase()));
-          for (const fbName of fallbackNames) {
-            if (existingNames.has(fbName.toLowerCase())) continue;
-            if (aggregatedCompetitors.length >= 6) break;
-            aggregatedCompetitors.push({
-              name: fbName,
-              description: 'Found via Perplexity web search',
-              reason: `Discovered by Perplexity when searching for ${categoryLabel} in ${city}`,
-              website: null,
-              strengths: ['Mentioned by Perplexity'],
-            });
-            existingNames.add(fbName.toLowerCase());
-          }
-        } catch (err) {
-          console.error('[PerplexityFallback] Failed:', err.message);
-        }
-      }
-
-      if (aggregatedCompetitors.length > 0) {
-        reportData.competitors = aggregatedCompetitors;
-        // Keep backward compat
-        reportData.aiRecommendations = aggregatedCompetitors.map(c => ({
-          name: c.name,
-          description: c.description,
-          reason: c.reason,
-        }));
-      }
+      } catch { /* invalid URL — fall through to legacy path */ }
     }
 
-    // 1b. Compute industry average for PDF context
-    try {
-      const avg = await computeIndustryAverage(category);
-      reportData.industryAverage = avg.average;
-      reportData.industryTypeLabel = avg.category;
-    } catch (e) {
-      console.error('Failed to fetch industry average for PDF:', e.message);
+    if (validWebsiteUrl) {
+      // NEW PATH: real detector via buildPublicReport
+      reportData = await buildPublicReport({
+        companyName, category, city, email,
+        websiteUrl: validWebsiteUrl,
+        name, source, customIndustry,
+      });
+    } else {
+      // LEGACY PATH: LLM-generated report + platform queries (unchanged)
+      const [legacyReport, platformResults] = await Promise.all([
+        generateFullReport({ companyName, category, city, email, customIndustry }),
+        queryAllPlatforms({ companyName, category, city, categoryLabel }).catch(err => {
+          console.error('[AEO] Platform queries failed:', err.message);
+          return [];
+        }),
+      ]);
+
+      reportData = legacyReport;
+      reportData.platformResults = platformResults;
+      reportData.tier = 'free';
+
+      // 1a. Aggregate competitors from actual platform responses
+      // This replaces the Claude web-search competitors with data from
+      // the real AI platform queries (ChatGPT, Perplexity, Claude, etc.)
+      if (platformResults.length > 0) {
+        const companyLower = companyName.toLowerCase();
+        const competitorFreq = new Map(); // name -> { count, platforms[], reason }
+
+        for (const pr of platformResults) {
+          if (pr.error || !pr.competitors || pr.competitors.length === 0) continue;
+          for (const entry of pr.competitors) {
+            // Support both old string format and new { name, reason } format
+            const compName = typeof entry === 'string' ? entry : entry?.name;
+            const compReason = typeof entry === 'string' ? null : (entry?.reason || null);
+            if (!compName || compName.toLowerCase().includes(companyLower)) continue;
+            // Normalise key: trim, collapse whitespace
+            const key = compName.trim().replace(/\s+/g, ' ');
+
+            // Production competitor filter — validates business name quality
+            if (!isValidBusinessName(key)) continue;
+
+            const existing = competitorFreq.get(key);
+            if (existing) {
+              existing.count++;
+              existing.platforms.push(pr.platformLabel);
+              // Keep the first non-null reason
+              if (!existing.reason && compReason) existing.reason = compReason;
+            } else {
+              competitorFreq.set(key, { count: 1, platforms: [pr.platformLabel], reason: compReason });
+            }
+          }
+        }
+
+        // Sort by frequency (most platforms first), then alphabetical
+        const ranked = [...competitorFreq.entries()]
+          .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+
+        // Build competitor objects using the existing schema structure
+        let aggregatedCompetitors = ranked.slice(0, 6).map(([name, data]) => {
+          const platformList = data.platforms.join(', ');
+          return {
+            name,
+            description: `Recommended by ${platformList}`,
+            reason: data.reason || null,
+            website: null,
+            strengths: data.platforms.map(p => `Mentioned by ${p}`),
+          };
+        });
+
+        // Perplexity fallback: if fewer than 2 real competitors found,
+        // run a targeted Perplexity web search for local businesses
+        if (aggregatedCompetitors.length < 2 && process.env.PERPLEXITY_API_KEY) {
+          try {
+            const fallbackNames = await queryPerplexityForCompetitors(categoryLabel, city, companyName);
+            const existingNames = new Set(aggregatedCompetitors.map(c => c.name.toLowerCase()));
+            for (const fbName of fallbackNames) {
+              if (existingNames.has(fbName.toLowerCase())) continue;
+              if (aggregatedCompetitors.length >= 6) break;
+              aggregatedCompetitors.push({
+                name: fbName,
+                description: 'Found via Perplexity web search',
+                reason: `Discovered by Perplexity when searching for ${categoryLabel} in ${city}`,
+                website: null,
+                strengths: ['Mentioned by Perplexity'],
+              });
+              existingNames.add(fbName.toLowerCase());
+            }
+          } catch (err) {
+            console.error('[PerplexityFallback] Failed:', err.message);
+          }
+        }
+
+        if (aggregatedCompetitors.length > 0) {
+          reportData.competitors = aggregatedCompetitors;
+          // Keep backward compat
+          reportData.aiRecommendations = aggregatedCompetitors.map(c => ({
+            name: c.name,
+            description: c.description,
+            reason: c.reason,
+          }));
+        }
+      }
+
+      // 1b. Compute industry average for PDF context
+      try {
+        const avg = await computeIndustryAverage(category);
+        reportData.industryAverage = avg.average;
+        reportData.industryTypeLabel = avg.category;
+      } catch (e) {
+        console.error('Failed to fetch industry average for PDF:', e.message);
+      }
     }
 
     // 2. Generate PDF
