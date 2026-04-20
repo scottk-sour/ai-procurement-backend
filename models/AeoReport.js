@@ -1,4 +1,15 @@
 import mongoose from 'mongoose';
+import { aeoCheckSchema, blogDetectionSchema } from './AeoAudit.js';
+
+const detectorResultSchema = new mongoose.Schema({
+  websiteUrl: { type: String, default: null },
+  overallScore: { type: Number, min: 0, max: 100, default: null },
+  checks: [aeoCheckSchema],
+  blogDetection: { type: blogDetectionSchema, default: () => ({}) },
+  tendoraiSchemaDetected: { type: Boolean, default: false },
+  fetchError: { type: String, default: null },
+  runAt: { type: Date, default: null },
+}, { _id: false });
 
 const aeoReportSchema = new mongoose.Schema({
   companyName: { type: String, required: true, trim: true },
@@ -95,6 +106,11 @@ const aeoReportSchema = new mongoose.Schema({
     }],
     error: { type: String, default: null },
   }],
+
+  // Real detector result. Populated by the public-report builder from Commit 3 onward;
+  // legacy LLM-only reports leave this field unset and read back as undefined.
+  detectorResult: detectorResultSchema,
+
   tier: { type: String, enum: ['free', 'starter', 'pro', 'enterprise', null], default: null },
 });
 
