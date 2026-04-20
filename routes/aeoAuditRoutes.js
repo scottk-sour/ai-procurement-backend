@@ -9,6 +9,193 @@ const router = express.Router();
 /** Paid tier names (Starter + Pro and all aliases) */
 const PAID_TIERS = ['basic', 'starter', 'silver', 'visible', 'managed', 'pro', 'verified', 'gold', 'enterprise'];
 
+/** Approved blog path list, in priority order. First hit wins. */
+const BLOG_PATHS = [
+  '/blog',
+  '/blogs',
+  '/resources',
+  '/insights',
+  '/news',
+  '/articles',
+  '/guides',
+  '/knowledge',
+  '/knowledge-hub',
+  '/learn',
+  '/library',
+];
+
+/** Per-probe timeout for blog detection network calls. */
+const BLOG_PROBE_TIMEOUT_MS = 5000;
+
+const BLOG_DETECTION_DEFAULT = Object.freeze({
+  hasBlog: false,
+  blogUrl: null,
+  detectedVia: null,
+});
+
+/**
+ * Extract href values from anchor tags. Good enough for detection — not a full HTML parser.
+ */
+function extractHrefs(html) {
+  const hrefs = [];
+  const re = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    hrefs.push(m[1]);
+  }
+  return hrefs;
+}
+
+/**
+ * Resolve href against origin, return normalized lowercase pathname when same-origin, else null.
+ * Trailing slash stripped for paths longer than 1 char.
+ */
+function resolveSameOriginPath(href, origin) {
+  try {
+    const abs = new URL(href, origin);
+    if (abs.origin !== origin) return null;
+    let p = abs.pathname;
+    if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+    return p.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pass 1: scan home-page HTML for anchor hrefs matching approved blog paths.
+ */
+function detectBlogFromHtml(html, origin) {
+  const paths = new Set();
+  for (const href of extractHrefs(html)) {
+    const p = resolveSameOriginPath(href, origin);
+    if (p) paths.add(p);
+  }
+  for (const blogPath of BLOG_PATHS) {
+    if (paths.has(blogPath)) {
+      return { hasBlog: true, blogUrl: `${origin}${blogPath}`, detectedVia: 'html' };
+    }
+  }
+  return null;
+}
+
+/**
+ * Pass 2: sequential HEAD-then-GET probe of each approved path on the given origin.
+ * Stops at the first 2xx response.
+ */
+async function detectBlogFromProbes(origin) {
+  for (const blogPath of BLOG_PATHS) {
+    const url = `${origin}${blogPath}`;
+    const opts = {
+      timeout: BLOG_PROBE_TIMEOUT_MS,
+      maxRedirects: 5,
+      validateStatus: (s) => s >= 200 && s < 300,
+      headers: { 'User-Agent': 'TendorAI-AEO-Audit/1.0' },
+    };
+    try {
+      await axios.head(url, opts);
+      return { hasBlog: true, blogUrl: url, detectedVia: 'path-probe' };
+    } catch {
+      // HEAD may be disallowed (405, 501) or refused; fall through to GET.
+    }
+    try {
+      await axios.get(url, opts);
+      return { hasBlog: true, blogUrl: url, detectedVia: 'path-probe' };
+    } catch {
+      // continue to next path
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract <loc> values from a sitemap XML string.
+ */
+function extractSitemapLocs(xml) {
+  const locs = [];
+  const re = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    locs.push(m[1]);
+  }
+  return locs;
+}
+
+/**
+ * Pass 3: fetch sitemap.xml and look for a URL strictly longer than any approved
+ * blog prefix. Index-only entries (/blog, /blog/) do not count.
+ */
+async function detectBlogFromSitemap(origin) {
+  let xml;
+  try {
+    const resp = await axios.get(`${origin}/sitemap.xml`, {
+      timeout: BLOG_PROBE_TIMEOUT_MS,
+      maxRedirects: 5,
+      validateStatus: (s) => s >= 200 && s < 300,
+      headers: { 'User-Agent': 'TendorAI-AEO-Audit/1.0' },
+    });
+    xml = typeof resp.data === 'string' ? resp.data : '';
+  } catch {
+    return null;
+  }
+  if (!xml) return null;
+
+  let locs = extractSitemapLocs(xml);
+
+  // Sitemap-index: follow the first child sitemap (one hop only, correctness-first).
+  if (/<sitemapindex[\s>]/i.test(xml) && locs.length > 0) {
+    try {
+      const childResp = await axios.get(locs[0], {
+        timeout: BLOG_PROBE_TIMEOUT_MS,
+        maxRedirects: 5,
+        validateStatus: (s) => s >= 200 && s < 300,
+        headers: { 'User-Agent': 'TendorAI-AEO-Audit/1.0' },
+      });
+      const childXml = typeof childResp.data === 'string' ? childResp.data : '';
+      locs = extractSitemapLocs(childXml);
+    } catch {
+      return null;
+    }
+  }
+
+  const paths = [];
+  for (const loc of locs) {
+    const p = resolveSameOriginPath(loc, origin);
+    if (p) paths.push(p);
+  }
+
+  for (const prefix of BLOG_PATHS) {
+    for (const p of paths) {
+      if (p.startsWith(`${prefix}/`) && p.length > prefix.length + 1) {
+        return { hasBlog: true, blogUrl: `${origin}${p}`, detectedVia: 'sitemap' };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect whether the vendor site has a blog.
+ * Three sequential passes: HTML anchor scan, path probe, sitemap parse.
+ * First positive hit wins; any uncaught error returns the all-false default.
+ */
+async function detectBlog(origin, html) {
+  try {
+    const fromHtml = detectBlogFromHtml(html || '', origin);
+    if (fromHtml) return fromHtml;
+
+    const fromProbes = await detectBlogFromProbes(origin);
+    if (fromProbes) return fromProbes;
+
+    const fromSitemap = await detectBlogFromSitemap(origin);
+    if (fromSitemap) return fromSitemap;
+
+    return { ...BLOG_DETECTION_DEFAULT };
+  } catch {
+    return { ...BLOG_DETECTION_DEFAULT };
+  }
+}
+
 /**
  * Analyse a webpage for AEO (Answer Engine Optimisation) signals.
  * Returns 10 checks, each scored 0-10, totalling 0-100.
@@ -289,6 +476,10 @@ router.post('/', vendorAuth, async (req, res) => {
       return res.status(422).json({ success: false, error: 'Website did not return HTML content.' });
     }
 
+    // Detect blog presence: HTML scan -> path probes -> sitemap
+    const origin = new URL(websiteUrl).origin;
+    const blogDetection = await detectBlog(origin, html);
+
     // Run analysis
     const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseAeoSignals(html, websiteUrl);
 
@@ -300,6 +491,7 @@ router.post('/', vendorAuth, async (req, res) => {
       checks,
       recommendations,
       tendoraiSchemaDetected,
+      blogDetection,
     });
 
     res.json({
@@ -311,6 +503,7 @@ router.post('/', vendorAuth, async (req, res) => {
         checks: audit.checks,
         recommendations: audit.recommendations,
         tendoraiSchemaDetected: audit.tendoraiSchemaDetected,
+        blogDetection: audit.blogDetection,
         createdAt: audit.createdAt,
       },
     });
@@ -361,6 +554,7 @@ router.get('/latest', vendorAuth, async (req, res) => {
         checks: audit.checks,
         recommendations: audit.recommendations,
         tendoraiSchemaDetected: audit.tendoraiSchemaDetected || false,
+        blogDetection: audit.blogDetection || { ...BLOG_DETECTION_DEFAULT },
         createdAt: audit.createdAt,
       },
       canRunAgain,
