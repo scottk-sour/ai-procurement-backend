@@ -19,6 +19,7 @@ const FIELD_MASK = [
   'places.photos',
   'places.shortFormattedAddress',
   'places.primaryType',
+  'places.types',
   'places.businessStatus',
   'places.rating',
   'places.userRatingCount',
@@ -251,6 +252,87 @@ export async function checkGoogleReviews(companyName, city) {
     summary: 'Fewer than 3 Google reviews — ask customers to leave a review',
     rating: rating ?? undefined,
     count,
+  };
+}
+
+// Vendor-type → Google Places type values we consider a category match.
+// Kept in this module so Places-specific strings don't leak into scoring logic.
+// Any vendor type not in this table resolves to 'skipped' — callers redistribute
+// those points across other AI Visibility signals.
+const VENDOR_TYPE_TO_PLACES_TYPES = Object.freeze({
+  solicitor: ['lawyer', 'legal_services'],
+  accountant: ['accounting'],
+  'mortgage-advisor': ['finance', 'insurance_agency'],
+  'estate-agent': ['real_estate_agency'],
+});
+
+const LISTING_SKIPPED_RESULT = Object.freeze({
+  state: 'skipped',
+  summary: 'Places category check not applicable for this vendor type',
+});
+const LISTING_UNAVAILABLE_RESULT = Object.freeze({
+  state: 'fail',
+  summary: 'Places listing check temporarily unavailable',
+});
+const LISTING_NO_MATCH_RESULT = Object.freeze({
+  state: 'fail',
+  summary: 'No matching Google Places listing found',
+});
+
+/**
+ * Grade the Google Places listing for category alignment. Reuses the shared
+ * lookupPlace cache — costs zero extra Places API calls when GBP/Reviews
+ * already ran for this company+city.
+ *
+ * @param {string} companyName
+ * @param {string} city
+ * @param {string} expectedVendorType - 'solicitor' | 'accountant' |
+ *   'mortgage-advisor' | 'estate-agent'. Any other value resolves to 'skipped'.
+ * @returns {Promise<{state: 'pass' | 'amber' | 'fail' | 'skipped', summary: string, primaryType?: string, types?: string[]}>}
+ */
+export async function checkPlacesListingQuality(companyName, city, expectedVendorType) {
+  const expectedTypes = VENDOR_TYPE_TO_PLACES_TYPES[expectedVendorType];
+  if (!Array.isArray(expectedTypes) || expectedTypes.length === 0) {
+    return LISTING_SKIPPED_RESULT;
+  }
+  if (!companyName || !city) return LISTING_NO_MATCH_RESULT;
+
+  const lookup = await lookupPlace(companyName, city);
+  if (lookup.status === 'unavailable') return LISTING_UNAVAILABLE_RESULT;
+  if (!lookup.place) return LISTING_NO_MATCH_RESULT;
+
+  const place = lookup.place;
+  const primaryType = typeof place.primaryType === 'string' ? place.primaryType : null;
+  const types = Array.isArray(place.types)
+    ? place.types.filter((t) => typeof t === 'string')
+    : [];
+
+  if (primaryType && expectedTypes.includes(primaryType)) {
+    return {
+      state: 'pass',
+      summary: `Listing primary category is "${primaryType}"`,
+      primaryType,
+      types,
+    };
+  }
+
+  const typeHit = types.find((t) => expectedTypes.includes(t));
+  if (typeHit) {
+    return {
+      state: 'amber',
+      summary: `Listing carries "${typeHit}" but primary category is ${primaryType ? `"${primaryType}"` : 'generic'}`,
+      primaryType,
+      types,
+    };
+  }
+
+  return {
+    state: 'fail',
+    summary: primaryType
+      ? `Listing is categorised "${primaryType}" — does not match expected vendor type`
+      : 'Listing has no category that matches expected vendor type',
+    primaryType,
+    types,
   };
 }
 

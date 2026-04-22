@@ -334,6 +334,7 @@ export function analyseAeoSignals(html, url) {
   // 1. Schema.org structured data
   const ldJsonMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
   const schemaCount = ldJsonMatches.length;
+  const jsonLdPayloads = parseJsonLdPayloads(ldJsonMatches);
   const schemaScore = schemaCount >= 3 ? 10 : schemaCount === 2 ? 8 : schemaCount === 1 ? 5 : 0;
   checks.push({
     name: 'Schema.org Structured Data',
@@ -513,7 +514,39 @@ export function analyseAeoSignals(html, url) {
       /src=["'][^"']*tendorai\.com[^"']*schema/i.test(html);
   }
 
-  return { overallScore, checks, recommendations, tendoraiSchemaDetected };
+  return { overallScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads };
+}
+
+/**
+ * Parse raw <script type="application/ld+json"> blocks into plain objects.
+ * Tolerant: malformed blocks are skipped. @graph arrays are flattened so
+ * each top-level entity appears as its own payload. Always returns an array.
+ */
+export function parseJsonLdPayloads(ldJsonMatches) {
+  const out = [];
+  for (const block of ldJsonMatches || []) {
+    const inner = block.replace(/^<script[^>]*>/i, '').replace(/<\/script>$/i, '').trim();
+    if (!inner) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(inner);
+    } catch {
+      continue;
+    }
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of items) {
+      if (item && typeof item === 'object') {
+        if (Array.isArray(item['@graph'])) {
+          for (const sub of item['@graph']) {
+            if (sub && typeof sub === 'object') out.push(sub);
+          }
+        } else {
+          out.push(item);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -566,7 +599,7 @@ export async function runDetector({ websiteUrl }) {
   const blogDetection = await detectBlog(origin, html);
   const hasPricing = await checkPricing(origin, html);
   const hasDetailedServices = await checkDetailedServices(origin, html);
-  const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseAeoSignals(html, url);
+  const { overallScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads } = analyseAeoSignals(html, url);
 
   return {
     websiteUrl: url,
@@ -577,5 +610,6 @@ export async function runDetector({ websiteUrl }) {
     hasPricing,
     hasDetailedServices,
     tendoraiSchemaDetected,
+    jsonLdPayloads,
   };
 }
