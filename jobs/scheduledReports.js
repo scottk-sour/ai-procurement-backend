@@ -179,12 +179,16 @@ async function generateVendorReports(tier) {
         continue;
       }
 
-      // Generate the full AEO report
+      // Generate the full AEO report. Plumb websiteUrl through so the
+      // deterministic detector can run — without it, dual scoring falls
+      // back to nulls.
+      const websiteUrl = vendor.contactInfo?.website || undefined;
       const reportData = await generateFullReport({
         companyName: vendor.company,
         category,
         city,
         email: vendor.email,
+        websiteUrl,
       });
 
       // Generate PDF

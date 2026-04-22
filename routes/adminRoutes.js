@@ -722,11 +722,14 @@ router.get('/all-leads', adminAuth, async (req, res) => {
 /**
  * POST /api/admin/generate-vendor-report
  * Generate a single full AEO visibility report
- * Body: { companyName, category, city, email? }
+ * Body: { companyName, category, city, email?, websiteUrl? }
+ *
+ * websiteUrl drives the deterministic detector that powers dual scoring.
+ * Without it, technicalHealthScore and aiVisibilityScore fall back to null.
  */
 router.post('/generate-vendor-report', adminAuth, async (req, res) => {
   try {
-    const { companyName, category, city, email } = req.body;
+    const { companyName, category, city, email, websiteUrl } = req.body;
 
     if (!companyName || !category || !city) {
       return res.status(400).json({
@@ -755,8 +758,8 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
 
     console.log(`[Admin] Generating full AEO report for "${companyName}" (${category}, ${city})`);
 
-    // 1. Generate report data via Claude
-    const reportData = await generateFullReport({ companyName, category, city, email });
+    // 1. Generate report data via Claude + deterministic dual scoring
+    const reportData = await generateFullReport({ companyName, category, city, email, websiteUrl });
 
     // 2. Generate PDF
     const pdfBuffer = await generateReportPdf(reportData);
@@ -770,12 +773,18 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
     const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
     const apiBaseUrl = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
 
-    console.log(`[Admin] Report generated: ${report._id} — Score: ${report.score}/100`);
+    console.log(
+      `[Admin] Report generated: ${report._id} — Tech: ${report.technicalHealthScore ?? '—'}, AI: ${report.aiVisibilityScore ?? '—'}`,
+    );
 
     res.json({
       success: true,
       reportId: report._id,
       score: report.score,
+      technicalHealthScore: report.technicalHealthScore,
+      technicalHealthBand: report.technicalHealthBand,
+      aiVisibilityScore: report.aiVisibilityScore,
+      aiVisibilityBand: report.aiVisibilityBand,
       aiMentioned: report.aiMentioned,
       competitors: report.competitors?.length || 0,
       gaps: report.gaps?.length || 0,
@@ -820,7 +829,7 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
     const results = [];
 
     for (let i = 0; i < reports.length; i++) {
-      const { companyName, category, city, email } = reports[i];
+      const { companyName, category, city, email, websiteUrl } = reports[i];
 
       try {
         if (!companyName || !category || !city) {
@@ -830,7 +839,7 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
 
         console.log(`[Admin Batch] ${i + 1}/${reports.length}: "${companyName}" (${category}, ${city})`);
 
-        const reportData = await generateFullReport({ companyName, category, city, email });
+        const reportData = await generateFullReport({ companyName, category, city, email, websiteUrl });
         const pdfBuffer = await generateReportPdf(reportData);
         const report = await AeoReport.create({ ...reportData, pdfBuffer });
 
@@ -839,6 +848,8 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
           success: true,
           reportId: report._id,
           score: report.score,
+          technicalHealthScore: report.technicalHealthScore,
+          aiVisibilityScore: report.aiVisibilityScore,
           reportUrl: `${baseUrl}/aeo-report/results/${report._id}`,
           pdfUrl: `${apiBaseUrl}/api/public/aeo-report/${report._id}/pdf`,
         });

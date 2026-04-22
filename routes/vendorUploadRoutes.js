@@ -1806,23 +1806,26 @@ const rescanLimiter = rateLimit({
 router.post('/aeo-rescan', vendorAuth, rescanLimiter, async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.vendorId)
-      .select('company services location email vendorType practiceAreas')
+      .select('company services location email vendorType practiceAreas contactInfo')
       .lean();
     if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
 
     const category = getAeoCategory(vendor);
     const city = vendor.location?.city || 'London';
+    const websiteUrl = vendor.contactInfo?.website || undefined;
 
     const report = await generateFullReport({
       companyName: vendor.company,
       category,
       city,
       email: vendor.email,
+      websiteUrl,
     });
 
     // Save the report
     const saved = await AeoReport.create({
       ...report,
+      vendorId: vendor._id,
       ipAddress: req.ip,
     });
 
@@ -1831,6 +1834,12 @@ router.post('/aeo-rescan', vendorAuth, rescanLimiter, async (req, res) => {
       data: {
         reportId: saved._id,
         score: saved.score,
+        technicalHealthScore: saved.technicalHealthScore,
+        technicalHealthBand: saved.technicalHealthBand,
+        technicalHealthBreakdown: saved.technicalHealthBreakdown,
+        aiVisibilityScore: saved.aiVisibilityScore,
+        aiVisibilityBand: saved.aiVisibilityBand,
+        aiVisibilityBreakdown: saved.aiVisibilityBreakdown,
         scoreBreakdown: saved.scoreBreakdown,
         searchedCompany: saved.searchedCompany,
         competitors: saved.competitors,
