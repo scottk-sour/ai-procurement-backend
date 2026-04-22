@@ -77,6 +77,12 @@ const aeoReportSchema = new mongoose.Schema({
       state: { type: String },
       summary: { type: String },
     },
+    reviewsDetail: {
+      state: { type: String },
+      summary: { type: String },
+      rating: { type: Number, default: null },
+      count: { type: Number, default: null },
+    },
     summary: { type: String, default: null },
   },
   competitors: [

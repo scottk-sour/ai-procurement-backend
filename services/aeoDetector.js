@@ -18,6 +18,23 @@ export const BLOG_PATHS = [
 /** Per-probe timeout for blog detection network calls. */
 export const BLOG_PROBE_TIMEOUT_MS = 5000;
 
+/** Approved pricing-page paths. Anchors to any of these (or deeper) on the home page get fetched. */
+export const PRICING_PATHS = ['/pricing', '/fees', '/costs', '/plans', '/prices'];
+
+/** Path prefixes that indicate a "service" or "practice area" sub-page. */
+export const SERVICE_PATH_PREFIXES = ['/services', '/practice-areas', '/what-we-do', '/expertise'];
+
+export const SUBPAGE_PROBE_TIMEOUT_MS = 5000;
+
+/** Minimum word count (visible text) that makes a service page count as "detailed". */
+export const SERVICE_MIN_WORDS = 300;
+
+/** Minimum distinct "£ + number" matches on a single page to count as pricing shown. */
+export const PRICING_MIN_SIGNALS = 2;
+
+/** Max linked sub-pages fetched when evaluating detailed service pages. Upper bound on blast radius. */
+export const SERVICE_MAX_PROBES = 8;
+
 export const BLOG_DETECTION_DEFAULT = Object.freeze({
   hasBlog: false,
   blogUrl: null,
@@ -184,6 +201,125 @@ export async function detectBlog(origin, html) {
     return { ...BLOG_DETECTION_DEFAULT };
   } catch {
     return { ...BLOG_DETECTION_DEFAULT };
+  }
+}
+
+/**
+ * Fetch a single sub-page as text. Never throws — returns '' on any failure
+ * so pricing/service detection can treat an unreachable sub-page the same as
+ * a missing one without bubbling up a report-killing error.
+ */
+async function fetchSubpageHtml(url) {
+  try {
+    const resp = await axios.get(url, {
+      timeout: SUBPAGE_PROBE_TIMEOUT_MS,
+      maxRedirects: 5,
+      validateStatus: (s) => s >= 200 && s < 300,
+      headers: { 'User-Agent': 'TendorAI-AEO-Audit/1.0', Accept: 'text/html' },
+    });
+    return typeof resp.data === 'string' ? resp.data : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Strip scripts/styles, keep everything else intact — callers normalise further. */
+function stripScripts(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+}
+
+/** Visible-text word count. Shared shape with check #10 in analyseAeoSignals. */
+function countWords(html) {
+  const text = stripScripts(html)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return 0;
+  return text.split(/\s+/).length;
+}
+
+/**
+ * Count distinct "£ + number" occurrences on a single page. "£299" and "£ 299"
+ * collapse to the same signal; "£299" and "£500" count as two.
+ */
+function countPricingSignals(html) {
+  const text = stripScripts(html);
+  const matches = text.match(/£\s*\d[\d,]*(?:\.\d+)?/g);
+  if (!matches) return 0;
+  const distinct = new Set(matches.map((m) => m.replace(/\s+/g, '')));
+  return distinct.size;
+}
+
+/**
+ * Does the site publish pricing? Passes if the home page OR any linked
+ * /pricing | /fees | /costs | /plans | /prices page carries at least
+ * PRICING_MIN_SIGNALS distinct "£ + number" combinations on that single page.
+ *
+ * Only pages reachable via an anchor on the home page are fetched — no
+ * speculative probing. Never throws.
+ */
+export async function checkPricing(origin, homeHtml) {
+  try {
+    if (countPricingSignals(homeHtml) >= PRICING_MIN_SIGNALS) return true;
+
+    const linkedPricingPaths = new Set();
+    for (const href of extractHrefs(homeHtml || '')) {
+      const p = resolveSameOriginPath(href, origin);
+      if (!p) continue;
+      for (const base of PRICING_PATHS) {
+        if (p === base || p.startsWith(`${base}/`)) {
+          linkedPricingPaths.add(p);
+          break;
+        }
+      }
+    }
+
+    for (const path of linkedPricingPaths) {
+      const html = await fetchSubpageHtml(`${origin}${path}`);
+      if (countPricingSignals(html) >= PRICING_MIN_SIGNALS) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Does the site have detailed service pages? Passes if the home page links
+ * to at least 2 distinct sub-pages under /services/*, /practice-areas/*,
+ * /what-we-do/*, or /expertise/*, AND at least 2 of those fetched sub-pages
+ * carry >= SERVICE_MIN_WORDS of visible text. Index pages (e.g. /services)
+ * without a sub-path segment do not count. Never throws.
+ */
+export async function checkDetailedServices(origin, homeHtml) {
+  try {
+    const candidates = new Set();
+    for (const href of extractHrefs(homeHtml || '')) {
+      const p = resolveSameOriginPath(href, origin);
+      if (!p) continue;
+      for (const prefix of SERVICE_PATH_PREFIXES) {
+        if (p.startsWith(`${prefix}/`) && p.length > prefix.length + 1) {
+          candidates.add(p);
+          break;
+        }
+      }
+    }
+    if (candidates.size < 2) return false;
+
+    let deepPages = 0;
+    const toCheck = [...candidates].slice(0, SERVICE_MAX_PROBES);
+    for (const path of toCheck) {
+      const html = await fetchSubpageHtml(`${origin}${path}`);
+      if (countWords(html) >= SERVICE_MIN_WORDS) {
+        deepPages += 1;
+        if (deepPages >= 2) return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -428,6 +564,8 @@ export async function runDetector({ websiteUrl }) {
 
   const origin = new URL(url).origin;
   const blogDetection = await detectBlog(origin, html);
+  const hasPricing = await checkPricing(origin, html);
+  const hasDetailedServices = await checkDetailedServices(origin, html);
   const { overallScore, checks, recommendations, tendoraiSchemaDetected } = analyseAeoSignals(html, url);
 
   return {
@@ -436,6 +574,8 @@ export async function runDetector({ websiteUrl }) {
     checks,
     recommendations,
     blogDetection,
+    hasPricing,
+    hasDetailedServices,
     tendoraiSchemaDetected,
   };
 }

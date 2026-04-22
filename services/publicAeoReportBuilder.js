@@ -13,7 +13,7 @@
 import { runDetector } from './aeoDetector.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { isValidBusinessName } from './platformQuery/prompt.js';
-import { checkGoogleBusinessProfile } from './googleBusinessProfile.js';
+import { checkGoogleBusinessProfile, checkGoogleReviews } from './googleBusinessProfile.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import Vendor from '../models/Vendor.js';
 
@@ -81,10 +81,12 @@ const CATEGORY_NOUN = {
 // searchedCompany check booleans used for the "X of Y applicable checks
 // passing" counter. Tri-state: null/undefined = not checked (excluded),
 // true = passing, false = failing.
+// hasBrands is intentionally absent — brand-partnership claims cannot be
+// verified reliably via scraping, so the public report no longer renders
+// that row.
 const CHECK_KEYS = [
   'hasReviews',
   'hasPricing',
-  'hasBrands',
   'hasStructuredData',
   'hasDetailedServices',
   'hasSocialMedia',
@@ -247,9 +249,8 @@ function mapScoreBreakdown(detectorResult, platformResults) {
 
 /**
  * Populate legacy searchedCompany checklist booleans from real detector checks.
- * Booleans the current detector cannot verify (reviews, pricing, brands, detailed
- * services, Google Business) are left null — the frontend must render null as
- * "not checked" rather than a red NO.
+ * hasGoogleBusiness and hasReviews are filled in post-detector by Places API
+ * lookups. hasBrands is intentionally omitted (see CHECK_KEYS).
  */
 function mapSearchedCompany({ detectorResult, websiteUrl, summary }) {
   const byKey = Object.create(null);
@@ -257,10 +258,9 @@ function mapSearchedCompany({ detectorResult, websiteUrl, summary }) {
   return {
     website: websiteUrl || null,
     hasReviews: null,
-    hasPricing: null,
-    hasBrands: null,
+    hasPricing: detectorResult.hasPricing ?? null,
     hasStructuredData: byKey.schema?.passed ?? null,
-    hasDetailedServices: null,
+    hasDetailedServices: detectorResult.hasDetailedServices ?? null,
     hasSocialMedia: byKey.social?.passed ?? null,
     hasGoogleBusiness: null,
     summary: summary ?? null,
@@ -438,6 +438,8 @@ export async function buildPublicReport({
     overallScore: detectorRaw.overallScore,
     checks: detectorRaw.checks,
     blogDetection: detectorRaw.blogDetection,
+    hasPricing: detectorRaw.hasPricing ?? null,
+    hasDetailedServices: detectorRaw.hasDetailedServices ?? null,
     tendoraiSchemaDetected: detectorRaw.tendoraiSchemaDetected,
     fetchError: null,
     runAt: new Date(),
@@ -466,6 +468,15 @@ export async function buildPublicReport({
   const gbp = await checkGoogleBusinessProfile(companyName, city);
   searchedCompany.hasGoogleBusiness = gbp.state === 'fail' ? false : true;
   searchedCompany.googleBusinessDetail = { state: gbp.state, summary: gbp.summary };
+
+  const reviews = await checkGoogleReviews(companyName, city);
+  searchedCompany.hasReviews = reviews.state === 'pass';
+  searchedCompany.reviewsDetail = {
+    state: reviews.state,
+    summary: reviews.summary,
+    rating: reviews.rating ?? null,
+    count: reviews.count ?? null,
+  };
 
   const summary = buildSummary({
     companyName,
