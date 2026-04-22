@@ -418,6 +418,14 @@ function getVendorType(category) {
 
 // ─── Build the checklist section of the prompt per vendorType ─────────────────
 
+// Note on hasBrands: this remains an LLM judgement and is not overridden by
+// the deterministic detector. Accreditations (SRA, ICAEW, FCA, Propertymark,
+// Lexcel, …) live in copy, badge images, and footer text that scraping
+// cannot reliably parse — a missed footer logo or non-standard wording
+// flips the boolean wrongly. The LLM, with web search, makes a better call
+// here than a regex would. The other booleans on this checklist
+// (hasStructuredData, hasSocialMedia, hasPricing, hasDetailedServices) are
+// overridden post-LLM with detector output where available.
 function getChecklistPrompt(vendorType) {
   if (vendorType === 'solicitor') {
     return `  "searchedCompany": {

@@ -176,9 +176,11 @@ async function main() {
   }
 
   const isProfType = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'].includes(filterVendorType);
+  // contactInfo.website drives the deterministic detector that powers dual
+  // scoring — without it, technicalHealthScore / aiVisibilityScore are null.
   const selectFields = isProfType
-    ? 'company email practiceAreas location vendorType'
-    : 'company email services location vendorType practiceAreas';
+    ? 'company email practiceAreas location vendorType contactInfo'
+    : 'company email services location vendorType practiceAreas contactInfo';
 
   const vendors = await Vendor.find(query)
     .select(selectFields)
@@ -226,14 +228,17 @@ async function main() {
     console.log(`[${i + 1}/${toProcess.length}] "${companyName}" — ${category} — ${city} (${vendor.vendorType || 'equipment'})`);
 
     try {
-      const reportData = await generateFullReport({ companyName, category, city, email });
+      const websiteUrl = vendor.contactInfo?.website || undefined;
+      const reportData = await generateFullReport({ companyName, category, city, email, websiteUrl });
       const pdfBuffer = await generateReportPdf(reportData);
       const report = await AeoReport.create({ ...reportData, pdfBuffer });
 
       const reportUrl = `${FRONTEND_URL}/aeo-report/results/${report._id}`;
       const pdfUrl = `${API_URL}/api/public/aeo-report/${report._id}/pdf`;
 
-      console.log(`  Score: ${report.score}/100 | Competitors: ${report.competitors?.length || 0}`);
+      console.log(
+        `  Tech: ${report.technicalHealthScore ?? '—'}/100 | AI: ${report.aiVisibilityScore ?? '—'}/100 | Legacy: ${report.score}/100 | Competitors: ${report.competitors?.length || 0}`,
+      );
       console.log(`  URL: ${reportUrl}`);
 
       const escCsv = (s) => {

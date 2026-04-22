@@ -122,10 +122,13 @@ function hasFaqPageSchema(detector) {
 // Any @type that indicates a LocalBusiness or Organization entity. The spec
 // has ~50 LocalBusiness subtypes (LegalService, AccountingService,
 // RealEstateAgent, FinancialService, …) — match by substring so we accept
-// any of them without hardcoding every one.
+// any of them without hardcoding every one. 'lawyer' and 'attorney' cover
+// schema.org entries that solicitor sites publish under those exact types.
 const LB_TYPE_SUBSTRINGS = [
   'organization',
   'localbusiness',
+  'lawyer',
+  'attorney',
   'legalservice',
   'accountingservice',
   'realestateagent',
@@ -147,6 +150,13 @@ function isLocalBusinessLike(typeField) {
 
 const LB_REQUIRED_FIELDS = ['name', 'url', 'address', 'telephone', 'image'];
 
+/**
+ * Discrete-band richness grading. The best LB-like payload on the page wins.
+ *   5 of 5 fields → 1.0
+ *   3-4 of 5     → 0.7
+ *   1-2 of 5     → 0.3
+ *   0 of 5 (or no LB-like payload) → 0
+ */
 function gradeLocalBusinessRichness(detector) {
   const payloads = Array.isArray(detector?.jsonLdPayloads) ? detector.jsonLdPayloads : [];
   let best = 0;
@@ -157,26 +167,31 @@ function gradeLocalBusinessRichness(detector) {
       const v = p?.[field];
       if (v !== undefined && v !== null && v !== '') have += 1;
     }
-    const ratio = have / LB_REQUIRED_FIELDS.length;
-    if (ratio > best) best = ratio;
+    let band;
+    if (have >= 5) band = 1.0;
+    else if (have >= 3) band = 0.7;
+    else if (have >= 1) band = 0.3;
+    else band = 0;
+    if (band > best) best = band;
   }
   return best;
 }
 
 /**
- * Banded grading of Google Reviews (count × average rating).
- * Returns 0.0–1.0, scaled against AI_WEIGHTS.reviews by the caller.
+ * Banded grading of Google Reviews (count × average rating). Returns 0.0–1.0,
+ * scaled against AI_WEIGHTS.reviews by the caller.
+ *
+ * Tuned for realistic UK professional-services volumes — a solicitor firm
+ * with 12 reviews at 4.7★ is doing well and should score accordingly.
  */
 function gradeReviews(reviews) {
   if (!reviews || reviews.state !== 'pass') return 0;
   const count = typeof reviews.count === 'number' ? reviews.count : 0;
   const rating = typeof reviews.rating === 'number' ? reviews.rating : 0;
-  if (count >= 50 && rating >= 4.5) return 1.0;
-  if (count >= 25 && rating >= 4.5) return 0.85;
-  if (count >= 25 && rating >= 4.0) return 0.7;
-  if (count >= 10 && rating >= 4.0) return 0.55;
-  if (count >= 5 && rating >= 3.5) return 0.35;
-  if (count >= 3 && rating >= 3.0) return 0.2;
+  if (count >= 20 && rating >= 4.5) return 1.0;
+  if (count >= 10 && rating >= 4.3) return 0.85;
+  if (count >= 5 && rating >= 4.0) return 0.65;
+  if (count >= 3 && rating >= 3.5) return 0.4;
   return 0;
 }
 

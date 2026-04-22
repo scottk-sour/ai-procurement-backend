@@ -27,11 +27,15 @@ if (!process.env.ANTHROPIC_API_KEY) {
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.tendorai.com';
 const API_URL = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
 
+// websiteUrl drives the deterministic detector that powers dual scoring.
+// Populate with the company's real homepage to exercise Technical Health
+// and AI Visibility end-to-end. Leaving it null exercises only the LLM
+// summary + competitor pipeline; dual-score fields will come back null.
 const testCompanies = [
-  { companyName: 'Solutions in Technology', category: 'copiers', city: 'Cwmbran' },
-  { companyName: 'Clarity Copiers', category: 'copiers', city: 'Bristol' },
-  { companyName: 'Ogi', category: 'telecoms', city: 'Cardiff' },
-  { companyName: 'Made Up Company Ltd', category: 'it', city: 'London' },
+  { companyName: 'Solutions in Technology', category: 'copiers', city: 'Cwmbran', websiteUrl: null },
+  { companyName: 'Clarity Copiers', category: 'copiers', city: 'Bristol', websiteUrl: null },
+  { companyName: 'Ogi', category: 'telecoms', city: 'Cardiff', websiteUrl: null },
+  { companyName: 'Made Up Company Ltd', category: 'it', city: 'London', websiteUrl: null },
 ];
 
 async function main() {
@@ -64,20 +68,25 @@ async function main() {
       const pdfUrl = `${API_URL}/api/public/aeo-report/${report._id}/pdf`;
 
       console.log('\n--- RESULTS ---');
-      console.log(`Report ID:    ${report._id}`);
-      console.log(`Score:        ${report.score}/100 (${report.score <= 30 ? 'RED' : report.score <= 60 ? 'AMBER' : 'BLUE'})`);
-      console.log(`AI Mentioned: ${report.aiMentioned} ${report.aiPosition ? `(position ${report.aiPosition})` : ''}`);
-      console.log(`Competitors:  ${report.competitors.length}`);
+      console.log(`Report ID:        ${report._id}`);
+      console.log(`Technical Health: ${report.technicalHealthScore ?? '—'}/100${report.technicalHealthBand ? ` (${report.technicalHealthBand})` : ''}`);
+      console.log(`AI Visibility:    ${report.aiVisibilityScore ?? '—'}/100${report.aiVisibilityBand ? ` (${report.aiVisibilityBand})` : ''}`);
+      console.log(`Legacy score:     ${report.score ?? '—'}/100`);
+      console.log(`AI Mentioned:     ${report.aiMentioned} ${report.aiPosition ? `(position ${report.aiPosition})` : ''}`);
+      console.log(`Competitors:      ${report.competitors.length}`);
       report.competitors.forEach((c, j) => {
         console.log(`  ${j + 1}. ${c.name} — ${c.website || 'no URL'}`);
       });
-      console.log(`Gaps:         ${report.gaps.length}`);
+      console.log(`Gaps:             ${report.gaps.length}`);
       report.gaps.forEach((g, j) => {
         console.log(`  ${j + 1}. ${g.title}`);
       });
-      console.log(`Web URL:      ${reportUrl}`);
-      console.log(`PDF URL:      ${pdfUrl}`);
-      console.log(`Breakdown:    website=${reportData.scoreBreakdown.websiteOptimisation} content=${reportData.scoreBreakdown.contentAuthority} directory=${reportData.scoreBreakdown.directoryPresence} reviews=${reportData.scoreBreakdown.reviewSignals} schema=${reportData.scoreBreakdown.structuredData} competitive=${reportData.scoreBreakdown.competitivePosition}`);
+      console.log(`Web URL:          ${reportUrl}`);
+      console.log(`PDF URL:          ${pdfUrl}`);
+      if (reportData.scoreBreakdown) {
+        const sb = reportData.scoreBreakdown;
+        console.log(`Legacy breakdown: website=${sb.websiteOptimisation} content=${sb.contentAuthority} directory=${sb.directoryPresence} reviews=${sb.reviewSignals} schema=${sb.structuredData} competitive=${sb.competitivePosition}`);
+      }
 
     } catch (err) {
       console.error(`FAILED: ${err.message}`);
