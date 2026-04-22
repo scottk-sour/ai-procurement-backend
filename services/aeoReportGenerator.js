@@ -9,6 +9,7 @@
  */
 
 import Vendor from '../models/Vendor.js';
+import { checkGoogleBusinessProfile } from './googleBusinessProfile.js';
 
 // ─── Category labels (human-readable) ────────────────────────────────────────
 
@@ -839,6 +840,16 @@ export async function generateFullReport({ companyName, category, city, email, c
     hasGoogleBusiness: !!parsed.searchedCompany?.hasGoogleBusiness,
     summary: parsed.searchedCompany?.summary || null,
   };
+
+  // Override the LLM's hasGoogleBusiness guess with a real Places API lookup.
+  // On any failure, leave the LLM value intact so the rescan still completes.
+  try {
+    const gbp = await checkGoogleBusinessProfile(companyName, city);
+    searchedCompany.hasGoogleBusiness = gbp.state === 'pass' || gbp.state === 'amber';
+    searchedCompany.googleBusinessDetail = { state: gbp.state, summary: gbp.summary };
+  } catch (err) {
+    console.warn(`[AEO] GBP override failed for "${companyName}" in "${city}": ${err.message}`);
+  }
 
   // Build backward-compatible aiRecommendations array
   const aiRecommendations = competitors.map((c) => ({
