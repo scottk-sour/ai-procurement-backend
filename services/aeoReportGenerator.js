@@ -634,7 +634,7 @@ ${checklistPrompt},
   ],
   "gaps": [
     {
-      "title": "Gap title (e.g. 'No Customer Reviews Visible')",
+      "title": "Gap title (e.g. 'No Google Reviews Visible')",
       "explanation": "1-2 sentence explanation of why this matters for AI visibility"
     }
   ],

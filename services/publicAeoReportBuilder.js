@@ -13,6 +13,7 @@
 import { runDetector } from './aeoDetector.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { isValidBusinessName } from './platformQuery/prompt.js';
+import { checkGoogleBusinessProfile } from './googleBusinessProfile.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import Vendor from '../models/Vendor.js';
 
@@ -461,6 +462,10 @@ export async function buildPublicReport({
     websiteUrl: detectorResult.websiteUrl,
     summary: null,
   });
+
+  const gbp = await checkGoogleBusinessProfile(companyName, city);
+  searchedCompany.hasGoogleBusiness = gbp.state === 'fail' ? false : true;
+  searchedCompany.googleBusinessDetail = { state: gbp.state, summary: gbp.summary };
 
   const summary = buildSummary({
     companyName,
