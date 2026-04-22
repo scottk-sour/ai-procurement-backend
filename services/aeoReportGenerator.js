@@ -9,7 +9,7 @@
  */
 
 import Vendor from '../models/Vendor.js';
-import { checkGoogleBusinessProfile } from './googleBusinessProfile.js';
+import { checkGoogleBusinessProfile, checkGoogleReviews } from './googleBusinessProfile.js';
 
 // ─── Category labels (human-readable) ────────────────────────────────────────
 
@@ -849,6 +849,21 @@ export async function generateFullReport({ companyName, category, city, email, c
     searchedCompany.googleBusinessDetail = { state: gbp.state, summary: gbp.summary };
   } catch (err) {
     console.warn(`[AEO] GBP override failed for "${companyName}" in "${city}": ${err.message}`);
+  }
+
+  // Override the LLM's hasReviews guess with a real Places reviews lookup.
+  // Reuses the GBP lookup cache, so this costs zero extra Places calls.
+  try {
+    const reviews = await checkGoogleReviews(companyName, city);
+    searchedCompany.hasReviews = reviews.state === 'pass';
+    searchedCompany.reviewsDetail = {
+      state: reviews.state,
+      summary: reviews.summary,
+      rating: reviews.rating ?? null,
+      count: reviews.count ?? null,
+    };
+  } catch (err) {
+    console.warn(`[AEO] Reviews override failed for "${companyName}" in "${city}": ${err.message}`);
   }
 
   // Build backward-compatible aiRecommendations array

@@ -1,8 +1,11 @@
 /**
- * Google Business Profile check via Google Places API (Text Search v1).
+ * Google Business Profile + Google Reviews checks via Google Places API
+ * (Text Search v1).
  *
- * Called as a post-detector step from services/publicAeoReportBuilder.js.
- * Must never throw — the report must still generate if Places is down.
+ * Both checks share a single Places lookup + 24h cache, so adding the reviews
+ * check costs zero extra API calls. Called as post-detector steps from
+ * services/publicAeoReportBuilder.js and services/aeoReportGenerator.js.
+ * Neither check throws — reports must still generate if Places is down.
  */
 
 import axios from 'axios';
@@ -17,28 +20,46 @@ const FIELD_MASK = [
   'places.shortFormattedAddress',
   'places.primaryType',
   'places.businessStatus',
+  'places.rating',
+  'places.userRatingCount',
 ].join(',');
 const TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-const UNAVAILABLE_RESULT = Object.freeze({
+// At least 3 reviews before we mark the check as passing. 1-2 is barely a
+// signal; 3+ shows a pattern. Adjust once we see real-world data.
+const REVIEWS_MIN_COUNT = 3;
+
+const GBP_UNAVAILABLE_RESULT = Object.freeze({
   state: 'fail',
   summary: 'GBP check temporarily unavailable',
 });
-const FAIL_NOT_FOUND_RESULT = Object.freeze({
+const GBP_FAIL_NOT_FOUND_RESULT = Object.freeze({
   state: 'fail',
   summary: 'No Google Business Profile detected',
 });
-const AMBER_RESULT = Object.freeze({
+const GBP_AMBER_RESULT = Object.freeze({
   state: 'amber',
   summary:
     'Google Business Profile found but incomplete — add opening hours, photos, and description to strengthen AI recommendations',
 });
-const PASS_RESULT = Object.freeze({
+const GBP_PASS_RESULT = Object.freeze({
   state: 'pass',
   summary: 'Google Business Profile found and well-populated',
 });
 
+const REVIEWS_UNAVAILABLE_RESULT = Object.freeze({
+  state: 'fail',
+  summary: 'Google reviews check temporarily unavailable',
+});
+const REVIEWS_NO_GBP_RESULT = Object.freeze({
+  state: 'fail',
+  summary: 'No Google Business Profile found (reviews are tied to a GBP)',
+});
+
+// cache key -> { storedAt, lookup: { status, place? } }
+// status is 'ok' (place is the matched place object or null when no match) or
+// 'unavailable' (upstream API failure — do not retry for the TTL).
 const cache = new Map();
 
 function cacheKey(companyName, city) {
@@ -52,11 +73,11 @@ function cacheGet(key) {
     cache.delete(key);
     return null;
   }
-  return entry.value;
+  return entry.lookup;
 }
 
-function cacheSet(key, value) {
-  cache.set(key, { value, storedAt: Date.now() });
+function cacheSet(key, lookup) {
+  cache.set(key, { lookup, storedAt: Date.now() });
 }
 
 function findMatchingPlace(places, city) {
@@ -70,30 +91,21 @@ function findMatchingPlace(places, city) {
   return null;
 }
 
-function classifyPlace(place) {
-  const hasHours = !!place?.regularOpeningHours;
-  const hasPhotos = Array.isArray(place?.photos) && place.photos.length > 0;
-  const hasShortAddress =
-    typeof place?.shortFormattedAddress === 'string' && place.shortFormattedAddress.length > 0;
-  if (hasHours || hasPhotos || hasShortAddress) return PASS_RESULT;
-  return AMBER_RESULT;
-}
-
 /**
- * Check whether a Google Business Profile exists for this company + city.
- * Returns a tri-state result — never throws.
+ * Shared Places lookup. Returns a tri-state:
+ *   { status: 'ok', place: <place>|null }  — API succeeded; place may be null for no match
+ *   { status: 'unavailable' }              — API failed (missing key, timeout, non-2xx, malformed)
  *
- * @param {string} companyName
- * @param {string} city
- * @returns {Promise<{state: 'pass' | 'amber' | 'fail', summary: string}>}
+ * Result is cached under the company+city key so both GBP and Reviews checks
+ * on the same report share one Places call.
  */
-export async function checkGoogleBusinessProfile(companyName, city) {
-  if (!companyName || !city) return FAIL_NOT_FOUND_RESULT;
+async function lookupPlace(companyName, city) {
+  if (!companyName || !city) return { status: 'ok', place: null };
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     console.warn('[GBP] GOOGLE_PLACES_API_KEY not set — returning unavailable');
-    return UNAVAILABLE_RESULT;
+    return { status: 'unavailable' };
   }
 
   const key = cacheKey(companyName, city);
@@ -117,30 +129,97 @@ export async function checkGoogleBusinessProfile(companyName, city) {
     );
   } catch (err) {
     console.warn(`[GBP] Places API request failed for "${companyName}" in "${city}": ${err.code || err.message}`);
-    const result = UNAVAILABLE_RESULT;
-    cacheSet(key, result);
-    return result;
+    const lookup = { status: 'unavailable' };
+    cacheSet(key, lookup);
+    return lookup;
   }
 
   if (!response || response.status < 200 || response.status >= 300) {
     console.warn(`[GBP] Places API returned status ${response?.status} for "${companyName}" in "${city}"`);
-    const result = UNAVAILABLE_RESULT;
-    cacheSet(key, result);
-    return result;
+    const lookup = { status: 'unavailable' };
+    cacheSet(key, lookup);
+    return lookup;
   }
 
   const places = response?.data?.places;
   if (!Array.isArray(places)) {
     console.warn(`[GBP] Places API returned malformed body for "${companyName}" in "${city}"`);
-    const result = UNAVAILABLE_RESULT;
-    cacheSet(key, result);
-    return result;
+    const lookup = { status: 'unavailable' };
+    cacheSet(key, lookup);
+    return lookup;
   }
 
   const match = findMatchingPlace(places, city);
-  const result = match ? classifyPlace(match) : FAIL_NOT_FOUND_RESULT;
-  cacheSet(key, result);
-  return result;
+  const lookup = { status: 'ok', place: match || null };
+  cacheSet(key, lookup);
+  return lookup;
+}
+
+function classifyPlaceForGbp(place) {
+  const hasHours = !!place?.regularOpeningHours;
+  const hasPhotos = Array.isArray(place?.photos) && place.photos.length > 0;
+  const hasShortAddress =
+    typeof place?.shortFormattedAddress === 'string' && place.shortFormattedAddress.length > 0;
+  if (hasHours || hasPhotos || hasShortAddress) return GBP_PASS_RESULT;
+  return GBP_AMBER_RESULT;
+}
+
+function formatRating(rating) {
+  if (typeof rating !== 'number' || !Number.isFinite(rating)) return null;
+  return Number.isInteger(rating) ? `${rating}.0` : rating.toFixed(1);
+}
+
+/**
+ * Check whether a Google Business Profile exists for this company + city.
+ * Tri-state ('pass' | 'amber' | 'fail') — never throws.
+ *
+ * @param {string} companyName
+ * @param {string} city
+ * @returns {Promise<{state: 'pass' | 'amber' | 'fail', summary: string}>}
+ */
+export async function checkGoogleBusinessProfile(companyName, city) {
+  if (!companyName || !city) return GBP_FAIL_NOT_FOUND_RESULT;
+
+  const lookup = await lookupPlace(companyName, city);
+  if (lookup.status === 'unavailable') return GBP_UNAVAILABLE_RESULT;
+  if (!lookup.place) return GBP_FAIL_NOT_FOUND_RESULT;
+  return classifyPlaceForGbp(lookup.place);
+}
+
+/**
+ * Check whether this company's Google Business Profile carries at least
+ * REVIEWS_MIN_COUNT reviews. Reuses the GBP Places lookup cache — no extra
+ * API call. Never throws.
+ *
+ * @param {string} companyName
+ * @param {string} city
+ * @returns {Promise<{state: 'pass' | 'fail', summary: string, rating?: number, count?: number}>}
+ */
+export async function checkGoogleReviews(companyName, city) {
+  if (!companyName || !city) return REVIEWS_NO_GBP_RESULT;
+
+  const lookup = await lookupPlace(companyName, city);
+  if (lookup.status === 'unavailable') return REVIEWS_UNAVAILABLE_RESULT;
+  if (!lookup.place) return REVIEWS_NO_GBP_RESULT;
+
+  const place = lookup.place;
+  const rating = typeof place.rating === 'number' ? place.rating : null;
+  const count = typeof place.userRatingCount === 'number' ? place.userRatingCount : 0;
+
+  if (count >= REVIEWS_MIN_COUNT) {
+    const ratingStr = formatRating(rating);
+    const summary = ratingStr
+      ? `${count} Google reviews (${ratingStr}★ average)`
+      : `${count} Google reviews`;
+    return { state: 'pass', summary, rating: rating ?? undefined, count };
+  }
+
+  return {
+    state: 'fail',
+    summary: 'Fewer than 3 Google reviews — ask customers to leave a review',
+    rating: rating ?? undefined,
+    count,
+  };
 }
 
 export default checkGoogleBusinessProfile;
