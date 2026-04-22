@@ -1786,9 +1786,19 @@ router.get('/aeo-score', vendorAuth, async (req, res) => {
 });
 
 // POST /api/vendors/aeo-rescan — Trigger a new AEO report for authenticated vendor
+// Rate limit is gated by subscription tier: free/missing tier gets 2/hr,
+// every other tier (pro, starter, enterprise, managed, etc.) gets 20/hr.
+// DB lookup failure falls back to 2/hr.
 const rescanLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 2,
+  max: async (req) => {
+    try {
+      const v = await Vendor.findById(req.vendorId).select('tier').lean();
+      return (!v?.tier || v.tier === 'free') ? 2 : 20;
+    } catch {
+      return 2;
+    }
+  },
   message: { success: false, error: 'Too many scans. Please try again later.' },
   keyGenerator: (req) => req.vendorId,
 });
