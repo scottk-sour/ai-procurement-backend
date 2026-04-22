@@ -104,6 +104,23 @@ function findMatchingPlace(places, city) {
   return null;
 }
 
+// Strip trailing UK company-form suffixes so the Places textQuery matches the
+// way a GBP is actually registered. A listing like "TendorAI" won't rank
+// against "TendorAI LTD Cwmbran" on a fresh GBP with no other signals. We only
+// strip suffixes at the end of the name — "Sons of Anarchy" stays intact, but
+// "Smith & Sons Ltd" becomes "Smith".
+const COMPANY_SUFFIX_RE = /[\s,]+(?:ltd|limited|llp|plc|co|company|uk|(?:&\s*|and\s+)sons|inc|incorporated)\.?$/i;
+
+function stripCompanySuffix(name) {
+  let s = String(name || '').replace(/\s+/g, ' ').trim();
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(COMPANY_SUFFIX_RE, '').trim();
+  } while (s !== prev && s.length > 0);
+  return s || String(name || '').trim();
+}
+
 /**
  * Shared Places lookup. Returns a tri-state:
  *   { status: 'ok', place: <place>|null }  — API succeeded; place may be null for no match
@@ -125,11 +142,13 @@ async function lookupPlace(companyName, city) {
   const cached = cacheGet(key);
   if (cached) return cached;
 
+  const queryName = stripCompanySuffix(companyName);
+
   let response;
   try {
     response = await axios.post(
       ENDPOINT,
-      { textQuery: `${companyName} ${city}` },
+      { textQuery: `${queryName} ${city}` },
       {
         headers: {
           'Content-Type': 'application/json',
