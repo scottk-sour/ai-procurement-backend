@@ -80,13 +80,26 @@ function cacheSet(key, lookup) {
   cache.set(key, { lookup, storedAt: Date.now() });
 }
 
+// Lowercase + strip diacritics so "Cwmbrân" matches "Cwmbran" and similar.
+function normalizeForMatch(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
 function findMatchingPlace(places, city) {
   if (!Array.isArray(places) || places.length === 0) return null;
-  const cityToken = String(city).toLowerCase().trim();
+  const cityToken = normalizeForMatch(city);
   if (!cityToken) return null;
   for (const place of places) {
-    const addr = typeof place?.formattedAddress === 'string' ? place.formattedAddress : '';
-    if (addr.toLowerCase().includes(cityToken)) return place;
+    const haystack = [
+      typeof place?.formattedAddress === 'string' ? place.formattedAddress : '',
+      typeof place?.shortFormattedAddress === 'string' ? place.shortFormattedAddress : '',
+      typeof place?.displayName?.text === 'string' ? place.displayName.text : '',
+    ].map(normalizeForMatch).join(' | ');
+    if (haystack.includes(cityToken)) return place;
   }
   return null;
 }
