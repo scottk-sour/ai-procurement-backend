@@ -438,7 +438,7 @@ function drawWhatAiKnowsPage(ctx, report) {
   } else {
     checks = [
       { label: 'Company Website Found', value: !!sc.website, detail: sc.website || 'No website found' },
-      { label: 'Customer Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, Trustpilot, etc.' },
+      { label: 'Google Reviews Visible', value: !!sc.hasReviews, detail: sc.hasReviews ? 'Reviews found online' : 'No reviews found on Google, Trustpilot, etc.' },
       { label: 'Pricing Information', value: !!sc.hasPricing, detail: sc.hasPricing ? 'Pricing visible on website' : 'No pricing information found' },
       { label: 'Brand Partnerships Listed', value: !!sc.hasBrands, detail: sc.hasBrands ? 'Manufacturer partnerships visible' : 'No brand partnerships listed' },
       { label: 'Structured Data (Schema.org)', value: !!sc.hasStructuredData, detail: sc.hasStructuredData ? 'Schema markup detected' : 'No structured data found — AI cannot easily parse your site' },

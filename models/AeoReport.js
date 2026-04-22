@@ -73,6 +73,10 @@ const aeoReportSchema = new mongoose.Schema({
     hasDetailedServices: { type: Boolean, default: null },
     hasSocialMedia: { type: Boolean, default: null },
     hasGoogleBusiness: { type: Boolean, default: null },
+    googleBusinessDetail: {
+      state: { type: String },
+      summary: { type: String },
+    },
     summary: { type: String, default: null },
   },
   competitors: [
