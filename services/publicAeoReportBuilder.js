@@ -62,6 +62,39 @@ const CATEGORY_TO_SERVICE = {
   it: 'IT',
 };
 
+// Used for the "${companyName} is ${article} ${noun} in ${city}" summary line.
+// Keyed by broad vendor type (solicitor / accountant / mortgage-advisor /
+// estate-agent) and by equipment sub-category, with an 'other' fallback.
+const CATEGORY_NOUN = {
+  solicitor: 'solicitors firm',
+  accountant: 'accountancy practice',
+  'mortgage-advisor': 'mortgage advisory',
+  'estate-agent': 'estate agency',
+  copiers: 'photocopier supplier',
+  telecoms: 'telecoms supplier',
+  cctv: 'CCTV installer',
+  it: 'IT support provider',
+  other: 'business',
+};
+
+// searchedCompany check booleans used for the "X of Y applicable checks
+// passing" counter. Tri-state: null/undefined = not checked (excluded),
+// true = passing, false = failing.
+const CHECK_KEYS = [
+  'hasReviews',
+  'hasPricing',
+  'hasBrands',
+  'hasStructuredData',
+  'hasDetailedServices',
+  'hasSocialMedia',
+  'hasGoogleBusiness',
+];
+
+// scoreBreakdown sub-scores are scaled to this max in mapScoreBreakdown
+// (6 buckets * ~17 ≈ 100). Used by both the scaler and the
+// "sub-score below 50%" gap heuristic so there's one source of truth.
+const SUB_SCORE_MAX = 17;
+
 const CATEGORY_TO_PRACTICE_AREA = {
   conveyancing: 'Conveyancing',
   'family-law': 'Family Law',
@@ -182,7 +215,7 @@ function mapScoreBreakdown(detectorResult, platformResults) {
 
   const scoreOf = (key) => byKey[key]?.score ?? 0;
   const maxOf = (key) => byKey[key]?.maxScore ?? 10;
-  const scale = (raw, max) => (max > 0 ? Math.round((raw / max) * 17) : 0);
+  const scale = (raw, max) => (max > 0 ? Math.round((raw / max) * SUB_SCORE_MAX) : 0);
 
   const websiteOptRaw = scoreOf('meta') + scoreOf('h1') + scoreOf('viewport') + scoreOf('ssl');
   const websiteOptMax = maxOf('meta') + maxOf('h1') + maxOf('viewport') + maxOf('ssl');
@@ -198,7 +231,7 @@ function mapScoreBreakdown(detectorResult, platformResults) {
   if (Array.isArray(platformResults) && platformResults.length > 0) {
     const total = platformResults.length;
     const mentioned = platformResults.filter((p) => p.mentioned === true).length;
-    competitivePosition = Math.round((mentioned / total) * 17);
+    competitivePosition = Math.round((mentioned / total) * SUB_SCORE_MAX);
   }
 
   return {
@@ -233,20 +266,63 @@ function mapSearchedCompany({ detectorResult, websiteUrl, summary }) {
   };
 }
 
+function articleFor(nextWord) {
+  if (!nextWord) return 'a';
+  return /^[aeiouAEIOU]/.test(nextWord) ? 'an' : 'a';
+}
+
+function getCategoryNoun(category, customIndustry) {
+  if (customIndustry) return customIndustry;
+  const vendorType = getVendorType(category);
+  return CATEGORY_NOUN[vendorType] || CATEGORY_NOUN[category] || CATEGORY_NOUN.other;
+}
+
+function countApplicableChecks(sc) {
+  let applicable = 0;
+  let passing = 0;
+  for (const key of CHECK_KEYS) {
+    const val = sc?.[key];
+    if (val === null || val === undefined) continue;
+    applicable += 1;
+    if (val === true) passing += 1;
+  }
+  return { applicable, passing };
+}
+
 /**
  * Template-only narrative summary. Never calls an LLM. Describes only what the
  * deterministic detector found. No invented statistics, revenue estimates, or gaps.
  */
-function buildSummary({ companyName, category, customIndustry, city, websiteUrl, checks, blogDetection, gaps }) {
-  const categoryLabel = customIndustry || CATEGORY_LABELS[category] || category;
-  const passed10 = (checks || []).filter((c) => c.passed).length;
-  const passed = passed10 + (blogDetection?.hasBlog ? 1 : 0);
-  let text = `${companyName} is a ${categoryLabel} in ${city}. Our scan of ${websiteUrl} found ${passed} of 11 AI visibility checks passing.`;
+function buildSummary({ companyName, category, customIndustry, city, websiteUrl, searchedCompany, gaps }) {
+  const noun = getCategoryNoun(category, customIndustry);
+  const article = articleFor(noun);
+  const { applicable, passing } = countApplicableChecks(searchedCompany);
+
+  let text = `${companyName} is ${article} ${noun} in ${city}.`;
+  if (applicable > 0) {
+    text += ` Our scan of ${websiteUrl} found ${passing} of ${applicable} applicable AI visibility checks passing.`;
+  }
   if (gaps.length > 0) {
     const top = gaps.slice(0, 3).map((g) => g.title).join('; ');
     text += ` Key gaps identified: ${top}.`;
   }
   return text;
+}
+
+/**
+ * Count structural gaps surfaced by the data: platforms that decisively did
+ * not recommend the firm, competitors found, and sub-score categories below
+ * half of SUB_SCORE_MAX. Null platform results (timeout/error) and null
+ * sub-scores (not computed) are ignored.
+ */
+function computeGapsIdentified(report) {
+  const platformsNotRecommending = (report.platformResults || [])
+    .filter((r) => r.mentioned === false).length;
+  const competitorsFound = (report.competitors || []).length;
+  const breakdown = report.scoreBreakdown || {};
+  const subScoreBelow50 = Object.values(breakdown)
+    .filter((v) => typeof v === 'number' && v / SUB_SCORE_MAX < 0.5).length;
+  return platformsNotRecommending + competitorsFound + subScoreBelow50;
 }
 
 /**
@@ -380,23 +456,24 @@ export async function buildPublicReport({
 
   const gaps = deriveGaps(detectorResult.checks, detectorResult.blogDetection);
 
+  const searchedCompany = mapSearchedCompany({
+    detectorResult,
+    websiteUrl: detectorResult.websiteUrl,
+    summary: null,
+  });
+
   const summary = buildSummary({
     companyName,
     category,
     customIndustry,
     city,
     websiteUrl: detectorResult.websiteUrl,
-    checks: detectorResult.checks,
-    blogDetection: detectorResult.blogDetection,
+    searchedCompany,
     gaps,
   });
+  searchedCompany.summary = summary;
 
   const scoreBreakdown = mapScoreBreakdown(detectorResult, platformResults);
-  const searchedCompany = mapSearchedCompany({
-    detectorResult,
-    websiteUrl: detectorResult.websiteUrl,
-    summary,
-  });
 
   const aiMentioned =
     Array.isArray(platformResults) && platformResults.some((p) => p.mentioned === true);
@@ -424,7 +501,7 @@ export async function buildPublicReport({
     description: c.description,
   }));
 
-  return {
+  const result = {
     companyName,
     category,
     customIndustry: customIndustry || null,
@@ -448,6 +525,8 @@ export async function buildPublicReport({
     detectorResult,
     tier: 'free',
   };
+  result.gapsIdentified = computeGapsIdentified(result);
+  return result;
 }
 
 export default buildPublicReport;
