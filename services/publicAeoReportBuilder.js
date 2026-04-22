@@ -13,7 +13,16 @@
 import { runDetector } from './aeoDetector.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { isValidBusinessName } from './platformQuery/prompt.js';
-import { checkGoogleBusinessProfile, checkGoogleReviews } from './googleBusinessProfile.js';
+import {
+  checkGoogleBusinessProfile,
+  checkGoogleReviews,
+  checkPlacesListingQuality,
+} from './googleBusinessProfile.js';
+import {
+  computeTechnicalHealth,
+  computeAiVisibility,
+  isDualScoringEnabled,
+} from './scoring.js';
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import Vendor from '../models/Vendor.js';
 
@@ -211,8 +220,11 @@ function deriveGaps(checks, blogDetection) {
  * Map detector output (10 checks + blog) onto the legacy 6-bucket scoreBreakdown.
  * Returns null for buckets the detector cannot measure (directoryPresence, reviewSignals).
  * competitivePosition is derived from live platformResults.
+ *
+ * Exported so aeoReportGenerator.js (the LLM rescan path) can populate the
+ * same backwards-compat sub-scores that the PDF renderer still consumes.
  */
-function mapScoreBreakdown(detectorResult, platformResults) {
+export function mapScoreBreakdown(detectorResult, platformResults) {
   const byKey = Object.create(null);
   for (const c of detectorResult.checks || []) byKey[c.key] = c;
 
@@ -445,6 +457,14 @@ export async function buildPublicReport({
     runAt: new Date(),
   };
 
+  // jsonLdPayloads stays off detectorResult — it's feed-through for scoring,
+  // not a persisted sub-doc. The detectorResultSchema in models/AeoReport.js
+  // would silently drop it, but keeping the persisted shape lean is cleaner.
+  const detectorForScoring = {
+    ...detectorResult,
+    jsonLdPayloads: detectorRaw.jsonLdPayloads || [],
+  };
+
   const categoryLabel = customIndustry || CATEGORY_LABELS[category] || category;
 
   const platformResults = await queryAllPlatforms({
@@ -478,6 +498,17 @@ export async function buildPublicReport({
     count: reviews.count ?? null,
   };
 
+  // Places listing category alignment. Reuses the GBP lookup cache —
+  // zero extra Places API calls. 'skipped' for vendor types with no
+  // Places category mapping (equipment / other) — scoring.js
+  // redistributes the 10 points.
+  const vendorTypeForPlaces = getVendorType(category);
+  const placesListing = await checkPlacesListingQuality(
+    companyName,
+    city,
+    vendorTypeForPlaces,
+  );
+
   const summary = buildSummary({
     companyName,
     category,
@@ -490,6 +521,14 @@ export async function buildPublicReport({
   searchedCompany.summary = summary;
 
   const scoreBreakdown = mapScoreBreakdown(detectorResult, platformResults);
+
+  // Dual scoring. Flag default TRUE — DUAL_SCORING=false in Render env reverts
+  // to legacy single-score shape for rollback without a redeploy.
+  const dualEnabled = isDualScoringEnabled();
+  const techResult = dualEnabled ? computeTechnicalHealth(detectorForScoring) : null;
+  const aiResult = dualEnabled
+    ? computeAiVisibility(detectorForScoring, gbp, reviews, placesListing, platformResults)
+    : null;
 
   const aiMentioned =
     Array.isArray(platformResults) && platformResults.some((p) => p.mentioned === true);
@@ -517,6 +556,14 @@ export async function buildPublicReport({
     description: c.description,
   }));
 
+  // When dual scoring is enabled, the legacy `score` field mirrors
+  // aiVisibilityScore so existing frontend surfaces keep rendering a
+  // single number until they migrate. When disabled, fall back to the
+  // detector's /100 sum — same as the pre-dual-scoring public path.
+  const legacyScore = dualEnabled && aiResult?.score != null
+    ? aiResult.score
+    : detectorResult.overallScore;
+
   const result = {
     companyName,
     category,
@@ -526,7 +573,7 @@ export async function buildPublicReport({
     name: name || undefined,
     source: source || undefined,
     reportType: 'full',
-    score: detectorResult.overallScore,
+    score: legacyScore,
     scoreBreakdown,
     searchedCompany,
     competitors,
@@ -541,6 +588,16 @@ export async function buildPublicReport({
     detectorResult,
     tier: 'free',
   };
+
+  if (dualEnabled) {
+    result.technicalHealthScore = techResult?.score ?? null;
+    result.technicalHealthBand = techResult?.band ?? null;
+    result.technicalHealthBreakdown = techResult?.breakdown ?? null;
+    result.aiVisibilityScore = aiResult?.score ?? null;
+    result.aiVisibilityBand = aiResult?.band ?? null;
+    result.aiVisibilityBreakdown = aiResult?.breakdown ?? null;
+  }
+
   result.gapsIdentified = computeGapsIdentified(result);
   return result;
 }

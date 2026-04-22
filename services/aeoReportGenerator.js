@@ -9,7 +9,19 @@
  */
 
 import Vendor from '../models/Vendor.js';
-import { checkGoogleBusinessProfile, checkGoogleReviews } from './googleBusinessProfile.js';
+import {
+  checkGoogleBusinessProfile,
+  checkGoogleReviews,
+  checkPlacesListingQuality,
+} from './googleBusinessProfile.js';
+import { runDetector } from './aeoDetector.js';
+import { queryAllPlatforms } from './platformQuery/index.js';
+import {
+  computeTechnicalHealth,
+  computeAiVisibility,
+  isDualScoringEnabled,
+} from './scoring.js';
+import { mapScoreBreakdown } from './publicAeoReportBuilder.js';
 
 // ─── Category labels (human-readable) ────────────────────────────────────────
 
@@ -406,6 +418,14 @@ function getVendorType(category) {
 
 // ─── Build the checklist section of the prompt per vendorType ─────────────────
 
+// Note on hasBrands: this remains an LLM judgement and is not overridden by
+// the deterministic detector. Accreditations (SRA, ICAEW, FCA, Propertymark,
+// Lexcel, …) live in copy, badge images, and footer text that scraping
+// cannot reliably parse — a missed footer logo or non-standard wording
+// flips the boolean wrongly. The LLM, with web search, makes a better call
+// here than a regex would. The other booleans on this checklist
+// (hasStructuredData, hasSocialMedia, hasPricing, hasDetailedServices) are
+// overridden post-LLM with detector output where available.
 function getChecklistPrompt(vendorType) {
   if (vendorType === 'solicitor') {
     return `  "searchedCompany": {
@@ -477,109 +497,9 @@ function getChecklistPrompt(vendorType) {
   }`;
 }
 
-// ─── Scoring hints per vendorType ────────────────────────────────────────────
-
-function getScoringHints(vendorType) {
-  if (vendorType === 'solicitor') {
-    return `SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (LegalService)?
-- contentAuthority: Does the firm have authoritative content — legal guides, blog posts, case studies, FAQ pages?
-- directoryPresence: Is the firm on the SRA register, Law Society Find a Solicitor, legal directories (Chambers, Legal 500), Google Business?
-- reviewSignals: Google reviews, Trustpilot, ReviewSolicitors, client testimonials?
-- structuredData: Schema.org/LegalService markup, JSON-LD, LocalBusiness structured data?
-- competitivePosition: How visible are they vs other solicitors in the area? Would AI recommend them?`;
-  }
-
-  if (vendorType === 'accountant') {
-    return `SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (AccountingService)?
-- contentAuthority: Does the firm have authoritative content — tax guides, blog posts, case studies, FAQ pages?
-- directoryPresence: Is the firm on the ICAEW directory, ACCA directory, Google Business, accountancy directories?
-- reviewSignals: Google reviews, Trustpilot, client testimonials?
-- structuredData: Schema.org/AccountingService markup, JSON-LD, LocalBusiness structured data?
-- competitivePosition: How visible are they vs other accountants in the area? Would AI recommend them?`;
-  }
-
-  if (vendorType === 'mortgage-advisor') {
-    return `SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (FinancialService)?
-- contentAuthority: Does the firm have authoritative content — mortgage guides, blog posts, calculators, FAQ pages?
-- directoryPresence: Is the firm on the FCA register, VouchedFor, Unbiased, Google Business?
-- reviewSignals: Google reviews, Trustpilot, VouchedFor ratings, client testimonials?
-- structuredData: Schema.org/FinancialService markup, JSON-LD, LocalBusiness structured data?
-- competitivePosition: How visible are they vs other mortgage advisors in the area? Would AI recommend them? Weight FCA authorisation status, lender panel breadth, and review volume heavily.`;
-  }
-
-  if (vendorType === 'estate-agent') {
-    return `SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup (RealEstateAgent)?
-- contentAuthority: Does the agency have authoritative content — area guides, market reports, blog posts, sold price data?
-- directoryPresence: Is the agency on Rightmove, Zoopla, OnTheMarket, Propertymark directory, Google Business?
-- reviewSignals: Google reviews, Trustpilot, AllAgents, Rightmove reviews, client testimonials?
-- structuredData: Schema.org/RealEstateAgent markup, JSON-LD, LocalBusiness structured data?
-- competitivePosition: How visible are they vs other agents in the area? Would AI recommend them? Weight Propertymark membership, portal listing presence, and sold price track record heavily.`;
-  }
-
-  // Default: office equipment
-  return `SCORING RULES:
-- score is 0-100 overall AI visibility score
-- Each scoreBreakdown sub-score is 0-17 (they should roughly sum to the overall score)
-- websiteOptimisation: Does the site have good meta tags, speed, mobile-friendly, schema markup?
-- contentAuthority: Does the company have authoritative content, blog posts, case studies?
-- directoryPresence: Is the company listed on relevant directories, Google Business, Yell, etc?
-- reviewSignals: Google reviews, Trustpilot, industry-specific review sites?
-- structuredData: Schema.org markup, JSON-LD, structured data on their website?
-- competitivePosition: How visible are they vs competitors? Are they the go-to recommendation?`;
-}
-
-// ─── Gap hints per vendorType ────────────────────────────────────────────────
-
-function getGapHints(vendorType) {
-  if (vendorType === 'solicitor') {
-    return `GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the firm is missing that competing solicitors have
-- Common solicitor gaps: no SRA-linked website, no legal directory listings, no client testimonials, no detailed practice area pages, no fee transparency, no schema markup, no blog/legal guides
-- Be specific: "No visible client reviews on Google" not "Poor online presence"`;
-  }
-
-  if (vendorType === 'accountant') {
-    return `GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the firm is missing that competing accountants have
-- Common accountant gaps: no ICAEW directory link, no client testimonials, no detailed service pages, no fee transparency, no schema markup, no blog/tax guides, no cloud accounting partner badges (Xero/QuickBooks)
-- Be specific: "No visible client reviews on Google" not "Poor online presence"`;
-  }
-
-  if (vendorType === 'mortgage-advisor') {
-    return `GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the firm is missing that competing mortgage advisors have
-- Common mortgage advisor gaps: no FCA register link on website, no lender panel information, no fee disclosure page, no mortgage calculators, no FinancialService schema markup, no VouchedFor/Unbiased profile, no blog/mortgage guides, no CeMAP/DipFA qualification display, unclear whole-of-market vs restricted status
-- Be specific: "No FCA registration number visible on website" not "Poor compliance"`;
-  }
-
-  if (vendorType === 'estate-agent') {
-    return `GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the agency is missing that competing estate agents have
-- Common estate agent gaps: no Propertymark/NAEA membership displayed, no Rightmove/Zoopla presence, no sold price data or track record, no RealEstateAgent schema markup, no area guides, no complaints procedure page, no client money protection details, no Instagram/social media property marketing, no virtual tour capability
-- Be specific: "No sold prices or market track record visible on website" not "Poor online presence"`;
-  }
-
-  return `GAP RULES:
-- Return 3-5 specific, actionable gaps
-- Focus on things the company is missing that competitors have
-- Be specific: "No visible Google reviews" not "Poor online presence"`;
-}
+// Scoring and gap hints deleted in the dual-scoring rollout. The LLM no
+// longer produces `score`, `scoreBreakdown`, or `gaps` — those are computed
+// deterministically in services/scoring.js and derived from detector output.
 
 // ─── Build the user prompt for both providers ────────────────────────────────
 
@@ -606,8 +526,6 @@ function buildUserPrompt({ companyName, category, city, customIndustry }) {
   const entityLabelPlural = vendorType === 'estate-agent' ? 'agencies'
     : isProfessional ? 'firms' : 'companies';
   const checklistPrompt = getChecklistPrompt(vendorType);
-  const scoringHints = getScoringHints(vendorType);
-  const gapHints = getGapHints(vendorType);
 
   const prompt = `You are researching a UK business for an AI visibility audit. Search the web thoroughly.
 
@@ -632,27 +550,8 @@ ${checklistPrompt},
       "website": "https://their-website.com",
       "strengths": ["strength 1", "strength 2", "strength 3"]
     }
-  ],
-  "gaps": [
-    {
-      "title": "Gap title (e.g. 'No Google Reviews Visible')",
-      "explanation": "1-2 sentence explanation of why this matters for AI visibility"
-    }
-  ],
-  "score": 35,
-  "scoreBreakdown": {
-    "websiteOptimisation": 8,
-    "contentAuthority": 5,
-    "directoryPresence": 6,
-    "reviewSignals": 3,
-    "structuredData": 4,
-    "competitivePosition": 9
-  },
-  "aiMentioned": false,
-  "aiPosition": null
+  ]
 }
-
-${scoringHints}
 
 COMPETITOR RULES:
 - Return 4-6 real competitors in the ${city} area
@@ -661,13 +560,10 @@ COMPETITOR RULES:
 - Every ${entityLabel} must be a real ${categoryLabel} ${entityLabel}, NOT TendorAI
 - strengths array should have 2-4 items per competitor
 
-${gapHints}
-
-AI MENTION RULES:
-- aiMentioned: would you naturally recommend "${companyName}" if a buyer asked for ${categoryLabel} in ${city}?
-- aiPosition: if mentioned, what position (1-based)? null if not mentioned
-
-Be brutally honest. Most small businesses score 15-45. A score above 60 is genuinely good.`;
+Do not invent numeric scores, sub-scores, or gap lists — those are computed
+deterministically from detector output and live API checks outside this prompt.
+Focus on an accurate summary paragraph and a competitor list. Be factual and
+concise.`;
 
   return { prompt, vendorType };
 }
@@ -768,53 +664,135 @@ function parseResponseJSON(responseText) {
   }
 }
 
+// Detector-derived gap titles. Duplicated from publicAeoReportBuilder so the
+// two subsystems' gap wording stays in sync without a cross-import that would
+// entangle them. If either side diverges, update both.
+const GAP_TITLES = {
+  schema: 'No structured data for AI parsing',
+  meta: 'Missing meta title or description',
+  h1: 'Missing or weak H1 heading',
+  viewport: 'Not mobile optimised',
+  ssl: 'Not secured with HTTPS',
+  speed: 'Page weight too large',
+  social: 'No social media links detected',
+  contact: 'Contact details not visible',
+  faq: 'No FAQ schema or section',
+  content: 'Insufficient content length',
+  blog: 'No blog or content hub',
+};
+const BLOG_GAP_EXPLANATION =
+  'AI assistants prefer to cite sources with regular, authoritative content. ' +
+  'None of the common blog paths was reachable on your site.';
+
+function deriveGapsFromDetector(detector) {
+  if (!detector || !Array.isArray(detector.checks)) return [];
+  const gaps = [];
+  for (const check of detector.checks) {
+    if (!check || check.passed) continue;
+    const max = check.maxScore ?? 10;
+    const score = check.score ?? 0;
+    gaps.push({
+      key: check.key,
+      title: GAP_TITLES[check.key] || check.name || 'Visibility gap',
+      explanation: check.recommendation || '',
+      impact: max - score,
+    });
+  }
+  if (detector.blogDetection && !detector.blogDetection.hasBlog) {
+    gaps.push({
+      key: 'blog',
+      title: GAP_TITLES.blog,
+      explanation: BLOG_GAP_EXPLANATION,
+      impact: 10,
+    });
+  }
+  gaps.sort((a, b) => b.impact - a.impact);
+  return gaps.slice(0, 5).map(({ title, explanation }) => ({ title, explanation }));
+}
+
 /**
  * Generate a full AEO visibility report for a company.
  *
+ * The LLM is now used only for:
+ *   - searchedCompany.summary (narrative paragraph)
+ *   - competitors array
+ *
+ * All scoring (Technical Health, AI Visibility), searchedCompany booleans,
+ * GBP/reviews/Places listing, AI platform mentions, and gaps are computed
+ * deterministically from the detector + live API checks. The LLM no longer
+ * produces `score`, `scoreBreakdown`, or `gaps`.
+ *
+ * When websiteUrl is omitted the detector is skipped — dual scoring and
+ * detector-derived gaps are null. Callers in the rescan flows plumb
+ * websiteUrl through so production paths always get full dual scoring.
+ *
  * @param {Object} params
  * @param {string} params.companyName
- * @param {string} params.category - copiers|telecoms|cctv|it|conveyancing|family-law|...
+ * @param {string} params.category - copiers|telecoms|cctv|it|conveyancing|...
  * @param {string} params.city
  * @param {string} [params.email]
+ * @param {string} [params.customIndustry]
+ * @param {string} [params.websiteUrl] - drives the deterministic detector
  * @returns {Object} Full report data ready for saving
  */
-export async function generateFullReport({ companyName, category, city, email, customIndustry }) {
+export async function generateFullReport({
+  companyName,
+  category,
+  city,
+  email,
+  customIndustry,
+  websiteUrl,
+}) {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
     throw new Error('Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is configured');
   }
 
   const { prompt: userPrompt, vendorType } = buildUserPrompt({ companyName, category, city, customIndustry });
+  const categoryLabel = customIndustry || CATEGORY_LABELS[category] || category;
 
-  // Try Claude first, fall back to OpenAI
-  let responseText;
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      responseText = await generateWithClaude(userPrompt);
-    } catch (claudeErr) {
-      console.error('[AEO] Claude failed, falling back to OpenAI:', claudeErr.message);
-      if (!process.env.OPENAI_API_KEY) {
-        throw new Error('Claude failed and OPENAI_API_KEY is not configured as fallback');
+  // Fire the slow I/O — LLM + detector + platform queries — in parallel so
+  // the rescan latency doesn't sum. GBP/reviews/places share a cache and
+  // are cheap; we run them serially after the detector returns.
+  const llmPromise = (async () => {
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        return await generateWithClaude(userPrompt);
+      } catch (claudeErr) {
+        console.error('[AEO] Claude failed, falling back to OpenAI:', claudeErr.message);
+        if (!process.env.OPENAI_API_KEY) {
+          throw new Error('Claude failed and OPENAI_API_KEY is not configured as fallback');
+        }
+        return await generateWithOpenAI(userPrompt);
       }
-      responseText = await generateWithOpenAI(userPrompt);
     }
-  } else {
     console.log('[AEO] No ANTHROPIC_API_KEY, using OpenAI directly');
-    responseText = await generateWithOpenAI(userPrompt);
-  }
+    return generateWithOpenAI(userPrompt);
+  })();
+
+  const detectorPromise = websiteUrl
+    ? runDetector({ websiteUrl }).catch((err) => {
+        console.warn(`[AEO] Detector failed for "${websiteUrl}": ${err.message}`);
+        return { fetchError: err.message };
+      })
+    : Promise.resolve(null);
+
+  const platformPromise = queryAllPlatforms({
+    companyName,
+    category,
+    city,
+    categoryLabel,
+  }).catch((err) => {
+    console.error('[AEO] Platform queries failed:', err.message);
+    return [];
+  });
+
+  const [responseText, detectorRaw, platformResults] = await Promise.all([
+    llmPromise,
+    detectorPromise,
+    platformPromise,
+  ]);
 
   const parsed = parseResponseJSON(responseText);
-
-  // Validate and clamp score
-  const score = Math.max(0, Math.min(100, Math.round(parsed.score || 0)));
-
-  const scoreBreakdown = {
-    websiteOptimisation: clamp(parsed.scoreBreakdown?.websiteOptimisation, 0, 17),
-    contentAuthority: clamp(parsed.scoreBreakdown?.contentAuthority, 0, 17),
-    directoryPresence: clamp(parsed.scoreBreakdown?.directoryPresence, 0, 17),
-    reviewSignals: clamp(parsed.scoreBreakdown?.reviewSignals, 0, 17),
-    structuredData: clamp(parsed.scoreBreakdown?.structuredData, 0, 17),
-    competitivePosition: clamp(parsed.scoreBreakdown?.competitivePosition, 0, 17),
-  };
 
   const competitors = (parsed.competitors || []).map((c) => ({
     name: c.name || 'Unknown',
@@ -824,13 +802,8 @@ export async function generateFullReport({ companyName, category, city, email, c
     strengths: Array.isArray(c.strengths) ? c.strengths.slice(0, 5) : [],
   }));
 
-  const gaps = (parsed.gaps || []).map((g) => ({
-    title: g.title || 'Unknown Gap',
-    explanation: g.explanation || '',
-  }));
-
   const searchedCompany = {
-    website: parsed.searchedCompany?.website || null,
+    website: parsed.searchedCompany?.website || websiteUrl || null,
     hasReviews: !!parsed.searchedCompany?.hasReviews,
     hasPricing: !!parsed.searchedCompany?.hasPricing,
     hasBrands: !!parsed.searchedCompany?.hasBrands,
@@ -841,20 +814,33 @@ export async function generateFullReport({ companyName, category, city, email, c
     summary: parsed.searchedCompany?.summary || null,
   };
 
-  // Override the LLM's hasGoogleBusiness guess with a real Places API lookup.
-  // On any failure, leave the LLM value intact so the rescan still completes.
+  // Detector built? Prefer its deterministic findings over the LLM's guesses
+  // for the boolean checks we can actually measure.
+  const detectorUsable = !!(detectorRaw && !detectorRaw.fetchError && Array.isArray(detectorRaw.checks));
+  if (detectorUsable) {
+    const byKey = Object.create(null);
+    for (const c of detectorRaw.checks) byKey[c.key] = c;
+    searchedCompany.hasStructuredData = byKey.schema?.passed ?? searchedCompany.hasStructuredData;
+    searchedCompany.hasSocialMedia = byKey.social?.passed ?? searchedCompany.hasSocialMedia;
+    if (typeof detectorRaw.hasPricing === 'boolean') searchedCompany.hasPricing = detectorRaw.hasPricing;
+    if (typeof detectorRaw.hasDetailedServices === 'boolean') {
+      searchedCompany.hasDetailedServices = detectorRaw.hasDetailedServices;
+    }
+  }
+
+  // GBP / reviews / Places listing — shared cache, so three checks = one API call.
+  let gbp = null;
+  let reviews = null;
+  let placesListing = null;
   try {
-    const gbp = await checkGoogleBusinessProfile(companyName, city);
+    gbp = await checkGoogleBusinessProfile(companyName, city);
     searchedCompany.hasGoogleBusiness = gbp.state === 'pass' || gbp.state === 'amber';
     searchedCompany.googleBusinessDetail = { state: gbp.state, summary: gbp.summary };
   } catch (err) {
     console.warn(`[AEO] GBP override failed for "${companyName}" in "${city}": ${err.message}`);
   }
-
-  // Override the LLM's hasReviews guess with a real Places reviews lookup.
-  // Reuses the GBP lookup cache, so this costs zero extra Places calls.
   try {
-    const reviews = await checkGoogleReviews(companyName, city);
+    reviews = await checkGoogleReviews(companyName, city);
     searchedCompany.hasReviews = reviews.state === 'pass';
     searchedCompany.reviewsDetail = {
       state: reviews.state,
@@ -865,8 +851,41 @@ export async function generateFullReport({ companyName, category, city, email, c
   } catch (err) {
     console.warn(`[AEO] Reviews override failed for "${companyName}" in "${city}": ${err.message}`);
   }
+  try {
+    placesListing = await checkPlacesListingQuality(companyName, city, vendorType);
+  } catch (err) {
+    console.warn(`[AEO] Places listing check failed for "${companyName}" in "${city}": ${err.message}`);
+  }
 
-  // Build backward-compatible aiRecommendations array
+  // Dual scoring. Flag default TRUE — DUAL_SCORING=false in Render env reverts
+  // responses to legacy single-score shape for rollback without a redeploy.
+  const dualEnabled = isDualScoringEnabled();
+  let techResult = null;
+  let aiResult = null;
+  if (dualEnabled && detectorUsable) {
+    const detectorForScoring = {
+      ...detectorRaw,
+      jsonLdPayloads: detectorRaw.jsonLdPayloads || [],
+    };
+    techResult = computeTechnicalHealth(detectorForScoring);
+    aiResult = computeAiVisibility(detectorForScoring, gbp, reviews, placesListing, platformResults);
+  }
+
+  const gaps = deriveGapsFromDetector(detectorRaw);
+
+  // aiMentioned / aiPosition: prefer real platformQuery data, fall back to
+  // the LLM's own boolean only if platform queries returned nothing useful.
+  let aiMentioned = null;
+  let aiPosition = null;
+  if (Array.isArray(platformResults) && platformResults.length > 0) {
+    aiMentioned = platformResults.some((p) => p.mentioned === true);
+    const firstHit = platformResults.find((p) => p.mentioned === true);
+    aiPosition = firstHit?.position ?? null;
+  } else {
+    aiMentioned = !!parsed.aiMentioned;
+    aiPosition = parsed.aiPosition || null;
+  }
+
   const aiRecommendations = competitors.map((c) => ({
     name: c.name,
     description: c.description,
@@ -878,7 +897,6 @@ export async function generateFullReport({ companyName, category, city, email, c
   const cityRegex = new RegExp(city, 'i');
 
   if (category === 'other') {
-    // No TendorAI directory for 'other' categories
     competitorsOnTendorAI = 0;
   } else if (vendorType === 'solicitor' || vendorType === 'accountant' || vendorType === 'mortgage-advisor' || vendorType === 'estate-agent') {
     const practiceArea = CATEGORY_TO_PRACTICE_AREA[category];
@@ -898,26 +916,68 @@ export async function generateFullReport({ companyName, category, city, email, c
     });
   }
 
-  return {
+  // Persisted detectorResult mirrors the public builder's shape — jsonLdPayloads
+  // stays off the sub-doc (feed-through only, not a persisted field).
+  const detectorResult = detectorUsable
+    ? {
+        websiteUrl: detectorRaw.websiteUrl,
+        overallScore: detectorRaw.overallScore,
+        checks: detectorRaw.checks,
+        blogDetection: detectorRaw.blogDetection,
+        hasPricing: detectorRaw.hasPricing ?? null,
+        hasDetailedServices: detectorRaw.hasDetailedServices ?? null,
+        tendoraiSchemaDetected: detectorRaw.tendoraiSchemaDetected,
+        fetchError: null,
+        runAt: new Date(),
+      }
+    : undefined;
+
+  // Legacy `score` mirrors aiVisibilityScore when dual scoring is on; falls
+  // back to the detector's /100 sum so the frontend always has a number.
+  // When the detector didn't run and dual scoring is off, legacy score is null.
+  let legacyScore = null;
+  if (dualEnabled && aiResult?.score != null) {
+    legacyScore = aiResult.score;
+  } else if (detectorUsable) {
+    legacyScore = detectorRaw.overallScore;
+  }
+
+  // Legacy 6-bucket scoreBreakdown kept populated for backwards compat —
+  // the existing PDF renderer still reads it. Sourced from detector +
+  // platformResults, same shape as the public builder produces. Null when
+  // the detector didn't run.
+  const scoreBreakdown = detectorUsable
+    ? mapScoreBreakdown(detectorResult, platformResults)
+    : null;
+
+  const result = {
     companyName,
     category,
     customIndustry: customIndustry || null,
     city,
     email: email || undefined,
     reportType: 'full',
-    aiMentioned: !!parsed.aiMentioned,
-    aiPosition: parsed.aiPosition || null,
+    aiMentioned,
+    aiPosition,
     aiRecommendations,
     competitorsOnTendorAI,
-    score,
+    score: legacyScore,
     scoreBreakdown,
     searchedCompany,
     competitors,
     gaps,
+    platformResults,
+    detectorResult,
   };
-}
 
-function clamp(val, min, max) {
-  if (val == null || isNaN(val)) return 0;
-  return Math.max(min, Math.min(max, Math.round(val)));
+  if (dualEnabled) {
+    result.technicalHealthScore = techResult?.score ?? null;
+    result.technicalHealthBand = techResult?.band ?? null;
+    result.technicalHealthBreakdown = techResult?.breakdown ?? null;
+    result.aiVisibilityScore = aiResult?.score ?? null;
+    result.aiVisibilityBand = aiResult?.band ?? null;
+    result.aiVisibilityBreakdown = aiResult?.breakdown ?? null;
+  }
+
+  return result;
 }

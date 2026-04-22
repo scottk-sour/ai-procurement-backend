@@ -55,6 +55,11 @@ const aeoReportSchema = new mongoose.Schema({
 
   // Full report fields (optional — basic reports won't have these)
   reportType: { type: String, enum: ['basic', 'full'], default: 'basic' },
+
+  // Legacy single-score fields. Populated for backwards compatibility even when
+  // dual scoring is enabled — `score` mirrors `aiVisibilityScore`. Historical
+  // reports keep their original values. New code should prefer the dual-score
+  // fields below.
   score: { type: Number, min: 0, max: 100, default: null },
   scoreBreakdown: {
     websiteOptimisation: { type: Number, default: null },
@@ -64,6 +69,15 @@ const aeoReportSchema = new mongoose.Schema({
     structuredData: { type: Number, default: null },
     competitivePosition: { type: Number, default: null },
   },
+
+  // Dual scoring fields (added in the DUAL_SCORING rollout). Null on legacy
+  // reports created before the rollout — frontend renders a banner for those.
+  technicalHealthScore: { type: Number, min: 0, max: 100, default: null },
+  technicalHealthBand: { type: String, default: null },
+  technicalHealthBreakdown: { type: mongoose.Schema.Types.Mixed, default: null },
+  aiVisibilityScore: { type: Number, min: 0, max: 100, default: null },
+  aiVisibilityBand: { type: String, default: null },
+  aiVisibilityBreakdown: { type: mongoose.Schema.Types.Mixed, default: null },
   searchedCompany: {
     website: { type: String, default: null },
     hasReviews: { type: Boolean, default: null },
