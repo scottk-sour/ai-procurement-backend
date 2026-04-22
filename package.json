@@ -21,6 +21,7 @@
     "lint:fix": "echo \"Lint fix will be configured in Week 3\"",
     "format": "echo \"Formatting will be configured in Week 3\"",
     "format:check": "echo \"Format check will be configured in Week 3\"",
+    "diagnose-gbp": "node scripts/diagnose-gbp.js",
     "scan:mentions": "node scripts/weeklyAIMentionScan.js",
     "email:weekly": "node scripts/sendWeeklyVendorEmails.js",
     "generate:reports": "node scripts/generateBatchReports.js",
