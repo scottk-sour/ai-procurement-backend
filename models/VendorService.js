@@ -1,4 +1,8 @@
 import mongoose from 'mongoose';
+import {
+  generateServiceSchema,
+  calculateCompletenessScore,
+} from '../services/serviceSchemaGenerator.js';
 
 const { Schema } = mongoose;
 
@@ -215,6 +219,35 @@ vendorServiceSchema.pre('validate', function (next) {
       ));
     }
   }
+  next();
+});
+
+// ---- Pre-save: completeness scoring + schema cache ----------------------
+//
+// Scoring is cheap and always runs. Schema generation fetches the parent
+// Vendor (once, lean) unless the caller attached `doc._vendor` beforehand.
+// Either step swallowing an error must not block the save.
+
+vendorServiceSchema.pre('save', async function (next) {
+  try {
+    const { score, signals } = calculateCompletenessScore(this);
+    this.schemaCompletenessScore = score;
+    this.aeoSignals = signals;
+  } catch (e) {
+    console.error('[VendorService] completeness scoring failed:', e?.message || e);
+  }
+
+  try {
+    let vendor = this._vendor;
+    if (!vendor && this.vendorId) {
+      vendor = await mongoose.model('Vendor').findById(this.vendorId).lean();
+    }
+    this.schemaJsonLd = generateServiceSchema(this, vendor) || null;
+  } catch (e) {
+    console.error('[VendorService] schema generation failed:', e?.message || e);
+    this.schemaJsonLd = null;
+  }
+
   next();
 });
 
