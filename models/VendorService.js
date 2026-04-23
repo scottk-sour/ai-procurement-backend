@@ -6,15 +6,7 @@ const { Schema } = mongoose;
 
 const faqSchema = new Schema({
   question: { type: String, required: true, trim: true },
-  answer: {
-    type: String,
-    required: true,
-    trim: true,
-    validate: {
-      validator: (v) => !v || v.length >= 50,
-      message: 'FAQ answer must be at least 50 characters for AEO quality.',
-    },
-  },
+  answer: { type: String, required: true, trim: true },
 }, { _id: false });
 
 const solicitorDataSchema = new Schema({
@@ -178,14 +170,9 @@ const vendorServiceSchema = new Schema({
 
   name: { type: String, required: true, trim: true },
 
-  description: {
-    type: String,
-    trim: true,
-    validate: {
-      validator: (v) => !v || v.length >= 150,
-      message: 'Service description should be at least 150 characters for AEO quality.',
-    },
-  },
+  // Length is an AEO-quality signal, not a hard rule — scored in aeoSignals
+  // (Commit 3), never rejected at save time. Vendors must be able to draft.
+  description: { type: String, trim: true },
 
   active: { type: Boolean, default: true, index: true },
 
@@ -213,6 +200,9 @@ const vendorServiceSchema = new Schema({
 // ---- Validation: reject sub-doc that doesn't match vendorType -----------
 
 vendorServiceSchema.pre('validate', function (next) {
+  // Absent vendorType → let Mongoose's native required/enum validator fire
+  // with the cleaner message instead of our "Unsupported vendorType" one.
+  if (!this.vendorType) return next();
   const expectedField = VENDOR_TYPE_TO_DATA_FIELD[this.vendorType];
   if (!expectedField) {
     return next(new Error(`Unsupported vendorType '${this.vendorType}'.`));
