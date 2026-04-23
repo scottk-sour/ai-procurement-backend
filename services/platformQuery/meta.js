@@ -1,7 +1,7 @@
 import Groq from 'groq-sdk';
 import { buildPrompt, parsePlatformResponse } from './prompt.js';
 
-export async function queryMeta({ companyName, categoryLabel, city }) {
+export async function queryMeta({ companyName, categoryLabel, city, websiteUrl }) {
   const client = new Groq({
     apiKey: process.env.GROQ_API_KEY,
   });
@@ -15,7 +15,7 @@ export async function queryMeta({ companyName, categoryLabel, city }) {
   });
 
   const rawResponse = response.choices?.[0]?.message?.content || '';
-  const parsed = parsePlatformResponse(rawResponse, companyName);
+  const parsed = parsePlatformResponse(rawResponse, companyName, { websiteUrl });
 
   return {
     platform: 'meta',

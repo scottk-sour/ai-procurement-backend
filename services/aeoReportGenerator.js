@@ -781,6 +781,7 @@ export async function generateFullReport({
     category,
     city,
     categoryLabel,
+    websiteUrl,
   }).catch((err) => {
     console.error('[AEO] Platform queries failed:', err.message);
     return [];

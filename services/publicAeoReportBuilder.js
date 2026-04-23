@@ -13,6 +13,7 @@
 import { runDetector } from './aeoDetector.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { isValidBusinessName } from './platformQuery/prompt.js';
+import { isSameFirm, isSameDomain } from './platformQuery/nameMatch.js';
 import {
   checkGoogleBusinessProfile,
   checkGoogleReviews,
@@ -342,16 +343,24 @@ function computeGapsIdentified(report) {
  * Aggregate competitor names from live platformResults only. No LLM web-search
  * fallback, no Perplexity backfill. Output rows carry only { name, description, website }
  * — no strengths, no reason.
+ *
+ * The searched firm is excluded via normalized same-firm comparison
+ * (case/suffix/diacritic-insensitive) so a firm listed as "Celtic Frozen
+ * Drinks Ltd" in the AI output is correctly filtered when registered as
+ * "Celtic Frozen Drinks" (and vice-versa). When a competitor entry carries
+ * its own website, the searched firm's domain is also excluded.
  */
-function aggregateCompetitors(platformResults, companyName) {
+function aggregateCompetitors(platformResults, companyName, firmWebsiteUrl) {
   if (!Array.isArray(platformResults) || platformResults.length === 0) return [];
-  const companyLower = companyName.toLowerCase();
   const freq = new Map();
   for (const pr of platformResults) {
     if (pr.error || !Array.isArray(pr.competitors) || pr.competitors.length === 0) continue;
     for (const entry of pr.competitors) {
       const compName = typeof entry === 'string' ? entry : entry?.name;
-      if (!compName || compName.toLowerCase().includes(companyLower)) continue;
+      if (!compName) continue;
+      if (isSameFirm(compName, companyName)) continue;
+      const compWebsite = typeof entry === 'object' ? entry?.website : null;
+      if (compWebsite && firmWebsiteUrl && isSameDomain(compWebsite, firmWebsiteUrl)) continue;
       const key = compName.trim().replace(/\s+/g, ' ');
       if (!isValidBusinessName(key)) continue;
       const existing = freq.get(key);
@@ -472,6 +481,7 @@ export async function buildPublicReport({
     category,
     city,
     categoryLabel,
+    websiteUrl: detectorResult.websiteUrl,
   }).catch((err) => {
     console.error('[AEO] Platform queries failed:', err.message);
     return [];
@@ -550,7 +560,7 @@ export async function buildPublicReport({
 
   const competitorsOnTendorAI = await countCompetitorsOnTendorAI({ category, city });
 
-  const competitors = aggregateCompetitors(platformResults, companyName);
+  const competitors = aggregateCompetitors(platformResults, companyName, detectorResult.websiteUrl);
   const aiRecommendations = competitors.map((c) => ({
     name: c.name,
     description: c.description,
