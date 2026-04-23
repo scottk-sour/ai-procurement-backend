@@ -2,6 +2,12 @@
  * Shared prompt builder and response parser for multi-platform AI queries.
  */
 
+import {
+  isCompanyMentioned,
+  isSameFirm,
+  normalizeCompanyName,
+} from './nameMatch.js';
+
 /**
  * Build the prompt sent to each AI platform.
  */
@@ -101,14 +107,29 @@ export function isValidBusinessName(name) {
 /**
  * Check if a mention of the company name is a genuine positive mention,
  * not a negation like "I couldn't find", "not mentioned", etc.
+ *
+ * Locates the mention by finding the normalized company name inside the
+ * normalized text. That way we catch variants like "Celtic Frozen Drinks Ltd"
+ * when the search term is "Celtic Frozen Drinks" (or vice-versa) instead of
+ * bailing out at the strict substring check the way the old implementation
+ * did.
  */
 function isPositiveMention(text, companyName) {
-  const companyLower = companyName.toLowerCase();
   const textLower = text.toLowerCase();
-  const idx = textLower.indexOf(companyLower);
-  if (idx === -1) return false;
+  const companyNorm = normalizeCompanyName(companyName);
+  if (!companyNorm) return false;
 
-  // Check the surrounding context (100 chars before the mention)
+  // Find the mention position in the lower-cased original text so the
+  // "100 chars before" negation window operates on real characters. We try
+  // the normalized name first, then fall back to the raw lowercased name for
+  // cases where normalization stripped something the text kept verbatim.
+  let idx = textLower.indexOf(companyNorm);
+  if (idx === -1) {
+    const rawLower = String(companyName).toLowerCase().trim();
+    if (rawLower) idx = textLower.indexOf(rawLower);
+  }
+  if (idx === -1) return true;
+
   const before = textLower.substring(Math.max(0, idx - 100), idx);
 
   const negationPatterns = [
@@ -134,14 +155,21 @@ function isPositiveMention(text, companyName) {
 
 /**
  * Parse an AI platform's response to extract mention data.
+ *
+ * @param {string} responseText - raw model output
+ * @param {string} companyName  - searched firm name
+ * @param {Object} [opts]
+ * @param {string} [opts.websiteUrl] - searched firm's site, used so a URL
+ *   citation (e.g. Perplexity's inline source links) still registers as a
+ *   mention even if the model omits the name.
  */
-export function parsePlatformResponse(responseText, companyName) {
+export function parsePlatformResponse(responseText, companyName, opts = {}) {
   if (!responseText) {
     return { mentioned: false, position: null, snippet: null, competitors: [] };
   }
 
   const response = responseText;
-  const companyLower = companyName.toLowerCase();
+  const websiteUrl = typeof opts === 'string' ? opts : opts?.websiteUrl || null;
 
   // Handle explicit no-results signal
   if (response.trim() === 'NO_BUSINESSES_FOUND' ||
@@ -166,7 +194,7 @@ export function parsePlatformResponse(responseText, companyName) {
   const lowerResponse = response.toLowerCase();
   const isGenericAdvice = adviceSignals.some(signal => lowerResponse.includes(signal));
 
-  if (isGenericAdvice && !lowerResponse.includes(companyLower)) {
+  if (isGenericAdvice && !isCompanyMentioned(response, companyName, websiteUrl)) {
     return {
       mentioned: false,
       position: null,
@@ -177,9 +205,12 @@ export function parsePlatformResponse(responseText, companyName) {
 
   const text = response;
 
-  // Check if the company is mentioned (case-insensitive, partial match)
-  // Filter out negative/false mentions
-  const rawMentioned = text.toLowerCase().includes(companyLower);
+  // Flexible mention check: normalized substring match against the firm name
+  // (case/suffix/diacritic/punctuation-insensitive) plus a URL-citation
+  // fallback so we count Perplexity-style inline source links as mentions.
+  // Then run the existing negation-context sentiment check to filter out
+  // "I could not find X" style false positives.
+  const rawMentioned = isCompanyMentioned(text, companyName, websiteUrl);
   const mentioned = rawMentioned ? isPositiveMention(text, companyName) : false;
 
   // Try to determine position from explicitly numbered lists only.
@@ -196,8 +227,7 @@ export function parsePlatformResponse(responseText, companyName) {
     for (const pattern of numberedPatterns) {
       let match;
       while ((match = pattern.exec(text)) !== null) {
-        const lineText = match[2].toLowerCase();
-        if (lineText.includes(companyLower)) {
+        if (isCompanyMentioned(match[2], companyName, websiteUrl)) {
           const num = parseInt(match[1], 10);
           // Sanity check: position should be 1-10
           if (num >= 1 && num <= 10) {
@@ -214,8 +244,8 @@ export function parsePlatformResponse(responseText, companyName) {
   let snippet = null;
   if (mentioned) {
     const sentences = text.split(/(?<=[.!?])\s+/);
-    const mentionSentences = sentences.filter(s =>
-      s.toLowerCase().includes(companyLower)
+    const mentionSentences = sentences.filter((s) =>
+      isCompanyMentioned(s, companyName, websiteUrl),
     );
     if (mentionSentences.length > 0) {
       snippet = mentionSentences.slice(0, 2).join(' ').trim();
@@ -236,7 +266,7 @@ export function parsePlatformResponse(responseText, companyName) {
     const reason = (match[2] || '').replace(/\*\*/g, '').trim();
     if (
       name &&
-      !name.toLowerCase().includes(companyLower) &&
+      !isSameFirm(name, companyName) &&
       !competitors.some(c => c.name === name) &&
       isValidBusinessName(name)
     ) {
@@ -252,7 +282,7 @@ export function parsePlatformResponse(responseText, companyName) {
       const name = nameMatch[1].replace(/\*\*/g, '').trim();
       if (
         name &&
-        !name.toLowerCase().includes(companyLower) &&
+        !isSameFirm(name, companyName) &&
         !competitors.some(c => c.name === name) &&
         isValidBusinessName(name)
       ) {
@@ -269,7 +299,7 @@ export function parsePlatformResponse(responseText, companyName) {
       const name = boldMatch[1].trim();
       if (
         name &&
-        !name.toLowerCase().includes(companyLower) &&
+        !isSameFirm(name, companyName) &&
         !competitors.some(c => c.name === name) &&
         isValidBusinessName(name)
       ) {

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { buildPrompt, parsePlatformResponse } from './prompt.js';
 
-export async function queryClaude({ companyName, categoryLabel, city }) {
+export async function queryClaude({ companyName, categoryLabel, city, websiteUrl }) {
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -17,7 +17,7 @@ export async function queryClaude({ companyName, categoryLabel, city }) {
   const rawResponse = response.content?.[0]?.type === 'text'
     ? response.content[0].text
     : '';
-  const parsed = parsePlatformResponse(rawResponse, companyName);
+  const parsed = parsePlatformResponse(rawResponse, companyName, { websiteUrl });
 
   return {
     platform: 'claude',

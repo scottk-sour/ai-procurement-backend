@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { buildPrompt, parsePlatformResponse } from './prompt.js';
 
-export async function queryChatGPT({ companyName, categoryLabel, city }) {
+export async function queryChatGPT({ companyName, categoryLabel, city, websiteUrl }) {
   const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -15,7 +15,7 @@ export async function queryChatGPT({ companyName, categoryLabel, city }) {
   });
 
   const rawResponse = response.choices?.[0]?.message?.content || '';
-  const parsed = parsePlatformResponse(rawResponse, companyName);
+  const parsed = parsePlatformResponse(rawResponse, companyName, { websiteUrl });
 
   return {
     platform: 'chatgpt',

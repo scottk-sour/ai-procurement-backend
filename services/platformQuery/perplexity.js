@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { buildPrompt, parsePlatformResponse } from './prompt.js';
 
-export async function queryPerplexity({ companyName, categoryLabel, city }) {
+export async function queryPerplexity({ companyName, categoryLabel, city, websiteUrl }) {
   const client = new OpenAI({
     apiKey: process.env.PERPLEXITY_API_KEY,
     baseURL: 'https://api.perplexity.ai',
@@ -16,7 +16,7 @@ export async function queryPerplexity({ companyName, categoryLabel, city }) {
   });
 
   const rawResponse = response.choices?.[0]?.message?.content || '';
-  const parsed = parsePlatformResponse(rawResponse, companyName);
+  const parsed = parsePlatformResponse(rawResponse, companyName, { websiteUrl });
 
   return {
     platform: 'perplexity',

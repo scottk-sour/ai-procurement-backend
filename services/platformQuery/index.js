@@ -36,17 +36,17 @@ async function queryWithTimeout(platform, params) {
 /**
  * Query a single platform by key.
  * @param {string} platformKey - e.g. 'chatgpt', 'perplexity'
- * @param {Object} params - { companyName, categoryLabel, city }
+ * @param {Object} params - { companyName, categoryLabel, city, websiteUrl? }
  * @returns {Promise<Object>} Platform result object with status field
  */
-export async function querySinglePlatform(platformKey, { companyName, categoryLabel, city }) {
+export async function querySinglePlatform(platformKey, { companyName, categoryLabel, city, websiteUrl }) {
   const platform = PLATFORMS.find(p => p.key === platformKey && process.env[p.envKey]);
   if (!platform) {
     throw new Error(`Platform "${platformKey}" not found or not configured`);
   }
 
   try {
-    const result = await queryWithTimeout(platform, { companyName, categoryLabel, city });
+    const result = await queryWithTimeout(platform, { companyName, categoryLabel, city, websiteUrl });
     return { ...result, status: 'checked' };
   } catch (err) {
     return {
@@ -65,10 +65,12 @@ export async function querySinglePlatform(platformKey, { companyName, categoryLa
 
 /**
  * Query all enabled AI platforms in parallel.
- * @param {Object} params - { companyName, category, city, categoryLabel }
+ * @param {Object} params - { companyName, category, city, categoryLabel, websiteUrl? }
+ *   websiteUrl is threaded through to the response parser so URL citations
+ *   (Perplexity-style) count as mentions even when the firm name is absent.
  * @returns {Promise<Array>} Array of platform result objects
  */
-export async function queryAllPlatforms({ companyName, category, city, categoryLabel }) {
+export async function queryAllPlatforms({ companyName, category, city, categoryLabel, websiteUrl }) {
   const enabledPlatforms = PLATFORMS.filter(p => process.env[p.envKey]);
 
   if (enabledPlatforms.length === 0) {
@@ -80,7 +82,7 @@ export async function queryAllPlatforms({ companyName, category, city, categoryL
 
   const results = await Promise.allSettled(
     enabledPlatforms.map(platform =>
-      queryWithTimeout(platform, { companyName, categoryLabel, city })
+      queryWithTimeout(platform, { companyName, categoryLabel, city, websiteUrl })
         .then(result => ({
           ...result,
           status: 'checked',
