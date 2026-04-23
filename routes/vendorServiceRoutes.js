@@ -9,7 +9,8 @@
  *   DELETE /:id             soft-delete (active=false)
  *
  * All endpoints require a vendor JWT via vendorAuth. A vendor can only
- * operate on services they own (403 on any vendorId mismatch).
+ * operate on services they own. Both "not found" and "not owned" return
+ * 404 (not 403) so service IDs can't be enumerated across vendors.
  *
  * POST and PUT are rate-limited to 30 writes per hour per vendor so a
  * runaway script loop can't silt the DB. Reads and soft-deletes are not
@@ -53,6 +54,14 @@ const SUBDOC_FIELDS = Object.freeze({
 });
 
 const FAQ_FIELDS = Object.freeze(['question', 'answer']);
+
+// DoS-shape guards. Caps are generous relative to any legitimate service
+// listing — intent is to bounce payloads that are clearly abuse (a
+// 10,000-entry FAQ array, a pasted novel as a description) rather than
+// to enforce editorial quality, which lives in completeness scoring.
+const MAX_FAQS = 50;
+const MAX_DESCRIPTION_CHARS = 10_000;
+const MAX_NAME_CHARS = 500;
 
 // ─── Validation helpers ───────────────────────────────────────────────
 
@@ -98,6 +107,9 @@ function validatePayload(body, expectedDataField) {
     if (!Array.isArray(body.faqs)) {
       throw new AppError('faqs must be an array.', 400);
     }
+    if (body.faqs.length > MAX_FAQS) {
+      throw new AppError(`faqs may contain at most ${MAX_FAQS} entries; received ${body.faqs.length}.`, 400);
+    }
     body.faqs.forEach((faq, i) => {
       if (!faq || typeof faq !== 'object' || Array.isArray(faq)) {
         throw new AppError(`faqs[${i}] must be an object.`, 400);
@@ -112,11 +124,21 @@ function validatePayload(body, expectedDataField) {
   if (body.active !== undefined && typeof body.active !== 'boolean') {
     throw new AppError("'active' must be a boolean.", 400);
   }
-  if (body.name !== undefined && typeof body.name !== 'string') {
-    throw new AppError("'name' must be a string.", 400);
+  if (body.name !== undefined) {
+    if (typeof body.name !== 'string') {
+      throw new AppError("'name' must be a string.", 400);
+    }
+    if (body.name.length > MAX_NAME_CHARS) {
+      throw new AppError(`'name' may not exceed ${MAX_NAME_CHARS} characters; received ${body.name.length}.`, 400);
+    }
   }
-  if (body.description !== undefined && body.description !== null && typeof body.description !== 'string') {
-    throw new AppError("'description' must be a string.", 400);
+  if (body.description !== undefined && body.description !== null) {
+    if (typeof body.description !== 'string') {
+      throw new AppError("'description' must be a string.", 400);
+    }
+    if (body.description.length > MAX_DESCRIPTION_CHARS) {
+      throw new AppError(`'description' may not exceed ${MAX_DESCRIPTION_CHARS} characters; received ${body.description.length}.`, 400);
+    }
   }
 }
 
@@ -146,9 +168,11 @@ function assertValidObjectId(id) {
   }
 }
 
+// Ownership failure is reported as 404 (not 403) so a caller can't use
+// our error code to confirm that an opaque service ID exists.
 function assertOwnership(doc, vendor) {
   if (String(doc.vendorId) !== String(vendor._id)) {
-    throw new AppError('Not authorised to access this service.', 403);
+    throw new AppError('Service not found.', 404);
   }
 }
 
@@ -244,9 +268,10 @@ router.get(
   catchAsync(async (req, res) => {
     assertValidObjectId(req.params.id);
     const doc = await VendorService.findById(req.params.id).lean();
-    if (!doc) throw new AppError('Service not found.', 404);
-    if (String(doc.vendorId) !== String(req.vendor.id)) {
-      throw new AppError('Not authorised to access this service.', 403);
+    // Unified not-found / not-owned response — both surface as 404 so
+    // service IDs cannot be enumerated across vendors.
+    if (!doc || String(doc.vendorId) !== String(req.vendor.id)) {
+      throw new AppError('Service not found.', 404);
     }
     res.json({ success: true, data: doc });
   }),
