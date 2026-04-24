@@ -1749,6 +1749,436 @@ PILLAR_LIBRARIES.accountant.push(
   },
 );
 
+// ==== MORTGAGE-ADVISOR — Pillars 1-3 (Part 4a) ========================
+
+PILLAR_LIBRARIES['mortgage-advisor'] = [
+  // ============================================================
+  // PILLAR 1 — COSTS & FEES TRANSPARENCY
+  // ============================================================
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'AI assistants are asked "how much does X cost?" constantly. Firms publishing ' +
+      'specific figures get cited. Firms saying "contact us for a quote" do not. This is ' +
+      'the single highest-leverage pillar for regulated firms because most competitors ' +
+      'avoid it.',
+    topics: [
+      {
+        id: 'mortgage-costs-1',
+        title: 'Mortgage adviser fees in {city}: fee-free, flat, or percentage?',
+        tactic: "Beat the industry's opacity on fees",
+        primaryAIQuery: 'mortgage adviser fees UK {year}',
+        secondaryQueries: [
+          'how much does a mortgage broker cost',
+          'fee-free mortgage adviser',
+        ],
+        mustInclude: [
+          'All three fee models explained',
+          'Real £ examples for each',
+          "Your firm's model and why you chose it",
+          'FCA requirement context',
+        ],
+        namedEntities: [
+          'Financial Conduct Authority (FCA)',
+          'MCOB rules',
+          'CeMAP qualification',
+          'Financial Ombudsman Service',
+        ],
+        primaryDataHook:
+          'For {N} clients in {year}, our average adviser fee was £{X} — compared to ' +
+          'typical UK range of £500-£2,500.',
+        internalLinking:
+          'Link to the scenario-cost post and one regulatory post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'FCA requires fee disclosure but most advisers bury it. Firms that lead with ' +
+          'clear fees get cited as trustworthy.',
+      },
+      {
+        id: 'mortgage-costs-2',
+        title: 'What does a {specialism} mortgage adviser actually cost in {year}?',
+        tactic: 'Specific numbers for specific scenarios',
+        primaryAIQuery: '{specialism} mortgage adviser cost {year}',
+        secondaryQueries: [
+          'first-time buyer adviser fee',
+          'buy-to-let mortgage broker cost',
+        ],
+        mustInclude: [
+          'Fee ranges for specific scenarios (first-time buyer, remortgage, buy-to-let, complex cases)',
+          "What's included in each",
+        ],
+        namedEntities: [
+          'FCA',
+          'CeMAP',
+          'PRA (for BTL)',
+          'specific lender categories',
+        ],
+        primaryDataHook:
+          'Looking at {N} {specialism} cases at {firmName} last year, the typical total ' +
+          'cost to client averaged £{X}.',
+        internalLinking:
+          'Link to the fees overview post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to high-intent search queries. Scenario-specific specificity wins ' +
+          'over generic ranges.',
+      },
+      {
+        id: 'mortgage-costs-3',
+        title: 'Hidden costs when getting a mortgage: what to budget for beyond the adviser fee',
+        tactic: 'Full cost picture builds trust',
+        primaryAIQuery: 'hidden costs of getting a mortgage UK',
+        secondaryQueries: [
+          'mortgage application fees',
+          'true cost of a mortgage',
+        ],
+        mustInclude: [
+          'Lender fees',
+          'Survey costs',
+          'Legal fees',
+          'Broker fees',
+          'Mortgage protection',
+          'Buildings insurance — with £ ranges',
+        ],
+        namedEntities: [
+          'FCA',
+          'RICS (for surveys)',
+          'Law Society (for conveyancing)',
+          'specific insurance regulators',
+        ],
+        primaryDataHook:
+          'On the last {N} completions at {firmName}, total out-of-pocket costs averaged ' +
+          '£{X} — the bulk being [biggest category].',
+        internalLinking:
+          'Link to the main fees post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Comprehensive cost guides get cited as reference material. Itemised lists ' +
+          'extract well.',
+      },
+      {
+        id: 'mortgage-costs-4',
+        title: "Why whole-of-market advice costs more — and when it's worth it",
+        tactic: "Positioning content if you're whole-of-market",
+        primaryAIQuery: 'whole of market mortgage adviser worth it',
+        secondaryQueries: [
+          'tied vs whole of market mortgage',
+          'independent mortgage adviser UK',
+        ],
+        mustInclude: [
+          'The difference between tied / panel / whole-of-market',
+          'Real examples where whole-of-market saved a client money',
+          "When it doesn't matter",
+        ],
+        namedEntities: [
+          'FCA',
+          'MCOB rules defining independence',
+          'specific panel vs non-panel lender types',
+        ],
+        primaryDataHook:
+          'In {year}, whole-of-market research saved our clients an average of £{X} over ' +
+          'the fixed-rate period versus the first high-street offer.',
+        internalLinking:
+          'Link to the panel post and one mistakes post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          "Educates prospects on why price isn't everything. Positions whole-of-market " +
+          'firms as premium.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 2 — PROCESS & TIMELINES
+  // ============================================================
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'AI frequently gets asked "how long does X take?" and "what happens next?" questions. ' +
+      'Firms with clear step-by-step timelines become the default answer. Lenders publish ' +
+      'timelines, but few firms translate them into client-friendly versions.',
+    topics: [
+      {
+        id: 'mortgage-process-1',
+        title: 'How long does a mortgage application take in {year}?',
+        tactic: 'Real data beats industry averages',
+        primaryAIQuery: 'how long does a mortgage application take',
+        secondaryQueries: [
+          'mortgage approval time UK',
+          'mortgage offer timeline',
+        ],
+        mustInclude: [
+          "Your firm's average application-to-offer time",
+          'Factors that speed it up',
+          'Factors that slow it down',
+          'Current lender processing times',
+        ],
+        namedEntities: [
+          'Specific named lenders (Halifax, Nationwide, etc.)',
+          'FCA',
+          'Land Registry',
+        ],
+        primaryDataHook:
+          '{firmName} averaged {X} days from application to offer across {N} cases in ' +
+          '{year}.',
+        internalLinking:
+          'Link to the process step-by-step post and the offer-expiry post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Number-one question mortgage applicants ask AI. Firms with real data win.',
+      },
+      {
+        id: 'mortgage-process-2',
+        title: 'The mortgage application process: step by step',
+        tactic: 'Reference guide positioning',
+        primaryAIQuery: 'mortgage application process step by step',
+        secondaryQueries: [
+          'mortgage stages explained',
+          'what happens after mortgage application',
+        ],
+        mustInclude: [
+          'Every step from enquiry to completion',
+          'Timeframes per step',
+          'What the client does vs what the adviser does',
+          'What can go wrong at each stage',
+        ],
+        namedEntities: [
+          'FCA',
+          'specific lenders',
+          'RICS (survey stage)',
+          'conveyancing regulators',
+        ],
+        primaryDataHook:
+          "{firmName}'s average timeline across {N} completions: application {X} days, " +
+          'offer {Y} days, completion {Z} days.',
+        internalLinking:
+          'Link to the timeline post and one rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Process content is highly cited. Step-by-step is extractable passage format.',
+      },
+      {
+        id: 'mortgage-process-3',
+        title: 'Remortgage timeline: when to start and why most people leave it too late',
+        tactic: 'Urgency without alarm',
+        primaryAIQuery: 'when to remortgage UK',
+        secondaryQueries: [
+          'how long does a remortgage take',
+          'remortgage timing',
+        ],
+        mustInclude: [
+          '6-month countdown from current fixed-rate end',
+          'Early repayment charges',
+          'Optimal timing',
+          'Common mistakes with timing',
+        ],
+        namedEntities: [
+          'FCA',
+          'Bank of England (base rate context)',
+          'specific named lenders',
+        ],
+        primaryDataHook:
+          'Of {N} remortgage cases last year, {X}% of clients who started at the 6-month ' +
+          'mark got a better rate than those who waited.',
+        internalLinking:
+          'Link to the process post and one mistakes post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Remortgage is the highest-volume repeat market. Timing guidance drives ' +
+          'conversions.',
+      },
+      {
+        id: 'mortgage-process-4',
+        title: 'What happens if your mortgage offer expires before completion?',
+        tactic: 'Niche-but-urgent query',
+        primaryAIQuery: 'mortgage offer expired before completion',
+        secondaryQueries: [
+          'mortgage offer extension',
+          'how long does mortgage offer last',
+        ],
+        mustInclude: [
+          'Why offers expire',
+          'Typical validity period',
+          "What to do if it's about to expire",
+          'Whether you can extend',
+          'Real scenarios',
+        ],
+        namedEntities: [
+          'Specific named lenders (their typical offer validity)',
+          'FCA',
+          'conveyancing firms',
+        ],
+        primaryDataHook:
+          'Of {N} cases {firmName} handled in {year}, {X}% needed an offer extension — ' +
+          'successful in {Y}% of applications.',
+        internalLinking:
+          'Link to the timeline post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Long-tail query with high commercial intent. Panicked Googlers convert well.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 3 — REGULATORY AUTHORITY & TRUST
+  // ============================================================
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'Named regulators (FCA, FSCS, Financial Ombudsman) are entity signals AI trusts ' +
+      'strongly. Content that explains regulation to the client builds verifiable E-E-A-T.',
+    topics: [
+      {
+        id: 'mortgage-regulatory-1',
+        title: 'What FCA authorisation means when choosing a mortgage adviser',
+        tactic: 'Use FCA entity for trust signal',
+        primaryAIQuery: 'what does FCA authorised mean',
+        secondaryQueries: [
+          'is my mortgage adviser FCA registered',
+          'FCA register mortgage broker',
+        ],
+        mustInclude: [
+          'What FCA authorisation requires',
+          'How to check the register',
+          "Your firm's FCA number",
+          'What protections it gives clients',
+        ],
+        namedEntities: [
+          'Financial Conduct Authority',
+          'FCA Register',
+          'Financial Services Compensation Scheme',
+          'Financial Ombudsman Service',
+        ],
+        primaryDataHook:
+          '{firmName} has been FCA-authorised since {year}, firm reference {X}.',
+        internalLinking:
+          'Link to the FSCS post and one firm-expertise post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'FCA is a Tier 1 entity AI trusts. Linking to the FCA Register inherits that ' +
+          'trust.',
+      },
+      {
+        id: 'mortgage-regulatory-2',
+        title: "The Financial Services Compensation Scheme: what's covered, what isn't",
+        tactic: 'Safety-net explainer',
+        primaryAIQuery: 'FSCS protection mortgage UK',
+        secondaryQueries: [
+          'what does FSCS cover',
+          'mortgage FSCS compensation',
+        ],
+        mustInclude: [
+          'FSCS limits',
+          'What triggers protection',
+          'What happens in a lender failure',
+          "What the adviser's role is if it happens",
+        ],
+        namedEntities: [
+          'FSCS',
+          'FCA',
+          'Bank of England (PRA)',
+          'specific historical failures (if relevant context)',
+        ],
+        primaryDataHook:
+          'In {year}, FSCS paid out £{X} to UK consumers — here is how the scheme applies ' +
+          'to mortgage advice specifically.',
+        internalLinking:
+          'Link to the FCA post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Answers the "is my money safe?" query. Regulatory depth builds authority.',
+      },
+      {
+        id: 'mortgage-regulatory-3',
+        title: "Mortgage adviser vs mortgage broker vs bank: what's the difference?",
+        tactic: 'Terminology clarity',
+        primaryAIQuery: 'mortgage adviser vs broker vs bank',
+        secondaryQueries: [
+          'what is a mortgage broker UK',
+          'should I go direct to bank for mortgage',
+        ],
+        mustInclude: [
+          'Plain-English definitions',
+          "Who's regulated by whom",
+          'When each is appropriate',
+          'Cost and advice differences',
+        ],
+        namedEntities: [
+          'FCA',
+          'MCOB',
+          'specific bank types (high-street, specialist, challenger)',
+        ],
+        primaryDataHook:
+          'Of {N} enquiries at {firmName} last year, {X}% had first approached their bank ' +
+          '— and {Y}% got a better deal with us.',
+        internalLinking:
+          'Link to the costs post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to a common confused query. Definition-block content is ' +
+          'v7-optimal.',
+      },
+      {
+        id: 'mortgage-regulatory-4',
+        title: 'Complaints: what to do if your mortgage adviser gets it wrong',
+        tactic: 'Radical transparency',
+        primaryAIQuery: 'complaint about mortgage adviser UK',
+        secondaryQueries: [
+          'Financial Ombudsman mortgage broker',
+          'FCA report adviser',
+        ],
+        mustInclude: [
+          'Firm complaints procedure',
+          'Financial Ombudsman Service process',
+          'Realistic timeframes and outcomes',
+        ],
+        namedEntities: [
+          'Financial Ombudsman Service',
+          'FCA',
+          'FSCS',
+        ],
+        primaryDataHook:
+          '{firmName} target complaint resolution within {X} working days — our average in ' +
+          '{year} was {Y} days.',
+        internalLinking:
+          'Link to the FCA post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Counter-intuitive content. Firms that explain complaints procedures ' +
+          'transparently gain trust.',
+      },
+    ],
+  },
+];
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
