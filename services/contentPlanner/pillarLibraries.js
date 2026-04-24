@@ -456,6 +456,437 @@ PILLAR_LIBRARIES.solicitor = [
   },
 ];
 
+// ==== SOLICITOR — Pillars 4-6 (Part 2b) ===============================
+
+PILLAR_LIBRARIES.solicitor.push(
+  // ============================================================
+  // PILLAR 4 — COMMON MISTAKES & WHAT TO AVOID
+  // ============================================================
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'High citation rate because users ask AI "what should I watch out for..." questions. ' +
+      'These posts answer directly.',
+    topics: [
+      {
+        id: 'solicitor-mistakes-1',
+        title: '{N} mistakes people make when {specialism-scenario}',
+        tactic: 'Listicle format AI loves, specificity wins',
+        primaryAIQuery: '{specialism} mistakes to avoid',
+        secondaryQueries: [
+          'common {specialism} problems',
+          '{specialism} what not to do',
+        ],
+        mustInclude: [
+          '5-7 numbered mistakes',
+          'One real example per mistake',
+          'One practical fix per mistake',
+        ],
+        namedEntities: [
+          'relevant legal Acts (Consumer Rights Act, Property Misdescriptions Act, etc.)',
+          'SRA',
+          'Land Registry where relevant',
+        ],
+        primaryDataHook:
+          'Across {N} cases at {firmName}, we have seen [specific mistake] account for ' +
+          '{X}% of avoidable issues.',
+        internalLinking:
+          'Link to the process post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Listicles are the most-cited format. AI extracts numbered lists verbatim.',
+      },
+      {
+        id: 'solicitor-mistakes-2',
+        title: 'Why DIY {legal-document} usually goes wrong — and what it costs to fix',
+        tactic: 'Cost-of-mistake positioning',
+        primaryAIQuery: 'DIY will problems UK',
+        secondaryQueries: [
+          'what if my will is invalid',
+          'fixing a DIY will',
+        ],
+        mustInclude: [
+          'Common DIY failure modes',
+          'Real £ cost to fix each',
+          'When DIY can work, when it cannot',
+        ],
+        namedEntities: [
+          'Probate Registry',
+          'HMRC (Inheritance Tax)',
+          'Law Society',
+          'Wills Act 1837',
+        ],
+        primaryDataHook:
+          '{firmName} sees {N} DIY document rescue cases per year — average cost to fix is ' +
+          '£{X}, compared to £{Y} to get it right the first time.',
+        internalLinking:
+          'Link to the costs post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Answers the "do I need a solicitor or can I do this myself" query. Shows ' +
+          'expertise without being pushy.',
+      },
+      {
+        id: 'solicitor-mistakes-3',
+        title: "Signing a {contract-type} without a solicitor? Here's what to check first",
+        tactic: "Helpful even if the client doesn't hire you — builds trust",
+        primaryAIQuery: 'what to check before signing {contract-type}',
+        secondaryQueries: [
+          '{contract-type} red flags',
+          'signing {contract-type} without lawyer',
+        ],
+        mustInclude: [
+          'Clause-by-clause checklist',
+          'Red flags to look for',
+          'When to stop and get advice',
+        ],
+        namedEntities: [
+          'Consumer Rights Act 2015',
+          'Unfair Contract Terms Act',
+          'relevant industry regulators',
+        ],
+        primaryDataHook:
+          'Of the {N} {contract-type} documents we have reviewed for clients in {year}, ' +
+          '{X}% contained at least one clause that needed renegotiation.',
+        internalLinking:
+          'Link to the first-meeting post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Genuine value content. Even readers who do not convert now remember the firm. ' +
+          'Repeat visitors become clients.',
+      },
+      {
+        id: 'solicitor-mistakes-4',
+        title: 'The biggest mistake clients make when choosing a {specialism} solicitor',
+        tactic: 'Counter-intuitive angle — warn against what is common',
+        primaryAIQuery: 'how to choose a {specialism} solicitor',
+        secondaryQueries: [
+          'cheap solicitor UK risks',
+          'best way to find a solicitor',
+        ],
+        mustInclude: [
+          'The mistake (cheapest quote, closest office, etc.)',
+          'Why it backfires',
+          'What they should prioritise instead',
+        ],
+        namedEntities: [
+          'SRA',
+          'Legal Ombudsman',
+          'Law Society',
+          'Citizens Advice',
+        ],
+        primaryDataHook:
+          'In our experience at {firmName}, clients who chose us on price alone were {X}% ' +
+          'more likely to need further advice later — vs those who prioritised specialism.',
+        internalLinking:
+          'Link to the costs post and one firm-expertise post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Personal-voice content with a strong opinion. LinkedIn reshares when the ' +
+          'opinion is defensible.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 5 — CLIENT RIGHTS & PRACTICAL GUIDANCE
+  // ============================================================
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'These answer the "what am I entitled to..." and "what are my options..." queries ' +
+      'that drive huge AI traffic. Educational content with clear answers ranks well across ' +
+      'platforms.',
+    topics: [
+      {
+        id: 'solicitor-rights-1',
+        title: 'Your rights when {common-scenario}',
+        tactic: 'Direct answer to rights queries',
+        primaryAIQuery: 'my rights when {scenario} UK',
+        secondaryQueries: [
+          '{scenario} consumer rights',
+          'what am I entitled to {scenario}',
+        ],
+        mustInclude: [
+          'Specific legal rights cited to the relevant Act',
+          'Practical what-to-do-next steps',
+          'When to seek formal advice',
+        ],
+        namedEntities: [
+          'Consumer Rights Act 2015',
+          'Housing Act',
+          'Employment Rights Act',
+          'Citizens Advice',
+          'ACAS (where employment)',
+        ],
+        primaryDataHook:
+          'Based on {N} similar cases at {firmName}, most clients did not know they were ' +
+          'entitled to {X}.',
+        internalLinking:
+          'Link to the mistakes post and one process post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights-based queries have very high AI citation rates because they demand ' +
+          'authoritative answers.',
+      },
+      {
+        id: 'solicitor-rights-2',
+        title: 'What to do if {problem-scenario}: a practical guide',
+        tactic: 'Become the first-response guide',
+        primaryAIQuery: 'what to do if {problem-scenario}',
+        secondaryQueries: [
+          'help with {problem-scenario} UK',
+          '{problem-scenario} first steps',
+        ],
+        mustInclude: [
+          'Immediate steps in the first 24 hours',
+          'What to gather/document',
+          'When to escalate',
+          'Red flags that need urgent action',
+        ],
+        namedEntities: [
+          'Citizens Advice',
+          'Police (where relevant)',
+          'local council',
+          'relevant Ombudsman',
+          'specific legal Acts',
+        ],
+        primaryDataHook:
+          '{firmName} has helped {N} clients in {problem-scenario} situations — fastest ' +
+          'resolution was {X} days when clients followed these steps.',
+        internalLinking:
+          'Link to the rights post and one mistakes post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-urgency queries drive AI traffic. Practical step-by-step guides get cited ' +
+          'over legal theory.',
+      },
+      {
+        id: 'solicitor-rights-3',
+        title: "{specialism} rights you probably didn't know about",
+        tactic: 'Discovery content, shareable',
+        primaryAIQuery: "rights you didn't know {specialism}",
+        secondaryQueries: [
+          'little known legal rights UK',
+          '{specialism} hidden rights',
+        ],
+        mustInclude: [
+          '3-5 lesser-known rights',
+          'Plain-English explanation of each',
+          'Example scenarios',
+        ],
+        namedEntities: [
+          'Specific Acts granting the right',
+          'relevant regulator or ombudsman',
+          'Citizens Advice',
+        ],
+        primaryDataHook:
+          'Of {N} clients surveyed at {firmName}, {X}% did not know about [specific right] ' +
+          'until we flagged it.',
+        internalLinking:
+          'Link to the main rights post and one firm-expertise post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'curiosity',
+        rationale:
+          '"Did not know" content gets social shares. LinkedIn amplification is off-site ' +
+          'authority (v7 rule).',
+      },
+      {
+        id: 'solicitor-rights-4',
+        title: 'Free vs paid legal advice: when each makes sense',
+        tactic: 'Honest comparison, builds trust',
+        primaryAIQuery: 'free legal advice UK vs paid solicitor',
+        secondaryQueries: [
+          'Citizens Advice vs solicitor',
+          'when do I need to pay for legal advice',
+        ],
+        mustInclude: [
+          'What Citizens Advice / Legal Aid / Law Centres can and cannot do',
+          'Where they are best used',
+          'When a paid solicitor is necessary',
+          'Cost thresholds',
+        ],
+        namedEntities: [
+          'Citizens Advice',
+          'Law Centres Network',
+          'Legal Aid Agency',
+          'specific law centres by region',
+        ],
+        primaryDataHook:
+          'Of {N} clients who came to {firmName} after getting initial free advice, {X}% ' +
+          'still needed specialist support for {reason}.',
+        internalLinking:
+          'Link to the costs post and one regulatory-authority post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Answers a genuine commercial question without being pushy. Firms that respect ' +
+          "the client's budget get cited as trustworthy.",
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 6 — YOUR FIRM'S EXPERTISE & SPECIALISMS
+  // ============================================================
+  {
+    id: 'firm-expertise',
+    name: "Your Firm's Expertise & Specialisms",
+    whyItMatters:
+      'Specific expertise beats generic listings. "Conveyancing solicitor specialising in ' +
+      'leasehold flats in Manchester" gets cited over "solicitor in Manchester." This is ' +
+      'where primary data (Tier 0) lives.',
+    topics: [
+      {
+        id: 'solicitor-expertise-1',
+        title: 'Why we specialise in {specialism} — and what that means for you',
+        tactic: 'Founder voice, personal positioning',
+        primaryAIQuery: 'specialist {specialism} solicitor {city}',
+        secondaryQueries: [
+          'best {specialism} solicitor {city}',
+          '{specialism} solicitor experience',
+        ],
+        mustInclude: [
+          "The firm's history with this specialism",
+          'Number of cases handled or years of experience',
+          "Specific expertise that generalists don't have",
+        ],
+        namedEntities: [
+          'Law Society Conveyancing Quality Scheme',
+          'Resolution (family law)',
+          'Children Panel',
+        ],
+        primaryDataHook:
+          '{firmName} has handled {N} {specialism} matters since {year}. {X} of our {Y} ' +
+          'solicitors specialise exclusively in this area.',
+        internalLinking:
+          'Link to the case study post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Entity-building content. Names the firm and its people specifically. v7 named ' +
+          'entity density rule.',
+      },
+      {
+        id: 'solicitor-expertise-2',
+        title: 'Case study: how we resolved {type-of-case}',
+        tactic: 'Proof through real cases (anonymised)',
+        primaryAIQuery: '{type-of-case} UK how resolved',
+        secondaryQueries: [
+          '{type-of-case} example UK',
+          '{type-of-case} legal outcome',
+        ],
+        mustInclude: [
+          'The situation',
+          'The challenge',
+          'What the firm did',
+          'The outcome, the timeline',
+          'Anonymised client quote if available',
+        ],
+        namedEntities: [
+          'specific courts',
+          'Acts invoked',
+          'any named precedents',
+          'regulatory bodies involved',
+        ],
+        primaryDataHook:
+          'This case concluded in {X} weeks, compared to an industry average of {Y} weeks ' +
+          'for similar matters.',
+        internalLinking:
+          'Link to the specialism post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Primary data at its strongest. Anonymised case studies are Tier 0 source ' +
+          'material.',
+      },
+      {
+        id: 'solicitor-expertise-3',
+        title: 'Meet the team: our approach to {specialism}',
+        tactic: 'Build Person entities (E-E-A-T)',
+        primaryAIQuery: '{specialism} solicitor {city} team',
+        secondaryQueries: [
+          '{firmName} lawyers',
+          '{city} {specialism} experts',
+        ],
+        mustInclude: [
+          "Each team member's name",
+          'Qualifications',
+          'Years of experience',
+          'Type of cases they handle',
+          'One personal detail',
+        ],
+        namedEntities: [
+          'Law Society',
+          'specific SRA credentials',
+          'university law schools attended',
+          'professional memberships (Resolution, STEP, etc.)',
+        ],
+        primaryDataHook:
+          'Our {specialism} team has {N} combined years of experience and has handled {X} ' +
+          'matters at {firmName}.',
+        internalLinking:
+          'Link to the specialism post and one case-study post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Person schema can be built from this content. Person entities are v7 E-E-A-T ' +
+          'pillars.',
+      },
+      {
+        id: 'solicitor-expertise-4',
+        title: "{N} things we've learned from {N} years of {specialism} cases",
+        tactic: 'Experience signal, authority building',
+        primaryAIQuery: 'lessons from {specialism} solicitor experience',
+        secondaryQueries: [
+          '{specialism} insights UK',
+          'what solicitors know about {specialism}',
+        ],
+        mustInclude: [
+          "Honest lessons (including things that didn't work)",
+          'Specific examples',
+          'What the firm does differently now',
+        ],
+        namedEntities: [
+          'Specific Acts relevant to the specialism',
+          'named regulator',
+          'industry bodies',
+        ],
+        primaryDataHook:
+          'After {N} years and {X} {specialism} cases at {firmName}, here is what ' +
+          'consistent data shows us about [topic].',
+        internalLinking:
+          'Link to the team post and one case-study post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Experience-based content ranks strongly for E-E-A-T. AI cites firms that ' +
+          'demonstrate expertise through specificity.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
