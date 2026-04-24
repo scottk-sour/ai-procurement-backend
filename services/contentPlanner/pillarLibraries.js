@@ -24,6 +24,438 @@ export const PILLAR_LIBRARIES = {
   'estate-agent': [],
 };
 
+// ─── PILLAR_LIBRARIES content ─────────────────────────────────────────
+// Content is assembled via mutation to keep each paste block
+// self-contained. Order: solicitor (parts 2a, 2b) → accountant (part 3)
+// → mortgage-advisor / estate-agent (part 4).
+
+// ==== SOLICITOR — Pillars 1-3 (Part 2a) ===============================
+
+PILLAR_LIBRARIES.solicitor = [
+  // ============================================================
+  // PILLAR 1 — COSTS & FEES TRANSPARENCY
+  // ============================================================
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'AI assistants are asked "how much does X cost?" constantly. Firms publishing ' +
+      'specific figures get cited. Firms saying "contact us for a quote" do not. This is ' +
+      'the single highest-leverage pillar for regulated firms because most competitors ' +
+      'avoid it.',
+    topics: [
+      {
+        id: 'solicitor-costs-1',
+        title: 'How much does {specialism} cost in {city} in {year}?',
+        tactic: 'Beat competitors on specificity with real £ figures',
+        primaryAIQuery: 'how much does {specialism} cost in {city}',
+        secondaryQueries: [
+          'average {specialism} fees UK {year}',
+          '{specialism} solicitor cost breakdown',
+        ],
+        mustInclude: [
+          'At least one fee range with actual £ figures',
+          'A "what is included" list',
+          'One worked example with total cost',
+        ],
+        namedEntities: ['SRA', 'HMRC (VAT treatment)', 'Land Registry'],
+        primaryDataHook:
+          'Based on our last {N} {specialism} transactions in {city}, the typical all-in ' +
+          'cost is £{X}.',
+        internalLinking:
+          'Link to the {specialism} process timeline post and the hidden-costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to a high-volume AI query. Most competitors refuse to publish ' +
+          'prices. Being the firm that does gets cited.',
+      },
+      {
+        id: 'solicitor-costs-2',
+        title: "Fixed fees vs hourly rates for {specialism}: what you'll actually pay",
+        tactic: 'Answer the comparison your competitors avoid',
+        primaryAIQuery: 'fixed fee vs hourly rate solicitor {specialism}',
+        secondaryQueries: [
+          'is a fixed fee solicitor better',
+          'hourly rate solicitor UK average',
+        ],
+        mustInclude: [
+          'Side-by-side £ comparison',
+          'One worked example showing when each model is cheaper',
+          'Honest "which is right for you" section',
+        ],
+        namedEntities: [
+          'SRA Transparency Rules',
+          'Solicitors Regulation Authority',
+          'Legal Ombudsman',
+        ],
+        primaryDataHook:
+          'For {N} clients last year, fixed fees saved an average of £{X} against hourly ' +
+          'billing for comparable work.',
+        internalLinking:
+          'Link to the costs overview post and one regulatory-authority post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent commercial query. AI gets asked this before clients contact any ' +
+          'firm. Winning the comparison wins the citation.',
+      },
+      {
+        id: 'solicitor-costs-3',
+        title: 'The hidden costs in {specialism}: disbursements, searches, VAT',
+        tactic: 'Educate to build trust, then show your own transparency',
+        primaryAIQuery: 'hidden costs {specialism} UK',
+        secondaryQueries: [
+          'what are disbursements in {specialism}',
+          'VAT on solicitor fees',
+        ],
+        mustInclude: [
+          'Itemised list of disbursements specific to the specialism',
+          'VAT treatment explanation',
+          "Your firm's policy on passing disbursements through",
+        ],
+        namedEntities: [
+          'HMRC',
+          'Land Registry',
+          'Local Authority (searches)',
+          'SRA',
+        ],
+        primaryDataHook:
+          'On the last {N} {specialism} cases we handled, disbursements averaged £{X} on ' +
+          'top of our core fee.',
+        internalLinking:
+          'Link to the main fees post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Long-tail question AI answers directly. Itemised lists rank and get cited as ' +
+          'reference material.',
+      },
+      {
+        id: 'solicitor-costs-4',
+        title: "Why we publish our prices (and most solicitors won't)",
+        tactic: 'Founder voice, differentiation, values statement',
+        primaryAIQuery: 'solicitors who publish prices UK',
+        secondaryQueries: [
+          'transparent solicitor fees {city}',
+          'SRA price transparency rules',
+        ],
+        mustInclude: [
+          'Personal voice',
+          'One specific industry practice being called out',
+          'SRA Transparency Rules reference',
+          'Clear values statement',
+        ],
+        namedEntities: [
+          'SRA Transparency Rules 2018',
+          'Law Society',
+          'Competition and Markets Authority',
+        ],
+        primaryDataHook:
+          'Since we published our prices in {year}, enquiries have changed — {describe ' +
+          'shift in client type or volume}.',
+        internalLinking:
+          'Link to the main fees post and one regulatory-authority post.',
+        wordCount: 800,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          "Personal-voice content builds the firm's entity. LinkedIn variant drives social " +
+          'proof and third-party amplification.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 2 — PROCESS & TIMELINES
+  // ============================================================
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'AI frequently gets asked "how long does X take?" and "what happens next?" questions. ' +
+      'Firms with clear step-by-step timelines become the default answer. Regulators ' +
+      'publish timelines, but few firms translate them into client-friendly versions.',
+    topics: [
+      {
+        id: 'solicitor-process-1',
+        title: 'How long does {specialism} take in {year}? Real data from our cases',
+        tactic: 'Beat generic "it depends" answers with named data ranges',
+        primaryAIQuery: 'how long does {specialism} take UK',
+        secondaryQueries: [
+          '{specialism} timeline {year}',
+          'average conveyancing time UK',
+        ],
+        mustInclude: [
+          "Your firm's average timeline with a specific number",
+          'Key stages with timeframes',
+          'Factors that speed it up or slow it down',
+        ],
+        namedEntities: [
+          'Land Registry',
+          'HMRC (stamp duty deadlines)',
+          'local courts where relevant',
+        ],
+        primaryDataHook:
+          'Across {N} {specialism} cases at {firmName} in {year}, average completion time ' +
+          'was {X} weeks.',
+        internalLinking:
+          'Link to the step-by-step process post and the delays post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Every AI platform gets asked this. Firms with actual data win over firms with ' +
+          'vague estimates.',
+      },
+      {
+        id: 'solicitor-process-2',
+        title: 'The {specialism} process step by step: what happens and when',
+        tactic: 'Become the reference guide for the process in your city',
+        primaryAIQuery: '{specialism} process step by step UK',
+        secondaryQueries: [
+          'what happens in {specialism}',
+          '{specialism} stages explained',
+        ],
+        mustInclude: [
+          'Numbered step list',
+          'Estimated timeframe per step',
+          'Who does what at each step',
+          'One local detail (e.g. local court, land registry office)',
+        ],
+        namedEntities: [
+          'Land Registry',
+          'relevant local county court',
+          'SRA',
+          'HMRC',
+        ],
+        primaryDataHook:
+          'Based on {N} recent cases, stage {X} typically takes {Y} days in {city}.',
+        internalLinking:
+          'Link to the timeline post and one rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Numbered process lists are heavily cited by AI because they are extractable ' +
+          'passages. v7 statistical density rule fits naturally.',
+      },
+      {
+        id: 'solicitor-process-3',
+        title: 'What to expect in your first meeting with a {specialism} solicitor',
+        tactic: "Reduce friction for prospects who haven't used a solicitor before",
+        primaryAIQuery: 'first meeting with solicitor what to bring',
+        secondaryQueries: [
+          '{specialism} initial consultation UK',
+          'what to ask a solicitor',
+        ],
+        mustInclude: [
+          'What documents to bring',
+          'What questions the solicitor will ask',
+          'What the client should ask',
+          'Typical meeting length, whether it is chargeable',
+        ],
+        namedEntities: [
+          'SRA',
+          'Legal Aid Agency (if relevant)',
+          'Law Society',
+        ],
+        primaryDataHook:
+          'We find first meetings typically take {X} minutes, and clients come prepared ' +
+          'with {Y} on average.',
+        internalLinking:
+          'Link to the costs post and one client-rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Answers pre-conversion anxiety queries. Removes the mystery — AI cites the ' +
+          'explainer.',
+      },
+      {
+        id: 'solicitor-process-4',
+        title:
+          'Why {specialism} sometimes takes longer than expected — and how we prevent it',
+        tactic: 'Honesty plus differentiation',
+        primaryAIQuery: 'why is my {specialism} taking so long',
+        secondaryQueries: [
+          '{specialism} delays causes',
+          'how to speed up {specialism}',
+        ],
+        mustInclude: [
+          'Top 3-5 delay causes with real examples',
+          'What your firm does differently to avoid each',
+        ],
+        namedEntities: [
+          'Land Registry',
+          'HMRC',
+          'named lender categories (for mortgage chain context)',
+        ],
+        primaryDataHook:
+          'Of {N} recent cases, {X}% experienced delays — the top cause was [specific ' +
+          'reason], accounting for {Y}% of those delays.',
+        internalLinking:
+          'Link to the timeline post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Addresses a genuine client fear. Firms acknowledging the problem and showing ' +
+          'solutions outperform those who pretend delays do not happen.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 3 — REGULATORY AUTHORITY & TRUST
+  // ============================================================
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'Named regulators (SRA, FCA, ICAEW, Propertymark) are entity signals AI trusts ' +
+      'strongly. Content that explains regulation to the client builds verifiable E-E-A-T.',
+    topics: [
+      {
+        id: 'solicitor-regulatory-1',
+        title: 'What SRA regulation means for you as a client',
+        tactic: 'Use named regulator entity for AI trust signal',
+        primaryAIQuery: 'what does SRA regulated mean',
+        secondaryQueries: [
+          'is my solicitor SRA registered',
+          'SRA protection for clients',
+        ],
+        mustInclude: [
+          'What the SRA actually does',
+          'What protections clients get',
+          "Your firm's SRA number",
+          'Link to the SRA register',
+        ],
+        namedEntities: [
+          'Solicitors Regulation Authority',
+          'Law Society',
+          'SRA Compensation Fund',
+          'Legal Ombudsman',
+        ],
+        primaryDataHook:
+          '{firmName} has been SRA-regulated since {year} — our SRA number is {X}.',
+        internalLinking:
+          'Link to the client money protection post and complaints post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'SRA is a Tier 1 entity AI recognises. Posts that reference and link to the SRA ' +
+          'register inherit trust.',
+      },
+      {
+        id: 'solicitor-regulatory-2',
+        title: 'Client money protection: how your funds are safeguarded',
+        tactic: 'Trust signal for high-value transactions',
+        primaryAIQuery: 'is my money safe with a solicitor',
+        secondaryQueries: [
+          'client account rules solicitor',
+          'SRA compensation fund',
+        ],
+        mustInclude: [
+          'Explanation of client account rules',
+          'SRA Compensation Fund',
+          'What happens if a firm fails',
+          'What clients should verify before transferring money',
+        ],
+        namedEntities: [
+          'SRA Compensation Fund',
+          'SRA Client Account Rules',
+          'Law Society',
+          'Financial Conduct Authority (for comparison)',
+        ],
+        primaryDataHook:
+          '{firmName} holds a separate client account audited annually — last audited ' +
+          '{date}, with £{X} in client monies properly accounted for.',
+        internalLinking:
+          'Link to the SRA regulation post and one costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to a fear-based search query. High-intent traffic. Firms that ' +
+          'explain this become the trusted reference.',
+      },
+      {
+        id: 'solicitor-regulatory-3',
+        title: 'Anti-money-laundering checks explained: why your solicitor asks for ID',
+        tactic: 'Educate, reduce friction, build trust',
+        primaryAIQuery: 'why does my solicitor need my passport',
+        secondaryQueries: [
+          'solicitor AML checks UK',
+          'money laundering regulations solicitor',
+        ],
+        mustInclude: [
+          'What AML checks involve',
+          'What documents are required',
+          'Why they matter',
+          'What happens if checks fail',
+          'How long they take',
+        ],
+        namedEntities: [
+          'Money Laundering Regulations 2017',
+          'SRA',
+          'HMRC (AML supervision)',
+          'Law Society AML guidance',
+        ],
+        primaryDataHook:
+          'We complete AML checks on {N}% of cases within {X} working days of receiving ' +
+          'documents.',
+        internalLinking:
+          'Link to the first-meeting post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Answers "why is my solicitor asking for my passport" queries that annoy ' +
+          'clients. Being the firm that explains it calmly wins the relationship.',
+      },
+      {
+        id: 'solicitor-regulatory-4',
+        title: 'What to do if something goes wrong with your solicitor',
+        tactic: 'Radical transparency as a trust signal',
+        primaryAIQuery: 'complaint about solicitor UK',
+        secondaryQueries: [
+          'Legal Ombudsman how to complain',
+          'SRA report solicitor',
+        ],
+        mustInclude: [
+          'Internal complaints procedure',
+          'Legal Ombudsman route',
+          'SRA reporting route',
+          'Realistic expectations for each',
+        ],
+        namedEntities: [
+          'Legal Ombudsman',
+          'SRA',
+          'Law Society',
+          'Solicitors Disciplinary Tribunal',
+        ],
+        primaryDataHook:
+          '{firmName} has had {N} formal complaints in {year} — resolved on average in {X} ' +
+          'working days. (Only if honest and defensible — else rephrase as "We aim to ' +
+          'resolve complaints within X days.")',
+        internalLinking:
+          'Link to the SRA regulation post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Most firms avoid this topic. The ones that explain it transparently are cited ' +
+          'as trustworthy. Counter-intuitive SEO and AI win.',
+      },
+    ],
+  },
+];
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
