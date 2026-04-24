@@ -887,6 +887,440 @@ PILLAR_LIBRARIES.solicitor.push(
   },
 );
 
+// ==== ACCOUNTANT — Pillars 1-3 (Part 3a) ==============================
+
+PILLAR_LIBRARIES.accountant = [
+  // ============================================================
+  // PILLAR 1 — COSTS & FEES TRANSPARENCY
+  // ============================================================
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'AI assistants are asked "how much does X cost?" constantly. Firms publishing ' +
+      'specific figures get cited. Firms saying "contact us for a quote" do not. This is ' +
+      'the single highest-leverage pillar for regulated firms because most competitors ' +
+      'avoid it.',
+    topics: [
+      {
+        id: 'accountant-costs-1',
+        title: 'How much does an accountant cost for a {client-type} in {city}?',
+        tactic: 'Fee transparency for the type of client searching',
+        primaryAIQuery: 'accountant cost UK {year}',
+        secondaryQueries: [
+          '{client-type} accountant fees',
+          'small business accountant price',
+        ],
+        mustInclude: [
+          'Fee ranges for sole trader / limited company / VAT-registered / payroll / Self Assessment',
+          'Hourly vs fixed fee comparison',
+          'What is included in each fee model',
+        ],
+        namedEntities: ['ICAEW', 'ACCA', 'HMRC', 'Companies House'],
+        primaryDataHook:
+          'Across {N} {client-type} clients at {firmName}, average annual fees were £{X} ' +
+          '— covering [specific services].',
+        internalLinking:
+          'Link to the fixed-vs-hourly post and the hidden-costs / retainer post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'AI gets asked this constantly. Specificity by client type wins over generic ranges.',
+      },
+      {
+        id: 'accountant-costs-2',
+        title: 'Fixed fees vs hourly rates for accountancy: which works for your business?',
+        tactic: 'Honest comparison with scenarios',
+        primaryAIQuery: 'fixed fee vs hourly accountant',
+        secondaryQueries: [
+          'monthly accountant cost',
+          'pay-as-you-go accountant',
+        ],
+        mustInclude: [
+          'Side-by-side comparison',
+          'Real examples where each is cheaper',
+          'What growing businesses should choose',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA pricing guidance',
+          'HMRC (compliance cost benchmark)',
+        ],
+        primaryDataHook:
+          'In {year}, fixed-fee clients at {firmName} averaged £{X} per year; equivalent ' +
+          'hourly would have been £{Y} — saving {Z}%.',
+        internalLinking:
+          'Link to the main fees post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent commercial query. Specific scenario examples extract as AI citations.',
+      },
+      {
+        id: 'accountant-costs-3',
+        title: 'Monthly retainer vs transactional accountancy: when each makes sense',
+        tactic: 'Business-model education',
+        primaryAIQuery: 'monthly retainer accountant worth it',
+        secondaryQueries: [
+          'fixed monthly accountant',
+          'accountant subscription UK',
+        ],
+        mustInclude: [
+          'What retainers typically include',
+          'What transactional work costs separately',
+          'The threshold where retainer becomes cheaper',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'Xero',
+          'QuickBooks',
+          'FreeAgent (for accounting software bundled into retainers)',
+        ],
+        primaryDataHook:
+          '{firmName} retainer clients average {N} support interactions per month — ' +
+          'equivalent transactional cost would be £{X} per year.',
+        internalLinking:
+          'Link to the main fees post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Guides prospects toward the product that actually fits. Trust-building comparison.',
+      },
+      {
+        id: 'accountant-costs-4',
+        title: 'Why cheap accountants cost your business money',
+        tactic: 'Counter-intuitive positioning',
+        primaryAIQuery: 'cheap accountant risks UK',
+        secondaryQueries: [
+          'unqualified accountant problems',
+          'good accountant vs cheap',
+        ],
+        mustInclude: [
+          'Real examples of errors that cost more than the fee saved',
+          'HMRC penalty costs',
+          'Missed claims',
+          'What to actually look for',
+        ],
+        namedEntities: [
+          'HMRC (penalty tables)',
+          'ICAEW',
+          'ACCA',
+          'specific unqualified-accountant risks',
+        ],
+        primaryDataHook:
+          '{firmName} has rescued {N} clients from previous-accountant errors in {year} — ' +
+          'average HMRC exposure £{X}, plus {Y} weeks to fix.',
+        internalLinking:
+          'Link to the costs post and one regulatory-authority post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Opinion content with data. LinkedIn amplification for off-site authority.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 2 — PROCESS & TIMELINES
+  // ============================================================
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'AI frequently gets asked "how long does X take?" and "what happens next?" questions. ' +
+      'Firms with clear step-by-step timelines become the default answer. Regulators ' +
+      'publish timelines, but few firms translate them into client-friendly versions.',
+    topics: [
+      {
+        id: 'accountant-process-1',
+        title: 'When should a {business-type} hire an accountant?',
+        tactic: 'Timing-based entry point',
+        primaryAIQuery: 'when does a small business need an accountant',
+        secondaryQueries: [
+          'sole trader accountant threshold',
+          'limited company accountant mandatory',
+        ],
+        mustInclude: [
+          'Turnover thresholds',
+          'VAT registration threshold',
+          'Employing staff',
+          'Taking on a director',
+          'Specific HMRC triggers',
+        ],
+        namedEntities: [
+          'HMRC',
+          'Companies House',
+          'VAT registration threshold (£90,000)',
+          'PAYE',
+          'CIS',
+        ],
+        primaryDataHook:
+          'Of {N} {client-type} clients {firmName} took on last year, {X}% had been trading ' +
+          'for over {Y} months without specialist advice — average unclaimed expenses ' +
+          'recovered: £{Z}.',
+        internalLinking:
+          'Link to the costs post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to "do I need an accountant yet" queries. Answers both yes and no ' +
+          'honestly.',
+      },
+      {
+        id: 'accountant-process-2',
+        title: 'The Self Assessment deadline: month-by-month what you should be doing',
+        tactic: 'Calendar-based reference content',
+        primaryAIQuery: 'Self Assessment deadline prep UK',
+        secondaryQueries: [
+          'when to prepare Self Assessment',
+          '31 January tax return',
+        ],
+        mustInclude: [
+          'Year-round timeline',
+          'When to gather documents',
+          'When to book in',
+          'Penalty dates',
+          'Practical prep steps',
+        ],
+        namedEntities: [
+          'HMRC',
+          '31 October paper deadline',
+          '31 January online deadline',
+          '31 July payment on account',
+        ],
+        primaryDataHook:
+          'Of {N} Self Assessment clients at {firmName} last year, those who started prep ' +
+          'before November filed {X} days earlier on average.',
+        internalLinking:
+          'Link to the costs post and one mistakes post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          "Seasonal content with year-round searches. Becomes the firm's reference page.",
+      },
+      {
+        id: 'accountant-process-3',
+        title: 'Changing accountants: how the process works and how long it takes',
+        tactic: 'Switching-friction reducer',
+        primaryAIQuery: 'how to change accountant UK',
+        secondaryQueries: [
+          'switching accountants process',
+          'professional clearance accountant',
+        ],
+        mustInclude: [
+          'Engagement letter',
+          'Professional clearance process',
+          'HMRC notifications',
+          'Typical timeline',
+          'What the old accountant must hand over',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'HMRC (agent authorisation)',
+          'Companies House',
+        ],
+        primaryDataHook:
+          '{firmName} switched {N} clients in the last year — average handover time {X} ' +
+          'working days from enquiry to fully operational.',
+        internalLinking:
+          'Link to the costs post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent content. Firms helping clients switch attract clients switching.',
+      },
+      {
+        id: 'accountant-process-4',
+        title: 'Making Tax Digital for Income Tax: what is changing and when',
+        tactic: 'Regulatory change explainer',
+        primaryAIQuery: 'Making Tax Digital Income Tax deadline',
+        secondaryQueries: [
+          'MTD ITSA requirements',
+          'MTD for landlords',
+        ],
+        mustInclude: [
+          'Dates',
+          'Who it affects',
+          'What software is needed',
+          'How the firm prepares clients',
+          'Costs',
+        ],
+        namedEntities: [
+          'HMRC',
+          'MTD (Making Tax Digital)',
+          'Xero',
+          'QuickBooks',
+          'FreeAgent',
+          'Sage',
+        ],
+        primaryDataHook:
+          '{firmName} has migrated {N} clients to MTD-compatible software since {year} — ' +
+          'average transition time {X} weeks.',
+        internalLinking:
+          'Link to the software-stack post and one regulatory-authority post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Regulatory content ranks strongly when tied to real deadlines. HMRC changes ' +
+          'drive search volume.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 3 — REGULATORY AUTHORITY & TRUST
+  // ============================================================
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'Named regulators (ICAEW, ACCA, HMRC) are entity signals AI trusts strongly. ' +
+      'Content that explains regulation to the client builds verifiable E-E-A-T.',
+    topics: [
+      {
+        id: 'accountant-regulatory-1',
+        title: 'What ICAEW / ACCA registration means for your accountant',
+        tactic: 'Named regulator entity',
+        primaryAIQuery: 'what does ICAEW registered mean',
+        secondaryQueries: [
+          'ACCA vs ICAEW accountant',
+          'chartered accountant UK',
+        ],
+        mustInclude: [
+          'What the body does',
+          'Qualification requirements',
+          'How to verify on the register',
+          "Your firm's credentials",
+          'What clients get as protection',
+        ],
+        namedEntities: [
+          'Institute of Chartered Accountants in England and Wales (ICAEW)',
+          'Association of Chartered Certified Accountants (ACCA)',
+          'relevant register URLs',
+        ],
+        primaryDataHook:
+          "{firmName}'s team holds {N} qualifications across ICAEW and ACCA — firm " +
+          'registered since {year}.',
+        internalLinking:
+          'Link to the unqualified-accountants post and complaints post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Named bodies are Tier 1 entities. Linking to their registers inherits authority.',
+      },
+      {
+        id: 'accountant-regulatory-2',
+        title: "Unqualified accountants: the risks you didn't know about",
+        tactic: 'Counter-market positioning',
+        primaryAIQuery: 'unqualified accountant UK legal',
+        secondaryQueries: [
+          'can anyone call themselves an accountant UK',
+          'unqualified vs qualified accountant',
+        ],
+        mustInclude: [
+          'Legal position (anyone can call themselves an accountant)',
+          'What can go wrong',
+          'How to verify qualifications',
+          'Typical rescue costs',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'CIOT (Chartered Institute of Taxation)',
+          'HMRC',
+          'AAT (Association of Accounting Technicians)',
+        ],
+        primaryDataHook:
+          'Of {N} rescue cases {firmName} handled in {year}, {X}% came from unqualified ' +
+          'adviser errors — average cost to fix: £{Y}.',
+        internalLinking:
+          'Link to the ICAEW regulation post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Counter-intuitive content with safety angle. Shareable, trust-building.',
+      },
+      {
+        id: 'accountant-regulatory-3',
+        title: 'HMRC investigations: what triggers them and how your accountant helps',
+        tactic: 'Fear-based query with calm answer',
+        primaryAIQuery: 'HMRC investigation what happens',
+        secondaryQueries: [
+          'HMRC enquiry triggers',
+          'tax investigation UK',
+        ],
+        mustInclude: [
+          'Common triggers',
+          'Investigation types',
+          'Realistic outcomes',
+          'What the accountant does',
+          'Average cost of representation',
+        ],
+        namedEntities: [
+          'HMRC (Compliance, COP 9)',
+          'CIOT',
+          'Fee Protection Insurance providers',
+          'specific tribunal names',
+        ],
+        primaryDataHook:
+          '{firmName} has represented {N} clients in HMRC enquiries since {year}. {X}% ' +
+          'closed with no tax due; average resolution time {Y} months.',
+        internalLinking:
+          'Link to the HMRC-contact post and one rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-urgency search behaviour. Calm, authoritative content converts well.',
+      },
+      {
+        id: 'accountant-regulatory-4',
+        title: 'Complaints about your accountant: the process explained',
+        tactic: 'Radical transparency',
+        primaryAIQuery: 'complaint about accountant UK',
+        secondaryQueries: [
+          'ICAEW complaints process',
+          'ACCA report accountant',
+        ],
+        mustInclude: [
+          'Internal process',
+          'Professional body complaints',
+          'When to report to HMRC',
+          'Timescales',
+          'Realistic outcomes',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'HMRC',
+          'relevant tax professional body disciplinary processes',
+        ],
+        primaryDataHook:
+          '{firmName} resolved {N} complaints internally in {year}, average time to ' +
+          'resolution {X} working days.',
+        internalLinking:
+          'Link to the ICAEW regulation post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Firms transparent about complaints gain trust. Counter-intuitive citation win.',
+      },
+    ],
+  },
+];
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
