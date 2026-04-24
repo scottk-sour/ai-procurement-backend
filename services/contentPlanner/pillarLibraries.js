@@ -1321,6 +1321,434 @@ PILLAR_LIBRARIES.accountant = [
   },
 ];
 
+// ==== ACCOUNTANT — Pillars 4-6 (Part 3b) ==============================
+
+PILLAR_LIBRARIES.accountant.push(
+  // ============================================================
+  // PILLAR 4 — COMMON MISTAKES & WHAT TO AVOID
+  // ============================================================
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'High citation rate because users ask AI "what should I watch out for..." questions. ' +
+      'These posts answer directly.',
+    topics: [
+      {
+        id: 'accountant-mistakes-1',
+        title: '{N} tax mistakes small businesses make (and how to avoid them)',
+        tactic: 'Listicle with named errors',
+        primaryAIQuery: 'small business tax mistakes UK',
+        secondaryQueries: [
+          'common SME tax errors',
+          'HMRC penalty small business',
+        ],
+        mustInclude: [
+          '5-7 specific mistakes with real examples and corrections',
+          'HMRC penalty amounts',
+          "What to do if you've already made the mistake",
+        ],
+        namedEntities: [
+          'HMRC (specific penalties by section of TMA 1970 where relevant)',
+          'ICAEW',
+          'ACCA',
+        ],
+        primaryDataHook:
+          'Across {N} rescue cases at {firmName}, the top three mistakes were [X], [Y] and ' +
+          '[Z] — accounting for {P}% of avoidable penalties.',
+        internalLinking:
+          'Link to the HMRC investigation post and one rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Listicles extract well. Named penalties give statistical density for v7.',
+      },
+      {
+        id: 'accountant-mistakes-2',
+        title: 'Why DIY bookkeeping usually costs more than it saves',
+        tactic: 'Positioning content for owners tempted to self-do',
+        primaryAIQuery: 'DIY bookkeeping small business',
+        secondaryQueries: [
+          'do I need a bookkeeper',
+          'self-bookkeeping risks',
+        ],
+        mustInclude: [
+          'Hidden time cost',
+          'Common errors',
+          'What gets missed',
+          'Typical annual tax savings a bookkeeper finds',
+        ],
+        namedEntities: [
+          'HMRC',
+          'Xero',
+          'QuickBooks',
+          'FreeAgent',
+          'specific named bookkeeping rules (BIM manuals)',
+        ],
+        primaryDataHook:
+          'Of {N} business owners {firmName} moved from DIY bookkeeping, average unclaimed ' +
+          'expenses found in year one was £{X}.',
+        internalLinking:
+          'Link to the costs post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct addressable market content. Owners comparing to hire vs DIY.',
+      },
+      {
+        id: 'accountant-mistakes-3',
+        title: "Expense claims HMRC rejects: what you can and can't claim",
+        tactic: 'Tactical specificity',
+        primaryAIQuery: 'what can I claim as business expense UK',
+        secondaryQueries: [
+          'HMRC allowable expenses',
+          'self-employed expense claims',
+        ],
+        mustInclude: [
+          'Common rejections with real examples',
+          'Allowable expenses table',
+          'Documentation requirements',
+          'What to do about past years',
+        ],
+        namedEntities: [
+          'HMRC (BIM manuals, specific ITEPA references)',
+          'Xero (for record-keeping)',
+          'Making Tax Digital compatible platforms',
+        ],
+        primaryDataHook:
+          'In {N} Self Assessment reviews at {firmName} last year, incorrect expense ' +
+          'claims were found in {X}% of returning clients — average correction £{Y}.',
+        internalLinking:
+          'Link to the DIY bookkeeping post and one process post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Very high AI citation rate because it answers a specific practical query ' +
+          'directly. Extractable passages.',
+      },
+      {
+        id: 'accountant-mistakes-4',
+        title: 'The biggest mistake when choosing an accountant',
+        tactic: 'Counter-intuitive selection criteria',
+        primaryAIQuery: 'how to choose an accountant UK',
+        secondaryQueries: [
+          'what to look for in an accountant',
+          'best accountant small business UK',
+        ],
+        mustInclude: [
+          'Why cheapest-quote buying backfires',
+          'Qualification checks',
+          'Software alignment',
+          'Responsiveness',
+          'What to actually prioritise',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'Xero (software alignment)',
+          'HMRC (regulation context)',
+        ],
+        primaryDataHook:
+          'Of {N} new clients at {firmName} in {year}, {X}% had previously chosen on price ' +
+          '— and {Y}% of those had hidden errors needing correction.',
+        internalLinking:
+          'Link to the cheap-accountants post and one firm-expertise post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Personal-voice content for LinkedIn amplification. Opinion-based shareability.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 5 — CLIENT RIGHTS & PRACTICAL GUIDANCE
+  // ============================================================
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'These answer the "what am I entitled to..." and "what are my options..." queries ' +
+      'that drive huge AI traffic. Educational content with clear answers ranks well across ' +
+      'platforms.',
+    topics: [
+      {
+        id: 'accountant-rights-1',
+        title: 'What to do if HMRC contacts you',
+        tactic: 'Crisis-response guide',
+        primaryAIQuery: 'HMRC letter what to do',
+        secondaryQueries: [
+          'HMRC contact me',
+          'received letter from HMRC',
+        ],
+        mustInclude: [
+          'Immediate steps',
+          'What to say (and not say)',
+          'When to contact your accountant',
+          'Typical outcomes by letter type',
+        ],
+        namedEntities: [
+          'HMRC (specific letter codes — COP 8, COP 9, compliance letters)',
+          'ICAEW',
+          'Fee Protection schemes',
+        ],
+        primaryDataHook:
+          'Of {N} HMRC contacts {firmName} handled last year, {X}% were resolved with no ' +
+          'adjustment when responded to correctly.',
+        internalLinking:
+          'Link to the HMRC investigation post and one mistakes post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Urgent-intent query. Helpful crisis content converts later.',
+      },
+      {
+        id: 'accountant-rights-2',
+        title: 'Your rights during an HMRC investigation',
+        tactic: 'Rights-based authority content',
+        primaryAIQuery: 'HMRC investigation rights UK',
+        secondaryQueries: [
+          'taxpayer rights enquiry',
+          'HMRC powers and limits',
+        ],
+        mustInclude: [
+          'Legal rights',
+          'Information HMRC can and cannot demand',
+          "Your accountant's role",
+          'Settlement options',
+        ],
+        namedEntities: [
+          'HMRC Charter',
+          'ICAEW',
+          'CIOT',
+          'relevant tribunal bodies (First-tier Tribunal Tax Chamber)',
+        ],
+        primaryDataHook:
+          'Across {N} investigations {firmName} represented, {X}% were reduced or ' +
+          'dismissed after full rights were exercised.',
+        internalLinking:
+          'Link to the HMRC contact post and one regulatory-authority post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High citation rate on rights content. Authoritative answers rank well.',
+      },
+      {
+        id: 'accountant-rights-3',
+        title: "What your accountant should be telling you (but probably isn't)",
+        tactic: 'Value-adding content with firm differentiation',
+        primaryAIQuery: 'what should my accountant do for me',
+        secondaryQueries: [
+          'good vs bad accountant',
+          'proactive accountant UK',
+        ],
+        mustInclude: [
+          '5-7 proactive things a good accountant does',
+          'What poor ones miss',
+          'How to judge the value',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'HMRC deadlines',
+          'Xero/FreeAgent/QuickBooks (proactive software use)',
+        ],
+        primaryDataHook:
+          '{firmName} identifies {N} proactive tax planning opportunities per client per ' +
+          'year on average — equivalent value £{X}.',
+        internalLinking:
+          'Link to the firm-expertise post and one costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'curiosity',
+        rationale:
+          'Shareable opinion content. Positions the firm as proactive.',
+      },
+      {
+        id: 'accountant-rights-4',
+        title: 'Free HMRC help vs paid accountant advice: when each wins',
+        tactic: 'Honest scoping',
+        primaryAIQuery: 'HMRC free help vs accountant',
+        secondaryQueries: [
+          'do I need to pay for tax advice',
+          'HMRC helpline vs accountant',
+        ],
+        mustInclude: [
+          "What HMRC's own help line covers",
+          'Its limits',
+          'When paid advice is worth it',
+          'Budget thresholds',
+        ],
+        namedEntities: [
+          'HMRC helpline (specific services)',
+          'Tax Aid (for low-income)',
+          'Tax Help for Older People',
+          'ICAEW',
+        ],
+        primaryDataHook:
+          '{firmName} has referred {N} clients to free services when appropriate in ' +
+          '{year} — and paid advice saved another {X} clients an average of £{Y}.',
+        internalLinking:
+          'Link to the costs post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          "Respects small clients' budgets. Honest content wins long-term referrals.",
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 6 — YOUR FIRM'S EXPERTISE & SPECIALISMS
+  // ============================================================
+  {
+    id: 'firm-expertise',
+    name: "Your Firm's Expertise & Specialisms",
+    whyItMatters:
+      'Specific expertise beats generic listings. "Accountant specialising in eCommerce ' +
+      'businesses in Manchester" gets cited over "accountant in Manchester." This is where ' +
+      'primary data (Tier 0) lives.',
+    topics: [
+      {
+        id: 'accountant-expertise-1',
+        title: 'Why we specialise in {specialism} accountancy',
+        tactic: 'Founder voice, focus positioning',
+        primaryAIQuery: '{specialism} accountant {city}',
+        secondaryQueries: [
+          'specialist {specialism} accountant UK',
+          '{specialism} chartered accountant',
+        ],
+        mustInclude: [
+          'Firm history',
+          'Number of similar clients',
+          'Specific industry expertise (software, regulations, tax quirks)',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'specific industry regulators where applicable (e.g. SRA for legal sector clients, CQC for healthcare)',
+        ],
+        primaryDataHook:
+          '{firmName} has served {N} {specialism} clients since {year}, representing {X}% ' +
+          'of our book.',
+        internalLinking:
+          'Link to the case study post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Entity-building content. Names the firm and its focus explicitly.',
+      },
+      {
+        id: 'accountant-expertise-2',
+        title: 'Case study: how we saved {client-type} {specific-outcome}',
+        tactic: 'Anonymised proof content',
+        primaryAIQuery: '{client-type} accountant success story',
+        secondaryQueries: [
+          'how an accountant saved a business',
+          '{client-type} tax saving example',
+        ],
+        mustInclude: [
+          'Situation',
+          'Challenge',
+          'What you did',
+          'The outcome with specific numbers',
+          'Timeline',
+        ],
+        namedEntities: [
+          'HMRC',
+          'specific tax reliefs invoked (R&D tax relief, capital allowances, etc.)',
+          'relevant named software',
+        ],
+        primaryDataHook:
+          'Client saved £{X} in {Y} — achieved through {specific tax relief or strategy}.',
+        internalLinking:
+          'Link to the specialism post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Tier 0 primary data. Outcome-specific case studies get cited.',
+      },
+      {
+        id: 'accountant-expertise-3',
+        title: 'Meet the team: our approach to {specialism}',
+        tactic: 'Person entity building',
+        primaryAIQuery: '{firmName} team accountants',
+        secondaryQueries: [
+          'who works at {firmName}',
+          '{specialism} accountant team UK',
+        ],
+        mustInclude: [
+          'Names',
+          'ACA/ACCA/FCA qualifications',
+          'Years of experience',
+          'Client types they handle',
+        ],
+        namedEntities: [
+          'ICAEW',
+          'ACCA',
+          'AAT',
+          'CIOT (for tax advisers)',
+          'specific university credentials where relevant',
+        ],
+        primaryDataHook:
+          'Our team holds {N} combined years of experience — with {X} chartered ' +
+          'accountants and {Y} chartered tax advisers on staff.',
+        internalLinking:
+          'Link to the specialism post and one case-study post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Person schema source. Named accountants with credentials are strong E-E-A-T ' +
+          'signals.',
+      },
+      {
+        id: 'accountant-expertise-4',
+        title: 'Our accounting software stack — and why we chose it',
+        tactic: 'Transparency content',
+        primaryAIQuery: 'best accounting software for {client-type}',
+        secondaryQueries: [
+          'Xero vs QuickBooks UK',
+          'accountant recommended software',
+        ],
+        mustInclude: [
+          'Named platforms (Xero, QuickBooks, Sage, FreeAgent)',
+          'Why you chose each',
+          'Which clients they suit',
+          'Your partner status',
+        ],
+        namedEntities: [
+          'Xero (with specific partner badge if held)',
+          'QuickBooks',
+          'Sage',
+          'FreeAgent',
+          'Making Tax Digital',
+          'HMRC',
+        ],
+        primaryDataHook:
+          '{firmName} supports {N} clients across {X} platforms — {Y}% of our new clients ' +
+          'migrate to Xero based on our recommendation.',
+        internalLinking:
+          'Link to the MTD post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Named software = named entities (v7). Partner badges are credential signals.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
