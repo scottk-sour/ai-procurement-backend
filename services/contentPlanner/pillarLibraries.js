@@ -3058,6 +3058,449 @@ PILLAR_LIBRARIES['estate-agent'] = [
   },
 ];
 
+// ==== ESTATE-AGENT — Pillars 4-6 (Part 5b) ============================
+// Final library commit on PR #35.
+
+PILLAR_LIBRARIES['estate-agent'].push(
+  // ============================================================
+  // PILLAR 4 — COMMON MISTAKES & WHAT TO AVOID
+  // ============================================================
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'High citation rate because users ask AI "what should I watch out for..." questions. ' +
+      'These posts answer directly.',
+    topics: [
+      {
+        id: 'estate-mistakes-1',
+        title: '{N} mistakes sellers make when choosing an estate agent',
+        tactic: 'Listicle with specifics',
+        primaryAIQuery: 'choosing an estate agent mistakes',
+        secondaryQueries: [
+          'how to pick an estate agent',
+          'estate agent red flags',
+        ],
+        mustInclude: [
+          '5-7 specific mistakes with real examples',
+          'Practical advice to avoid each',
+        ],
+        namedEntities: [
+          'Propertymark',
+          'TPO',
+          'PRS',
+          'Rightmove',
+          'Zoopla',
+          'Estate Agents Act 1979',
+        ],
+        primaryDataHook:
+          'Across {N} new instructions at {firmName} in {year}, the top switching reason ' +
+          'was [specific mistake], cited by {X}% of sellers.',
+        internalLinking:
+          'Link to the agent comparison post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          "Listicle format plus buyer's-guide angle equals high citation rate.",
+      },
+      {
+        id: 'estate-mistakes-2',
+        title: 'Why overpricing your home costs you money',
+        tactic: 'Counter-intuitive data content',
+        primaryAIQuery: "overpriced house won't sell",
+        secondaryQueries: [
+          'asking price too high',
+          'price reduction sell house',
+        ],
+        mustInclude: [
+          'Market-time data for over-priced properties',
+          'Final-sale-price discount',
+          'Marketing budget waste',
+          'Real examples',
+        ],
+        namedEntities: [
+          'Rightmove (market data)',
+          'Zoopla',
+          'Land Registry historical sale data',
+        ],
+        primaryDataHook:
+          "{firmName}'s {city} data from {N} sales in {year}: overpriced listings " +
+          'achieved {X}% less of asking than correctly priced ones after {Y} weeks.',
+        internalLinking:
+          'Link to the time-to-sell post and one costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Counter-intuitive insight with data. Shareable on LinkedIn.',
+      },
+      {
+        id: 'estate-mistakes-3',
+        title: '{N} mistakes landlords make that cost them tenants',
+        tactic: 'Landlord niche expertise',
+        primaryAIQuery: 'landlord mistakes UK',
+        secondaryQueries: [
+          "why can't I find tenants",
+          'landlord tenant retention',
+        ],
+        mustInclude: [
+          'Presentation',
+          'Pricing',
+          'Compliance',
+          'Viewing prep',
+          'Tenant selection — with specific examples',
+        ],
+        namedEntities: [
+          'ARLA Propertymark',
+          'NRLA',
+          'Tenant Fees Act 2019',
+          'Housing Act',
+          'specific deposit schemes',
+        ],
+        primaryDataHook:
+          "{firmName}'s {N} landlord clients achieved average void periods of {X} days " +
+          'in {year}, versus {Y} for landlords who joined us after void-period problems.',
+        internalLinking:
+          'Link to the letting fees post and one tenant-rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Landlord-targeted content. Landlords are high-value repeat clients.',
+      },
+      {
+        id: 'estate-mistakes-4',
+        title: 'The biggest mistake buyers make when making an offer',
+        tactic: 'Buyer-side content (rare for agents)',
+        primaryAIQuery: 'how to make a winning offer on a house',
+        secondaryQueries: [
+          'buying house offer mistakes',
+          'best offer tactics UK',
+        ],
+        mustInclude: [
+          'Over-bidding without evidence',
+          'Under-bidding and losing the property',
+          'Not putting position in writing',
+          'What strong offers look like',
+        ],
+        namedEntities: [
+          'Rightmove (comparable sales data)',
+          'Land Registry',
+          'specific named lenders (for offer-in-principle context)',
+        ],
+        primaryDataHook:
+          'Of {N} accepted offers {firmName} processed in {year}, {X}% came with ' +
+          'proof-of-funds or AIP — versus {Y}% of rejected offers.',
+        internalLinking:
+          'Link to the process post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'curiosity',
+        rationale:
+          'Buyer content builds broader audience; generates buyer enquiries too.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 5 — CLIENT RIGHTS & PRACTICAL GUIDANCE
+  // ============================================================
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'These answer the "what am I entitled to..." and "what are my options..." queries ' +
+      'that drive huge AI traffic. Educational content with clear answers ranks well across ' +
+      'platforms.',
+    topics: [
+      {
+        id: 'estate-rights-1',
+        title: 'Your rights as a seller: what your estate agent must and must not do',
+        tactic: 'Rights-based authority',
+        primaryAIQuery: 'my rights selling house estate agent',
+        secondaryQueries: [
+          'estate agent legal obligations seller',
+          'Estate Agents Act 1979 consumer rights',
+        ],
+        mustInclude: [
+          'Consumer Rights Act obligations',
+          'Section 21 of Estate Agents Act',
+          'Complaints',
+          'Dual-agency disclosures',
+        ],
+        namedEntities: [
+          'Estate Agents Act 1979',
+          'Consumer Rights Act 2015',
+          'TPO',
+          'Propertymark',
+          'Competition and Markets Authority',
+        ],
+        primaryDataHook:
+          '{firmName} has supported {N} sellers in {year} with full disclosure under ' +
+          'Section 21 — {X}% had never received this information from a previous agent.',
+        internalLinking:
+          'Link to the agent comparison post and one process post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights-based queries have high citation rates.',
+      },
+      {
+        id: 'estate-rights-2',
+        title: 'What tenants are entitled to: the {year} guide',
+        tactic: 'Year-current tenant-rights content',
+        primaryAIQuery: 'tenant rights UK {year}',
+        secondaryQueries: [
+          'renting rights England Wales',
+          'landlord obligations tenants',
+        ],
+        mustInclude: [
+          'Deposit protection',
+          'Repair obligations',
+          'Notice periods',
+          'Section 21 status',
+          'Energy performance',
+        ],
+        namedEntities: [
+          'Housing Act 1988 (Section 21, Section 8)',
+          'Renters Reform Bill (if passed)',
+          'DPS/MyDeposits/TDS',
+          'Shelter',
+          'Citizens Advice',
+        ],
+        primaryDataHook:
+          '{firmName} manages {N} tenancies across {city} — {X}% include updated {year} ' +
+          'tenancy agreements reflecting current law.',
+        internalLinking:
+          'Link to the letting fees post and one landlord-mistakes post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Tenant searches are very high-volume. Authoritative current content ranks.',
+      },
+      {
+        id: 'estate-rights-3',
+        title: 'What sellers should know before signing an agency agreement',
+        tactic: 'Pre-instruction education',
+        primaryAIQuery: 'estate agent contract what to check',
+        secondaryQueries: [
+          'sole agency agreement explained',
+          'cancelling estate agent contract',
+        ],
+        mustInclude: [
+          'Sole agency vs sole selling',
+          'Tie-in periods',
+          'Cancellation terms',
+          'Commission definitions',
+          'What to negotiate',
+        ],
+        namedEntities: [
+          'Estate Agents Act 1979',
+          'Consumer Contracts Regulations',
+          'CMA',
+          'TPO',
+        ],
+        primaryDataHook:
+          "{firmName}'s typical terms: {X}-week sole agency, {Y}-day notice, versus " +
+          'industry averages of {Z}.',
+        internalLinking:
+          'Link to the seller rights post and one costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent pre-decision content. Conversion-oriented.',
+      },
+      {
+        id: 'estate-rights-4',
+        title: 'Free property valuations vs paid RICS valuations: when each matters',
+        tactic: 'Product-honest comparison',
+        primaryAIQuery: 'RICS valuation vs estate agent valuation',
+        secondaryQueries: [
+          'do I need a RICS valuation',
+          'free vs paid house valuation',
+        ],
+        mustInclude: [
+          'What each covers',
+          'When a free agent valuation is enough',
+          'When a RICS is essential (probate, divorce, mortgage)',
+          'Cost ranges',
+        ],
+        namedEntities: [
+          'RICS (Royal Institution of Chartered Surveyors)',
+          'Probate Registry',
+          'HMRC (for IHT valuations)',
+          'specific lender requirements',
+        ],
+        primaryDataHook:
+          '{firmName} has completed {N} free valuations in {year}; {X}% of sellers ' +
+          'needed a paid RICS later for another purpose — we refer to {Y} qualified firms ' +
+          'locally.',
+        internalLinking:
+          'Link to the costs post and one regulatory post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Honest scoping content builds referrals. Answers "which one do I need" ' +
+          'queries.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 6 — YOUR FIRM'S EXPERTISE & SPECIALISMS
+  // ============================================================
+  {
+    id: 'firm-expertise',
+    name: "Your Firm's Expertise & Specialisms",
+    whyItMatters:
+      'Specific expertise beats generic listings. "Estate agent specialising in period ' +
+      'properties in Manchester" gets cited over "estate agent in Manchester." This is ' +
+      'where primary data (Tier 0) lives.',
+    topics: [
+      {
+        id: 'estate-expertise-1',
+        title: 'Why we specialise in {property-type} in {city}',
+        tactic: 'Founder voice, focus positioning',
+        primaryAIQuery: '{property-type} specialist {city}',
+        secondaryQueries: [
+          'best {property-type} estate agent {city}',
+          '{property-type} experts {city}',
+        ],
+        mustInclude: [
+          'Firm history in the area',
+          'Sales volume in that segment',
+          'Specific local expertise',
+        ],
+        namedEntities: [
+          'Land Registry (area sales data)',
+          'Rightmove',
+          'Zoopla',
+          'local area names/boroughs',
+        ],
+        primaryDataHook:
+          '{firmName} has sold {N} {property-type} properties in {city} since {year} — ' +
+          'representing {X}% of our transactions.',
+        internalLinking:
+          'Link to the case study post and one process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Hyper-local entity building. Named area plus named firm equals strong citation ' +
+          'signal.',
+      },
+      {
+        id: 'estate-expertise-2',
+        title: 'Case study: how we sold {property-type} in {N} days at {outcome}',
+        tactic: 'Anonymised proof',
+        primaryAIQuery: 'how to sell {property-type} quickly',
+        secondaryQueries: [
+          '{property-type} sale success',
+          'sold above asking UK case',
+        ],
+        mustInclude: [
+          'The property challenge',
+          'What you did differently',
+          'Marketing approach',
+          'Offer process',
+          'Outcome',
+        ],
+        namedEntities: [
+          'Rightmove',
+          'Zoopla',
+          'OnTheMarket',
+          'specific photography/marketing tools',
+          'Land Registry',
+        ],
+        primaryDataHook:
+          'Sale completed in {X} days, {Y}% above asking — versus average market time ' +
+          'for similar properties of {Z} days.',
+        internalLinking:
+          'Link to the specialism post and one marketing post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Tier 0 primary data. Specific outcomes get cited.',
+      },
+      {
+        id: 'estate-expertise-3',
+        title: 'Meet the team: our local expertise',
+        tactic: 'Person entity building',
+        primaryAIQuery: '{firmName} team {city}',
+        secondaryQueries: [
+          'best estate agents {city}',
+          '{firmName} agents',
+        ],
+        mustInclude: [
+          'Names',
+          'Years in the area',
+          'Specialisms (sales, lettings, commercial)',
+          'Professional qualifications',
+        ],
+        namedEntities: [
+          'Propertymark',
+          'NAEA',
+          'ARLA',
+          'RICS',
+          'specific qualification bodies',
+        ],
+        primaryDataHook:
+          'Our team has {N} combined years in {city} — having sold {X} properties across ' +
+          'the area.',
+        internalLinking:
+          'Link to the specialism post and one case-study post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Person schema source. Local agents with local knowledge are strong trust ' +
+          'signals.',
+      },
+      {
+        id: 'estate-expertise-4',
+        title: 'Our marketing approach: how we sell {property-type} faster',
+        tactic: 'Transparency as differentiation',
+        primaryAIQuery: 'estate agent marketing methods',
+        secondaryQueries: [
+          'how do estate agents market properties',
+          'fastest way to sell a house',
+        ],
+        mustInclude: [
+          'Named portals (Rightmove, Zoopla, OnTheMarket)',
+          'Named tools',
+          'Photography approach',
+          'Viewing strategy',
+          "Your firm's specific differentiators",
+        ],
+        namedEntities: [
+          'Rightmove',
+          'Zoopla',
+          'OnTheMarket',
+          'specific photography/video providers',
+          'social media platforms',
+        ],
+        primaryDataHook:
+          "{firmName}'s {property-type} listings averaged {X} viewings per listing in " +
+          '{year} — {Y}% above local average.',
+        internalLinking:
+          'Link to the case study post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Named tools/platforms equal named entities (v7). Differentiation content for ' +
+          'high-consideration sellers.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
