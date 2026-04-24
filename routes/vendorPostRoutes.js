@@ -2,8 +2,163 @@ import express from 'express';
 import VendorPost from '../models/VendorPost.js';
 import Vendor from '../models/Vendor.js';
 import vendorAuth from '../middleware/vendorAuth.js';
+import {
+  PILLAR_LIBRARIES,
+  VERTICAL_ENTITIES,
+  LINKEDIN_HOOK_TYPES, // eslint-disable-line no-unused-vars
+} from '../services/contentPlanner/pillarLibraries.js';
 
 const router = express.Router();
+
+// ─── v7 content generator — prompt, labels, user-prompt builder ────────
+
+// Vertical label map: vendorType → friendly label for use in prompts.
+// Preserved from pre-v7 wording; the v7 rewrite just lifts it out of the
+// handler so tests and follow-up code can share it.
+const VERTICAL_LABELS = {
+  solicitor: 'solicitor',
+  accountant: 'accountant',
+  'mortgage-advisor': 'mortgage adviser',
+  'estate-agent': 'estate agent',
+  'office-equipment': 'office equipment supplier',
+  'financial-advisor': 'financial adviser',
+  'insurance-broker': 'insurance broker',
+};
+
+const SYSTEM_PROMPT_V7 = `You are a v7-compliant content writer for UK regulated professional services firms — solicitors, accountants, mortgage advisers, and estate agents.
+
+You write in the TendorAI AEO Format, designed to earn citations from AI assistants including ChatGPT, Perplexity, Claude, Gemini, and Grok.
+
+## STRUCTURE — every post begins with this opening block
+
+1. A 40-60 word direct answer paragraph. The first sentence states the core answer. It must be extractable as a standalone passage.
+2. A 3-5 bullet summary of the article's key points. Each bullet is a complete, citable sentence on its own.
+3. The full article body.
+
+Never skip any of the three. Never merge them. The direct answer comes first, the bullets come second, the body comes third.
+
+## BODY STRUCTURE
+
+- H2 subheading every 200-300 words
+- Every H2 opens with a data point — a number, percentage, named entity with a fact, or a specific figure. Never open an H2 with generic prose.
+- Paragraphs: 2-4 sentences, one idea per paragraph. No cross-references ("as we saw above", "mentioned earlier"). Every paragraph is independently citable.
+- Include 1-2 definition blocks — standalone sentences that define a key term in citable form ("Answer Engine Optimisation (AEO) is the practice of…").
+- End body with an FAQ block: 3-5 question-and-answer pairs before the single CTA.
+
+## NAMED ENTITY DENSITY
+
+Include at least two specific named entities — regulators, professional bodies, named software, named Acts, named competitors. Generic phrases like "AI tools", "regulators", or "the market" do not count. You will be told which entities are most relevant for the vertical.
+
+## LENGTH AND CLOSING
+
+- Target 1,200-1,800 words for standard blog posts
+- Target 2,500+ words if flagged as pillar content
+- End with a single clear call to action. Do not stack multiple CTAs.
+
+## STYLE
+
+- UK English throughout. No American spelling.
+- Plain English. No jargon unless followed by a plain-English definition.
+- First person plural ("we", "our firm") — write as the firm itself.
+- Never mention TendorAI in the content.
+- Include the year in the title where relevant for recency.
+
+## LINKEDIN AND FACEBOOK VARIANTS
+
+Also produce LinkedIn and Facebook versions:
+
+LinkedIn version (150-200 words):
+- Uses the specified hook type (opinion / data / personal / curiosity) — you will be told which
+- Stands alone — does not summarise the blog, makes its own point
+- Ends with a question that drives comments
+
+Facebook version (100-150 words):
+- Warmer tone
+- Ends with a call to action inviting readers to the blog or to contact the firm
+
+## OUTPUT
+
+Return only valid JSON with this exact shape — no preamble, no explanation, no markdown fence:
+
+{
+  "title": "Blog post title including the year where relevant",
+  "body": "Full blog post in markdown — direct answer + bullets + H2 sections + FAQ + CTA",
+  "linkedInText": "LinkedIn variant",
+  "facebookText": "Facebook variant"
+}`;
+
+/**
+ * Build the v7 user prompt from a request/vendor/library context.
+ * Exported for unit testing — pure function, no side effects.
+ *
+ * @param {Object} ctx
+ * @param {string} ctx.topic                   - Raw topic string from the request.
+ * @param {string} [ctx.stats]                 - Optional free-text stats/facts.
+ * @param {string} [ctx.primaryData]           - Vendor's own first-party data.
+ * @param {string} ctx.verticalLabel           - Friendly label for the vendor type.
+ * @param {string} [ctx.vendorCity]            - City the firm operates in.
+ * @param {string} [ctx.vendorName]            - Firm's company name.
+ * @param {Object|null} ctx.pillarSpec         - Resolved pillar+topic template (or null for generic).
+ * @param {string[]} ctx.vendorTypeEntities    - Named entities to reference at least twice.
+ * @param {string} [ctx.linkedInHookType]      - opinion | data | personal | curiosity.
+ * @returns {string}
+ */
+export function buildUserPrompt(ctx) {
+  const {
+    topic, stats, primaryData, verticalLabel, vendorCity,
+    vendorName, pillarSpec, vendorTypeEntities, linkedInHookType,
+  } = ctx;
+
+  const lines = [];
+
+  lines.push(`Write a v7-compliant blog post for ${vendorName || ('a ' + verticalLabel + ' firm')}${vendorCity ? ' based in ' + vendorCity : ''}.`);
+
+  lines.push('');
+  lines.push(`Topic: ${topic.trim()}`);
+
+  if (pillarSpec) {
+    lines.push('');
+    lines.push(`This topic is from the ${pillarSpec.pillarName} pillar.`);
+    if (pillarSpec.tactic) lines.push(`Tactic: ${pillarSpec.tactic}`);
+    if (pillarSpec.mustInclude && pillarSpec.mustInclude.length) {
+      lines.push(`Must include: ${pillarSpec.mustInclude.join('; ')}`);
+    }
+    if (pillarSpec.wordCount) lines.push(`Word count target: ${pillarSpec.wordCount} words.`);
+    if (pillarSpec.primaryAIQuery) lines.push(`Primary AI query this post targets: "${pillarSpec.primaryAIQuery}"`);
+    if (pillarSpec.secondaryQueries && pillarSpec.secondaryQueries.length) {
+      lines.push(`Secondary queries: ${pillarSpec.secondaryQueries.map((q) => '"' + q + '"').join(', ')}`);
+    }
+  }
+
+  lines.push('');
+  if (vendorTypeEntities && vendorTypeEntities.length) {
+    lines.push(`Named entities relevant to ${verticalLabel} firms that you should reference (at least 2): ${vendorTypeEntities.join(', ')}.`);
+  }
+
+  if (pillarSpec && pillarSpec.namedEntities && pillarSpec.namedEntities.length) {
+    lines.push(`Topic-specific entities: ${pillarSpec.namedEntities.join(', ')}.`);
+  }
+
+  lines.push('');
+  if (primaryData && primaryData.trim()) {
+    lines.push(`The firm has provided this first-party data — weave it into the post naturally: "${primaryData.trim()}"`);
+  } else if (pillarSpec && pillarSpec.primaryDataHook) {
+    lines.push(`Primary data hook — prompt the reader with a template they can fill in. Example pattern: "${pillarSpec.primaryDataHook}"`);
+  }
+
+  if (stats && stats.trim()) {
+    lines.push(`Additional stats or facts to include: ${stats.trim()}`);
+  }
+
+  lines.push('');
+  lines.push(`LinkedIn hook type for the LinkedIn variant: ${linkedInHookType || 'opinion'}.`);
+
+  lines.push('');
+  lines.push('Return only the JSON described in the system prompt. No preamble, no markdown fence, no commentary.');
+
+  return lines.join('\n');
+}
+
 
 // Tier-based post limits per month
 const POST_LIMITS = {
@@ -124,7 +279,22 @@ router.put('/:vendorId/posts/:postId', vendorAuth, async (req, res) => {
   }
 });
 
-// POST /api/vendors/:vendorId/posts/generate — AI blog generation
+// POST /api/vendors/:vendorId/posts/generate — v7 AI blog generation.
+//
+// Request body (all optional except topic):
+//   topic        string   — required
+//   stats        string   — free-text facts to weave in
+//   pillar       string   — one of the six v7 pillar ids (costs-fees, ...).
+//                           If present and valid, the matching topic
+//                           template is looked up in PILLAR_LIBRARIES and
+//                           the prompt is built with must-includes, named
+//                           entities, word-count target, and query
+//                           targeting baked in. If absent, generic v7
+//                           prompt is used (backward compatible with the
+//                           current frontend).
+//   topicIndex   integer  — which of the four topics within the pillar
+//                           (0-3). Defaults to 0.
+//   primaryData  string   — vendor's first-party numbers/facts.
 router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
   console.log('[PostGenerate] Route hit', { vendorId: req.params.vendorId, body: req.body });
   try {
@@ -134,12 +304,13 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Not authorised' });
     }
 
-    const vendor = await Vendor.findById(vendorId).select('tier vendorType company').lean();
+    const vendor = await Vendor.findById(vendorId)
+      .select('tier vendorType company location.city')
+      .lean();
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
     }
 
-    // Require at least starter tier
     const tier = vendor.tier || 'free';
     const paidTiers = new Set(['starter', 'pro', 'basic', 'visible', 'verified', 'managed', 'enterprise']);
     if (!paidTiers.has(tier)) {
@@ -150,74 +321,73 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       return res.status(500).json({ success: false, error: 'AI service not configured' });
     }
 
-    const { topic, stats } = req.body;
+    const { topic, stats, pillar, topicIndex = 0, primaryData = '' } = req.body;
     if (!topic || !topic.trim()) {
       return res.status(400).json({ success: false, error: 'Topic is required' });
     }
 
     const vertical = vendor.vendorType || 'professional services';
-    const VERTICAL_LABELS = {
-      solicitor: 'solicitor',
-      accountant: 'accountant',
-      'mortgage-advisor': 'mortgage adviser',
-      'estate-agent': 'estate agent',
-      'office-equipment': 'office equipment supplier',
-    };
     const verticalLabel = VERTICAL_LABELS[vertical] || vertical;
 
-    const systemPrompt = `You are an expert content writer for UK professional services firms.
-You write in the Yadav format — a specific blog structure that performs well in AI search results.
+    // Resolve pillar → topic template from the library.
+    let pillarSpec = null;
+    let linkedInHookType = 'opinion';
+    if (pillar) {
+      const libraryForVertical = PILLAR_LIBRARIES[vendor.vendorType];
+      if (!libraryForVertical) {
+        return res.status(400).json({
+          success: false,
+          error: `No pillar library for vendor type: ${vendor.vendorType}`,
+        });
+      }
+      const pillarObj = libraryForVertical.find((p) => p.id === pillar);
+      if (!pillarObj) {
+        return res.status(400).json({ success: false, error: `Invalid pillar: ${pillar}` });
+      }
+      const topicTemplate = pillarObj.topics[topicIndex] || pillarObj.topics[0];
+      if (!topicTemplate) {
+        return res.status(400).json({
+          success: false,
+          error: `Pillar '${pillar}' has no topics defined yet`,
+        });
+      }
+      pillarSpec = { ...topicTemplate, pillarName: pillarObj.name };
+      if (topicTemplate.linkedInHookType) linkedInHookType = topicTemplate.linkedInHookType;
+    }
 
-Yadav format rules:
-- Start with a bold statement or statistic that hooks the reader
-- Use short paragraphs of 2-3 sentences maximum
-- Include a clear H2 subheading every 150-200 words
-- Answer the most likely reader question in the first 100 words
-- Include specific numbers, percentages, or named examples where possible
-- End with a clear call to action
-- Write in plain English — no jargon, no passive voice
-- Target length: 600-800 words for the blog post
-- UK English spelling throughout
+    const vendorTypeEntities =
+      VERTICAL_ENTITIES[vendor.vendorType] ||
+      VERTICAL_ENTITIES['professional-services'] ||
+      [];
 
-You also write LinkedIn and Facebook versions:
-- LinkedIn version: 150-200 words, professional tone, ends with a question to drive comments
-- Facebook version: 100-150 words, warmer tone, ends with a call to action
-
-Always write in first person plural ("we", "our firm") as if you are the firm.
-Never mention TendorAI in the content.`;
-
-    const userPrompt = `Write a blog post for a ${verticalLabel} firm about: ${topic.trim()}
-
-${stats ? `Include these stats or facts: ${stats.trim()}` : ''}
-
-Also write:
-1. A LinkedIn post version (150-200 words)
-2. A Facebook post version (100-150 words)
-
-Return as JSON only with this exact structure:
-{
-  "title": "Blog post title",
-  "body": "Full blog post in markdown",
-  "linkedInText": "LinkedIn version",
-  "facebookText": "Facebook version"
-}`;
+    const userPrompt = buildUserPrompt({
+      topic,
+      stats,
+      primaryData,
+      verticalLabel,
+      vendorCity: vendor.location?.city,
+      vendorName: vendor.company,
+      pillarSpec,
+      vendorTypeEntities,
+      linkedInHookType,
+    });
 
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      system: systemPrompt,
+      max_tokens: 4000,
+      temperature: 0.7,
+      system: SYSTEM_PROMPT_V7,
       messages: [{ role: 'user', content: userPrompt }],
     });
 
     const text = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
       .join('');
 
-    // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return res.status(500).json({ success: false, error: 'Failed to parse AI response' });
@@ -230,6 +400,8 @@ Return as JSON only with this exact structure:
       body: parsed.body || '',
       linkedInText: parsed.linkedInText || '',
       facebookText: parsed.facebookText || '',
+      plan: pillarSpec || null,
+      pillar: pillar || null,
     });
   } catch (error) {
     console.error('[PostGenerate] Error:', error.message);

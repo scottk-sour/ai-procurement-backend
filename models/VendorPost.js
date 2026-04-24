@@ -22,6 +22,65 @@ const vendorPostSchema = new mongoose.Schema({
   stats: { type: String, trim: true },
   linkedInText: { type: String, trim: true },
   facebookText: { type: String, trim: true },
+
+  // v7 content-planner additions. All optional; existing posts unaffected.
+  pillar: {
+    type: String,
+    enum: [
+      'costs-fees', 'process-timelines', 'regulatory-authority',
+      'common-mistakes', 'client-rights', 'firm-expertise',
+    ],
+    default: null,
+  },
+  plan: {
+    type: {
+      pillar: String,
+      tactic: String,
+      structure: String,
+      mustInclude: [String],
+      namedEntities: [String],
+      primaryDataHook: String,
+      internalLinking: String,
+      wordCount: Number,
+      primaryAIQuery: String,
+      secondaryQueries: [String],
+    },
+    default: null,
+    _id: false,
+  },
+  primaryData: {
+    type: String,
+    maxlength: 2000,
+    trim: true,
+    default: '',
+  },
+  amplificationPlan: {
+    type: [{
+      channel: {
+        type: String,
+        enum: ['linkedin', 'facebook', 'medium', 'reddit', 'email', 'industry-forum', 'press'],
+      },
+      dispatchedAt: Date,
+      url: String,
+      notes: String,
+    }],
+    default: [],
+    _id: false,
+  },
+  postPublishTests: {
+    type: [{
+      platform: {
+        type: String,
+        enum: ['chatgpt', 'perplexity', 'claude', 'gemini', 'grok', 'meta'],
+      },
+      runAt: Date,
+      mentioned: Boolean,
+      smv: Number,
+      rawQuery: String,
+    }],
+    default: [],
+    _id: false,
+  },
 }, { timestamps: true });
 
 // Auto-generate slug from title before validation
