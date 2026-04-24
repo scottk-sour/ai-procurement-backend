@@ -36,22 +36,46 @@ const SUPPORTED_VENDOR_TYPES = new Set([
 ]);
 
 /**
+ * Return the first non-empty trimmed string from a list of candidates.
+ * Used to walk the vendor-field fallback chain for {specialism}.
+ */
+function firstNonEmptyString(...candidates) {
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+  }
+  return null;
+}
+
+/**
  * Resolve placeholders in a string using the vendor's profile.
  * Only four placeholders are filled in here — {city}, {specialism},
  * {firmName}, and {year}. Every other placeholder ({N}, {X}, {Y},
  * {client-type}, {complex-scenario}, etc.) is left literal so the
  * frontend shows the vendor exactly what they need to fill in.
  *
- * Exported for direct unit testing; the library itself is already
- * covered in contentPlanner.test.js.
+ * {specialism} falls back across four real Vendor fields in order:
+ *   1. vendor.specialisms[0]                      — not on the schema
+ *      today, checked first so a future schema addition Just Works.
+ *   2. vendor.practiceAreas[0]                    — solicitor primary.
+ *   3. vendor.industrySpecialisms[0]              — accountant primary.
+ *   4. vendor.businessProfile.specializations[0]  — general firm-level.
+ * Default: "your main service area".
+ *
+ * individualSolicitors[i].specialisms is deliberately excluded — it's
+ * a per-person string, not a firm-level value, and solicitors already
+ * have practiceAreas as a canonical source.
+ *
+ * Exported for direct unit testing.
  */
 export function resolvePlaceholders(text, vendor) {
   if (!text || typeof text !== 'string') return text;
   const city = vendor?.location?.city || 'your city';
-  const specialism =
-       (vendor?.specialisms && vendor.specialisms[0])
-    || (vendor?.practiceAreas && vendor.practiceAreas[0])
-    || 'your main service area';
+  const specialism = firstNonEmptyString(
+    vendor?.specialisms?.[0],
+    vendor?.practiceAreas?.[0],
+    vendor?.industrySpecialisms?.[0],
+    vendor?.businessProfile?.specializations?.[0],
+  ) || 'your main service area';
   const firmName = vendor?.company || 'your firm';
   const year = String(new Date().getFullYear());
 
@@ -65,7 +89,11 @@ export function resolvePlaceholders(text, vendor) {
 router.get('/', vendorAuth, async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.vendor.id)
-      .select('tier vendorType company location.city specialisms practiceAreas')
+      .select(
+        'tier vendorType company location.city ' +
+        'specialisms practiceAreas industrySpecialisms ' +
+        'businessProfile.specializations'
+      )
       .lean();
 
     if (!vendor) {

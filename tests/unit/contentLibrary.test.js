@@ -225,6 +225,92 @@ describe('GET /api/content-library', () => {
     expect(out).toContain(String(new Date().getFullYear()));
   });
 
+  it('resolves {specialism} from practiceAreas (solicitor path)', async () => {
+    currentVendor = {
+      ...defaultSolicitor(),
+      practiceAreas: ['Family Law'],
+      industrySpecialisms: undefined,
+    };
+    const r = await fetchLibrary();
+    expect(r.status).toBe(200);
+    // solicitor-costs-1 title: 'How much does {specialism} cost in {city} in {year}?'
+    const costs = r.body.pillars.find((p) => p.id === 'costs-fees');
+    const topic1 = costs.topics.find((t) => t.id === 'solicitor-costs-1');
+    expect(topic1.title).toContain('Family Law');
+    expect(topic1.title).not.toContain('{specialism}');
+  });
+
+  it('resolves {specialism} from industrySpecialisms for accountants without practiceAreas', async () => {
+    currentVendor = {
+      ...defaultSolicitor(),
+      vendorType: 'accountant',
+      company: 'Ledger LLP',
+      practiceAreas: undefined,
+      industrySpecialisms: ['Hospitality'],
+    };
+    const r = await fetchLibrary();
+    expect(r.status).toBe(200);
+    // accountant-expertise-1 title: 'Why we specialise in {specialism} accountancy'
+    const expertise = r.body.pillars.find((p) => p.id === 'firm-expertise');
+    const topic1 = expertise.topics.find((t) => t.id === 'accountant-expertise-1');
+    expect(topic1.title).toContain('Hospitality');
+    expect(topic1.title).not.toContain('{specialism}');
+  });
+
+  it('resolves {specialism} from businessProfile.specializations when the primaries are absent', () => {
+    const out = resolvePlaceholders(
+      'Why we specialise in {specialism}',
+      { businessProfile: { specializations: ['Technology'] } },
+    );
+    expect(out).toBe('Why we specialise in Technology');
+  });
+
+  it('follows the specialism fallback precedence: specialisms → practiceAreas → industrySpecialisms → businessProfile.specializations', () => {
+    // Tier 1: top-level specialisms wins over everything.
+    const allFields = {
+      specialisms: ['From specialisms'],
+      practiceAreas: ['From practiceAreas'],
+      industrySpecialisms: ['From industrySpecialisms'],
+      businessProfile: { specializations: ['From businessProfile'] },
+    };
+    expect(resolvePlaceholders('{specialism}', allFields)).toBe('From specialisms');
+
+    // Tier 2: practiceAreas used when specialisms absent.
+    expect(resolvePlaceholders('{specialism}', {
+      practiceAreas: ['From practiceAreas'],
+      industrySpecialisms: ['From industrySpecialisms'],
+      businessProfile: { specializations: ['From businessProfile'] },
+    })).toBe('From practiceAreas');
+
+    // Tier 3: industrySpecialisms used when first two absent.
+    expect(resolvePlaceholders('{specialism}', {
+      industrySpecialisms: ['From industrySpecialisms'],
+      businessProfile: { specializations: ['From businessProfile'] },
+    })).toBe('From industrySpecialisms');
+
+    // Tier 4: businessProfile.specializations used when first three absent.
+    expect(resolvePlaceholders('{specialism}', {
+      businessProfile: { specializations: ['From businessProfile'] },
+    })).toBe('From businessProfile');
+
+    // Default when every tier is empty / undefined.
+    expect(resolvePlaceholders('{specialism}', {})).toBe('your main service area');
+  });
+
+  it('ignores empty / whitespace-only values in the specialism chain', () => {
+    // Empty string in Tier 1 must skip to Tier 2 — not silently win.
+    expect(resolvePlaceholders('{specialism}', {
+      specialisms: [''],
+      practiceAreas: ['Valid'],
+    })).toBe('Valid');
+
+    // Whitespace-only value should also be skipped.
+    expect(resolvePlaceholders('{specialism}', {
+      specialisms: ['   '],
+      practiceAreas: ['Valid'],
+    })).toBe('Valid');
+  });
+
   it('leaves {N} and {X} unresolved in topic.primaryDataHook', async () => {
     currentVendor = defaultSolicitor();
     const r = await fetchLibrary();
