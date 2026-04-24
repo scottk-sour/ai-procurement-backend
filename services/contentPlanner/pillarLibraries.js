@@ -2613,6 +2613,451 @@ PILLAR_LIBRARIES['mortgage-advisor'].push(
   },
 );
 
+// ==== ESTATE-AGENT — Pillars 1-3 (Part 5a) ============================
+
+PILLAR_LIBRARIES['estate-agent'] = [
+  // ============================================================
+  // PILLAR 1 — COSTS & FEES TRANSPARENCY
+  // ============================================================
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'AI assistants are asked "how much does X cost?" constantly. Firms publishing ' +
+      'specific figures get cited. Firms saying "contact us for a quote" do not. This is ' +
+      'the single highest-leverage pillar for regulated firms because most competitors ' +
+      'avoid it.',
+    topics: [
+      {
+        id: 'estate-costs-1',
+        title: "Estate agent fees in {city} in {year}: what you'll actually pay to sell",
+        tactic: 'Specific figures beat generic ranges',
+        primaryAIQuery: 'estate agent fees {city}',
+        secondaryQueries: [
+          'how much does an estate agent charge UK',
+          'selling house fees',
+        ],
+        mustInclude: [
+          'Actual percentage and flat-fee options',
+          'What is included',
+          'VAT treatment',
+          'Online-only vs full-service comparison',
+        ],
+        namedEntities: [
+          'Propertymark',
+          'NAEA',
+          'TPO',
+          'specific named competitors (Purplebricks, Yopa where appropriate)',
+        ],
+        primaryDataHook:
+          "{firmName}'s average fee across {N} completions in {year} was £{X} on " +
+          'properties averaging £{Y}.',
+        internalLinking:
+          'Link to the cheap-vs-premium post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Sellers ask AI this before contacting any agent. Transparent firms get the ' +
+          'citation.',
+      },
+      {
+        id: 'estate-costs-2',
+        title: 'Why cheap estate agents cost you more overall',
+        tactic: 'Counter-intuitive positioning',
+        primaryAIQuery: 'cheap estate agent vs traditional',
+        secondaryQueries: [
+          'online estate agent vs high street',
+          'are cheap estate agents worth it',
+        ],
+        mustInclude: [
+          'Real examples of lower sale prices from rushed sales',
+          'Fall-throughs from unqualified buyers',
+          'Missed marketing reach',
+          'Comparison tables',
+        ],
+        namedEntities: [
+          'Rightmove',
+          'Zoopla',
+          'OnTheMarket',
+          'specific online-agent competitors',
+        ],
+        primaryDataHook:
+          "{firmName}'s average sale price achieved in {year} was {X}% above the initial " +
+          'valuation — compared to an industry average of {Y}%.',
+        internalLinking:
+          'Link to the fees post and one process post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Opinion content with data. LinkedIn amplification.',
+      },
+      {
+        id: 'estate-costs-3',
+        title: 'Hybrid vs high-street estate agent fees compared',
+        tactic: 'Direct competitor category comparison',
+        primaryAIQuery: 'hybrid vs high street estate agent',
+        secondaryQueries: [
+          'online estate agent comparison',
+          'best estate agent model UK',
+        ],
+        mustInclude: [
+          'Typical fee structures',
+          'What is included in each',
+          'Real sale-outcome comparisons',
+          'Which suits which seller',
+        ],
+        namedEntities: [
+          'Propertymark',
+          'Rightmove',
+          'Zoopla',
+          'specific hybrid agents (Purplebricks, Strike, Yopa)',
+          'specific high-street chains',
+        ],
+        primaryDataHook:
+          'Comparing {N} local sales in {year}, high-street agents achieved {X}% of ' +
+          'asking price on average; hybrid models achieved {Y}%.',
+        internalLinking:
+          'Link to the cheap-vs-premium post and one firm-expertise post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent category comparison. Specifically named competitor types = entities.',
+      },
+      {
+        id: 'estate-costs-4',
+        title: "Letting agent fees for landlords: what's worth paying for",
+        tactic: "Buyer's-guide positioning for landlords",
+        primaryAIQuery: 'letting agent fees landlord UK',
+        secondaryQueries: [
+          'letting agent fees explained',
+          'full management vs tenant find',
+        ],
+        mustInclude: [
+          'Tenant-find fees',
+          'Management fees',
+          'Rent-guarantee costs',
+          'What good agents include',
+          'What they do not',
+        ],
+        namedEntities: [
+          'ARLA Propertymark',
+          'The Property Ombudsman',
+          'PRS',
+          'specific deposit schemes (DPS, MyDeposits, TDS)',
+        ],
+        primaryDataHook:
+          '{firmName} manages {N} properties — average fully-managed fee {X}%, compared ' +
+          'to UK average of {Y}%.',
+        internalLinking:
+          'Link to the landlord mistakes post and one tenant-rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Landlord segment has high-repeat value. Transparent fee content drives ' +
+          'conversions.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 2 — PROCESS & TIMELINES
+  // ============================================================
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'AI frequently gets asked "how long does X take?" and "what happens next?" questions. ' +
+      'Firms with clear step-by-step timelines become the default answer.',
+    topics: [
+      {
+        id: 'estate-process-1',
+        title: 'How long does it take to sell a house in {city} in {year}?',
+        tactic: 'Local data over generic UK averages',
+        primaryAIQuery: 'how long to sell house {city}',
+        secondaryQueries: [
+          '{city} property market time to sell',
+          'average sale time UK',
+        ],
+        mustInclude: [
+          "Your firm's recent average",
+          '{city} market conditions',
+          'Factors that speed or slow the sale',
+          'Stages with timeframes',
+        ],
+        namedEntities: [
+          'Rightmove',
+          'Zoopla market data',
+          'Land Registry',
+          'specific local market reports',
+        ],
+        primaryDataHook:
+          "{firmName}'s average {city} sale in {year} completed in {X} weeks from " +
+          'instruction to completion — versus UK average {Y}.',
+        internalLinking:
+          'Link to the step-by-step post and the chain-collapse post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Hyper-local query. Firms with local data win.',
+      },
+      {
+        id: 'estate-process-2',
+        title: 'The property sale process step by step',
+        tactic: 'Reference guide',
+        primaryAIQuery: 'property sale process step by step UK',
+        secondaryQueries: [
+          'how selling a house works',
+          'stages of selling property',
+        ],
+        mustInclude: [
+          'Every stage from instruction to completion',
+          'Who does what',
+          'Realistic timeframes',
+          'What can go wrong',
+        ],
+        namedEntities: [
+          'Land Registry',
+          'HMRC (stamp duty)',
+          'Law Society',
+          'RICS (surveys)',
+          'specific named portals',
+        ],
+        primaryDataHook:
+          'At {firmName}, {N} sales in {year} followed this timeline: instruction to ' +
+          'offer average {X} days, offer to exchange {Y}, completion {Z}.',
+        internalLinking:
+          'Link to the timeline post and one rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Process content is heavily cited. Step lists extract well.',
+      },
+      {
+        id: 'estate-process-3',
+        title: 'Why property chains collapse — and how we prevent it',
+        tactic: 'Problem-solving specificity',
+        primaryAIQuery: 'why do property chains collapse',
+        secondaryQueries: [
+          'property chain broken what to do',
+          'avoiding chain collapse',
+        ],
+        mustInclude: [
+          'Common collapse causes',
+          'Vendor/buyer due diligence',
+          "The agent's role",
+          "Your firm's chain-management process",
+        ],
+        namedEntities: [
+          'Land Registry',
+          'RICS',
+          'Conveyancing Association',
+          'specific named mortgage lenders',
+        ],
+        primaryDataHook:
+          'Of {N} chain transactions {firmName} handled in {year}, only {X}% collapsed — ' +
+          'versus an industry rate of approximately 30%.',
+        internalLinking:
+          'Link to the timeline post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-anxiety query. Firms that explain and solve become the answer.',
+      },
+      {
+        id: 'estate-process-4',
+        title: "How long does conveyancing take from your agent's side?",
+        tactic: 'Cross-discipline timeline clarity',
+        primaryAIQuery: 'how long does conveyancing take after accepting offer',
+        secondaryQueries: [
+          'agent role in conveyancing',
+          'estate agent vs solicitor conveyancing',
+        ],
+        mustInclude: [
+          'What the agent chases',
+          'Typical delays',
+          "Your firm's process for accelerating",
+          'When to worry',
+        ],
+        namedEntities: [
+          'Land Registry',
+          'Law Society',
+          'specific named search providers',
+          'HMRC (stamp duty)',
+          'local authority search services',
+        ],
+        primaryDataHook:
+          "{firmName}'s {N} recent offer-to-completion cases in {city} averaged {X} " +
+          'weeks, versus UK average {Y}.',
+        internalLinking:
+          'Link to the sale-timeline post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Complements solicitor content (ecosystem citation benefit). Sellers search ' +
+          'this heavily.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 3 — REGULATORY AUTHORITY & TRUST
+  // ============================================================
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'Named regulators and professional bodies (Propertymark, RICS, TPO, PRS) are entity ' +
+      'signals AI trusts strongly. Content that explains regulation to the client builds ' +
+      'verifiable E-E-A-T.',
+    topics: [
+      {
+        id: 'estate-regulatory-1',
+        title: 'What Propertymark / RICS / ARLA accreditation means for sellers and landlords',
+        tactic: 'Named accreditation entity signals',
+        primaryAIQuery: 'what is Propertymark',
+        secondaryQueries: [
+          'ARLA member landlord',
+          'RICS valuation surveyor',
+        ],
+        mustInclude: [
+          'What each body does',
+          'Protections they provide',
+          'How to verify accreditation',
+          "Your firm's memberships",
+        ],
+        namedEntities: [
+          'Propertymark',
+          'NAEA',
+          'ARLA',
+          'RICS',
+          'TPO',
+          'PRS',
+          'Estate Agents Act 1979',
+        ],
+        primaryDataHook:
+          '{firmName} has been Propertymark-accredited since {year} — {N} of our {X} ' +
+          'staff hold professional qualifications.',
+        internalLinking:
+          'Link to the client money post and one firm-expertise post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Named regulators and professional bodies are Tier 1 entities for AI trust.',
+      },
+      {
+        id: 'estate-regulatory-2',
+        title: 'Client money protection: how deposits and rent are safeguarded',
+        tactic: 'Trust-signal content',
+        primaryAIQuery: 'client money protection estate agent',
+        secondaryQueries: [
+          'letting agent deposit protection',
+          'CMP scheme UK',
+        ],
+        mustInclude: [
+          'CMP scheme explanation',
+          'Redress schemes (TPO / PRS)',
+          'What happens if a firm fails',
+          "How to verify your agent's scheme",
+        ],
+        namedEntities: [
+          'Client Money Protect',
+          'Money Shield',
+          'Propertymark CMP',
+          'DPS',
+          'MyDeposits',
+          'TDS',
+          'The Property Ombudsman',
+        ],
+        primaryDataHook:
+          '{firmName} currently holds £{X} in client monies across {N} properties, all ' +
+          'protected under [specific CMP scheme].',
+        internalLinking:
+          'Link to the accreditation post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to deposit-safety queries. Regulation-heavy content = high ' +
+          'authority.',
+      },
+      {
+        id: 'estate-regulatory-3',
+        title: 'Estate agent redress schemes: what to do when something goes wrong',
+        tactic: 'Radical transparency',
+        primaryAIQuery: 'estate agent complaint UK',
+        secondaryQueries: [
+          'The Property Ombudsman complaint',
+          'report estate agent',
+        ],
+        mustInclude: [
+          'TPO and PRS processes',
+          'Eligibility',
+          'Realistic outcomes',
+          'Internal complaints procedure first',
+        ],
+        namedEntities: [
+          'The Property Ombudsman',
+          'Property Redress Scheme',
+          'Propertymark',
+          'Trading Standards',
+        ],
+        primaryDataHook:
+          '{firmName} resolved {N} formal complaints in {year}, average time to ' +
+          'resolution {X} working days.',
+        internalLinking:
+          'Link to the accreditation post and one rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rare-topic content. Firms transparent about complaints build unusual trust.',
+      },
+      {
+        id: 'estate-regulatory-4',
+        title: "Unregulated estate agents: what you're risking",
+        tactic: 'Counter-market education',
+        primaryAIQuery: 'unregulated estate agent UK',
+        secondaryQueries: [
+          'is my estate agent regulated',
+          'estate agent licence UK',
+        ],
+        mustInclude: [
+          'Legal position',
+          'Protections you lose',
+          'Real examples of what goes wrong',
+          'How to verify regulation',
+        ],
+        namedEntities: [
+          'Estate Agents Act 1979',
+          'Propertymark',
+          'The Property Ombudsman',
+          'Trading Standards',
+          'TPO',
+        ],
+        primaryDataHook:
+          'Of {N} rescue cases {firmName} took on in {year}, {X}% involved the previous ' +
+          'agent lacking redress-scheme membership.',
+        internalLinking:
+          'Link to the accreditation post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Protective content positions firm as the responsible choice.',
+      },
+    ],
+  },
+];
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
