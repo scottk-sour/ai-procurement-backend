@@ -2179,6 +2179,440 @@ PILLAR_LIBRARIES['mortgage-advisor'] = [
   },
 ];
 
+// ==== MORTGAGE-ADVISOR — Pillars 4-6 (Part 4b) ========================
+
+PILLAR_LIBRARIES['mortgage-advisor'].push(
+  // ============================================================
+  // PILLAR 4 — COMMON MISTAKES & WHAT TO AVOID
+  // ============================================================
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'High citation rate because users ask AI "what should I watch out for..." questions. ' +
+      'These posts answer directly.',
+    topics: [
+      {
+        id: 'mortgage-mistakes-1',
+        title: '{N} mistakes first-time buyers make with their mortgage',
+        tactic: 'Listicle with specificity',
+        primaryAIQuery: 'first time buyer mortgage mistakes',
+        secondaryQueries: [
+          'FTB mortgage errors',
+          'first-time buyer what to avoid',
+        ],
+        mustInclude: [
+          '5-7 numbered mistakes with real examples',
+          'Practical fixes for each',
+        ],
+        namedEntities: [
+          'FCA',
+          'specific government schemes (First Homes, Shared Ownership)',
+          'specific lenders',
+          'HMRC (stamp duty)',
+        ],
+        primaryDataHook:
+          'Across {N} first-time buyer cases at {firmName} in {year}, the top mistake — ' +
+          'seen in {X}% — was [specific mistake].',
+        internalLinking:
+          'Link to the process post and one rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'First-time buyer content is evergreen and high-volume. Listicles extract well.',
+      },
+      {
+        id: 'mortgage-mistakes-2',
+        title: 'Why using your bank for your mortgage might cost you thousands',
+        tactic: 'Counter-intuitive, data-led',
+        primaryAIQuery: 'mortgage broker vs going direct to bank',
+        secondaryQueries: [
+          'do I need a mortgage broker',
+          'bank direct mortgage costs',
+        ],
+        mustInclude: [
+          'Real rate comparison examples',
+          'Limitations of single-lender advice',
+          'When the bank is the right choice',
+          "Scenarios where it isn't",
+        ],
+        namedEntities: [
+          'Specific named banks',
+          'FCA',
+          'Bank of England base rate',
+          'typical rate spreads',
+        ],
+        primaryDataHook:
+          'For {N} clients who came to us after a bank offer in {year}, we found a better ' +
+          'rate for {X}% — average saving £{Y} over the fixed term.',
+        internalLinking:
+          'Link to the adviser-vs-bank post and one costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Shareable opinion content. LinkedIn amplification for off-site citations (v7).',
+      },
+      {
+        id: 'mortgage-mistakes-3',
+        title: 'The mortgage mistakes that destroy your application before it starts',
+        tactic: 'Pre-application education',
+        primaryAIQuery: 'mortgage application red flags',
+        secondaryQueries: [
+          'things that fail a mortgage application',
+          'mortgage underwriting pitfalls',
+        ],
+        mustInclude: [
+          'Credit file issues',
+          'Recent applications',
+          'Cash deposits',
+          'Income classification mistakes',
+          'Address history',
+        ],
+        namedEntities: [
+          'Experian',
+          'Equifax',
+          'TransUnion',
+          'FCA',
+          'specific named lenders',
+          'HMRC (for self-employed income)',
+        ],
+        primaryDataHook:
+          'Of {N} declined applications we have reviewed at {firmName}, {X}% were ' +
+          'preventable with pre-application preparation.',
+        internalLinking:
+          'Link to the declined-application post and one process post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          "Pre-application readers have high intent and haven't picked an adviser yet. " +
+          'Winning the citation wins the client.',
+      },
+      {
+        id: 'mortgage-mistakes-4',
+        title: 'Buy-to-let mortgage mistakes that cost landlords money',
+        tactic: 'Niche expertise signal',
+        primaryAIQuery: 'buy to let mortgage mistakes',
+        secondaryQueries: [
+          'BTL mortgage advice UK',
+          'landlord mortgage pitfalls',
+        ],
+        mustInclude: [
+          'Portfolio landlord rules',
+          'Stress testing',
+          'Limited company pitfalls',
+          'Tax considerations',
+          'Lender criteria',
+        ],
+        namedEntities: [
+          'PRA',
+          'FCA',
+          'HMRC (Section 24, limited company tax)',
+          'specific BTL lenders',
+          'NRLA (National Residential Landlords Association)',
+        ],
+        primaryDataHook:
+          'At {firmName}, {N} landlord clients restructured through a limited company in ' +
+          '{year}, saving an average of £{X} per property per year.',
+        internalLinking:
+          'Link to the firm-expertise post and one regulatory post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Landlord content is high-margin because landlords have repeat transactions. ' +
+          'Niche expertise gets cited.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 5 — CLIENT RIGHTS & PRACTICAL GUIDANCE
+  // ============================================================
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'These answer the "what am I entitled to..." and "what are my options..." queries ' +
+      'that drive huge AI traffic. Educational content with clear answers ranks well across ' +
+      'platforms.',
+    topics: [
+      {
+        id: 'mortgage-rights-1',
+        title: 'What to do if your mortgage application is declined',
+        tactic: 'Crisis guidance positioning',
+        primaryAIQuery: 'mortgage application declined what next',
+        secondaryQueries: [
+          'why was my mortgage rejected',
+          'declined mortgage appeal',
+        ],
+        mustInclude: [
+          'Common reasons',
+          'Immediate next steps',
+          'Whether to reapply or wait',
+          'Impact on credit file',
+        ],
+        namedEntities: [
+          'Experian',
+          'Equifax',
+          'TransUnion',
+          'FCA',
+          'specific lenders known for adverse-credit lending',
+        ],
+        primaryDataHook:
+          'Of {N} declined clients who came to {firmName} in {year}, {X}% were ' +
+          'successfully placed with a specialist lender within {Y} weeks.',
+        internalLinking:
+          'Link to the application-mistakes post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Urgent-need query. Firms that help during the crisis convert after the ' +
+          'solution.',
+      },
+      {
+        id: 'mortgage-rights-2',
+        title: 'Your rights during the mortgage application process',
+        tactic: 'Rights-based authority content',
+        primaryAIQuery: 'my rights mortgage application UK',
+        secondaryQueries: [
+          'mortgage adviser legal obligations',
+          'MCOB rules consumer rights',
+        ],
+        mustInclude: [
+          'Right to advice vs information',
+          'Right to a suitability report',
+          'Right to reject recommendations',
+          'MCOB rules in plain English',
+        ],
+        namedEntities: [
+          'FCA',
+          'MCOB rules',
+          'Financial Ombudsman Service',
+          'Consumer Duty (2023)',
+        ],
+        primaryDataHook:
+          'Every {firmName} client receives a suitability report within {X} days — ' +
+          'covering {Y} disclosures required under MCOB.',
+        internalLinking:
+          'Link to the FCA post and one process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights queries have high citation rates. Regulatory content done well is rare.',
+      },
+      {
+        id: 'mortgage-rights-3',
+        title: "When to consider a specialist mortgage adviser (and when you don't need one)",
+        tactic: 'Honesty positioning',
+        primaryAIQuery: 'do I need a specialist mortgage adviser',
+        secondaryQueries: [
+          'adverse credit mortgage adviser',
+          'self-employed mortgage specialist',
+        ],
+        mustInclude: [
+          'Clear criteria for when specialist advice is worth it',
+          'Specialist scenarios (adverse credit, self-employed, expat, high-net-worth)',
+          'When a generalist is fine',
+        ],
+        namedEntities: [
+          'FCA',
+          'specialist lenders',
+          'relevant niche regulators',
+        ],
+        primaryDataHook:
+          "{firmName}'s specialist clients had an average application complexity score of " +
+          '{X} — versus {Y} for standard cases.',
+        internalLinking:
+          'Link to the firm-expertise post and one fees post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          "Respects the client's budget. Honest scoping builds trust and wins referrals.",
+      },
+      {
+        id: 'mortgage-rights-4',
+        title: 'Free mortgage advice: when it actually pays, and when it costs you',
+        tactic: 'Comparison content with stance',
+        primaryAIQuery: 'is free mortgage advice worth it',
+        secondaryQueries: [
+          'fee-free vs paid mortgage broker',
+          'free mortgage advisor catch',
+        ],
+        mustInclude: [
+          'How fee-free advisers make money',
+          'Conflicts of interest',
+          'When fee-free works',
+          'When paying a fee saves money overall',
+        ],
+        namedEntities: [
+          'FCA',
+          'MCOB disclosure rules',
+          'specific lender panel limitations',
+        ],
+        primaryDataHook:
+          'Comparing {N} outcomes across paid vs fee-free advice, {firmName} clients ' +
+          'paying a fee saved an average of £{X} over the fixed term.',
+        internalLinking:
+          'Link to the costs post and one firm-expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct competitor comparison with analytical honesty. High-intent content.',
+      },
+    ],
+  },
+
+  // ============================================================
+  // PILLAR 6 — YOUR FIRM'S EXPERTISE & SPECIALISMS
+  // ============================================================
+  {
+    id: 'firm-expertise',
+    name: "Your Firm's Expertise & Specialisms",
+    whyItMatters:
+      'Specific expertise beats generic listings. "Mortgage adviser specialising in ' +
+      'self-employed applications in Manchester" gets cited over "mortgage adviser in ' +
+      'Manchester." This is where primary data (Tier 0) lives.',
+    topics: [
+      {
+        id: 'mortgage-expertise-1',
+        title: 'Why we specialise in {specialism} mortgages',
+        tactic: 'Founder voice, expertise positioning',
+        primaryAIQuery: '{specialism} mortgage specialist {city}',
+        secondaryQueries: [
+          'best {specialism} mortgage adviser UK',
+          '{specialism} mortgage expert',
+        ],
+        mustInclude: [
+          "Firm's history with the specialism",
+          'Case count or years',
+          'Specific expertise that sets you apart',
+        ],
+        namedEntities: [
+          'CeMAP',
+          'relevant specialist qualifications',
+          'FCA',
+          'niche lender relationships',
+        ],
+        primaryDataHook:
+          '{firmName} has placed {N} {specialism} cases since {year}. Our success rate is ' +
+          '{X}% versus an industry average of {Y}%.',
+        internalLinking:
+          'Link to the case study post and one specialist-adviser post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Entity-building. Names the firm specifically (v7 named entity density).',
+      },
+      {
+        id: 'mortgage-expertise-2',
+        title: 'Case study: how we arranged a {complex-scenario} mortgage',
+        tactic: 'Anonymised proof',
+        primaryAIQuery: '{complex-scenario} mortgage UK success',
+        secondaryQueries: [
+          '{complex-scenario} mortgage example',
+          'how to get {complex-scenario} mortgage',
+        ],
+        mustInclude: [
+          'Situation',
+          'Challenge',
+          'What advisers had said "no"',
+          'What you did differently',
+          'Outcome',
+          'Timeline',
+        ],
+        namedEntities: [
+          'Specific specialist lenders',
+          'FCA',
+          'relevant qualifications invoked',
+        ],
+        primaryDataHook:
+          'The client had been declined by {N} mainstream lenders. {firmName} placed the ' +
+          'case in {X} weeks with a specialist at {Y}% LTV.',
+        internalLinking:
+          'Link to the specialism post and one declined-application post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Tier 0 primary data. Specialist case studies are highly citable because ' +
+          'they are rare.',
+      },
+      {
+        id: 'mortgage-expertise-3',
+        title: 'Meet the team: our approach to {specialism} advice',
+        tactic: 'Person entity building',
+        primaryAIQuery: '{firmName} advisers',
+        secondaryQueries: [
+          '{specialism} adviser {city} team',
+          '{firmName} {specialism} experts',
+        ],
+        mustInclude: [
+          "Each adviser's qualifications (CeMAP, CeRER, FCA status)",
+          'Years of experience',
+          'Types of cases they handle',
+        ],
+        namedEntities: [
+          'CeMAP',
+          'CeRER',
+          'FCA',
+          'specific industry bodies (LIBF, CII)',
+        ],
+        primaryDataHook:
+          'Combined, our advisers have {N} years of experience and have placed {X} cases ' +
+          'at {firmName}.',
+        internalLinking:
+          'Link to the specialism post and one case-study post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Person schema source material. Qualifications are citable credentials.',
+      },
+      {
+        id: 'mortgage-expertise-4',
+        title: 'Our whole-of-market lender panel explained',
+        tactic: 'Transparency as differentiation',
+        primaryAIQuery: 'what lenders does {firmName} use',
+        secondaryQueries: [
+          'whole of market panel UK',
+          'mortgage lender coverage broker',
+        ],
+        mustInclude: [
+          'Why the panel matters',
+          'The lender count',
+          'Rough breakdown of lender types (high-street, specialist, private, etc.)',
+          'When each lender type is used',
+        ],
+        namedEntities: [
+          'Specific major lenders where relationship allows naming',
+          'FCA',
+          'PRA',
+          'niche specialist names',
+        ],
+        primaryDataHook:
+          "{firmName}'s panel includes {N} lenders across {X} categories. Of {Y} cases " +
+          'last year, {Z}% were placed outside the top 6 high-street lenders.',
+        internalLinking:
+          'Link to the whole-of-market post and one team post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Specific numbers (lender count) become citable. Transparency rare in the ' +
+          'industry.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
