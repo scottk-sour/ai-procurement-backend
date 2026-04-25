@@ -108,3 +108,37 @@ Read-only audit. No code changed. Verdicts based on inspection of `models/`, `ro
 - Per-query history: `routes/aiMentionRoutes.js:89` — the per-vendor mentions list endpoint already selects `competitorsMentioned` alongside `prompt` and `platform`, so the dashboard can show "for this query on this platform, these competitors were cited".
 
 **Assessment:** Competitor capture is real, comprehensive, and end-to-end. Every weekly scan and every live AI search test (Item 6) populates `competitorsMentioned[]` on the scan row. The parser uses the deterministic name-matching layer from `services/platformQuery/nameMatch.js` (the work that fixed the "firm cited as its own competitor" bug), so suffix variations like `Ltd` / `Limited` and URL-only citations don't fall through. Free-tier vendors see counts to motivate an upgrade; paid-tier vendors see names. Where a competitor is itself a registered TendorAI vendor the response includes resolvable identity; external firms appear as strings. One narrow caveat against the sales sheet wording: "see who AI recommends instead" reads as substitutive ("who got recommended *in your place*"), but the captured competitor list includes any firm named in the AI response, not just firms recommended ahead of the vendor. In practice this is what a dashboard wants — broader coverage, not narrower — but worth knowing.
+
+---
+
+## Item 6 — Live AI Search Test
+
+**Verdict:** PARTIAL
+
+**Evidence:**
+- `routes/aiSearchTestRoutes.js` (299 lines) — single router, two endpoints:
+  - `POST /` (line 151) — vendor submits a query, server runs it, returns parsed response.
+  - `GET /history` (line 259) — vendor's past live tests.
+- `routes/aiSearchTestRoutes.js:14-19` — tier-aware limits enforced via `checkUsageLimits(vendorId, tier)`:
+  - Free: `FREE_LIMIT = 3` total tests ever (lifetime cap).
+  - Starter / basic / visible / verified: `STARTER_MONTHLY_LIMIT = 10` per calendar month, counted via `AIMentionScan.countDocuments({vendorId, source: 'live_test', scanDate: {$gte: startOfMonth}})` (lines 44-48).
+  - Pro / managed / enterprise: unlimited (returns `unlimited: true`, `remaining: 999`).
+- `routes/aiSearchTestRoutes.js:189-200` — the actual AI call:
+  ```js
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const message = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    system: '...recommend UK suppliers/service providers...',
+    messages: [{ role: 'user', content: query.trim() }],
+  });
+  ```
+  — single model, single API.
+- `routes/aiSearchTestRoutes.js:215-226` — result is parsed via `parseAIResponse(aiResponse, vendor.company)` (extracting `vendorFound`, `vendorPosition`, `competitorsInResponse`) and persisted as an `AIMentionScan` row with `source: 'live_test'` and `aiModel: 'claude-haiku'`. Same model the weekly scan stores into, just tagged differently.
+- The 6-platform fan-out helper `queryAllPlatforms(...)` from `services/platformQuery/index.js:73` (the one used by the weekly scan in Item 1) is **not** imported into `routes/aiSearchTestRoutes.js`. The live-test endpoint does not fan out to multiple platforms.
+- No admin / debug variant. There's only the vendor-facing endpoint.
+
+**Assessment:** The endpoint is real. It accepts a query, runs it, parses for the vendor's company name, identifies competitors, persists, and returns. Tier-aware rate limiting works (lifetime cap for free, monthly for starter, unlimited for pro). Results coexist with the weekly scan rows in `ai_mention_scans` and are distinguishable via `source: 'live_test'`. But it queries **only Claude Haiku via the Anthropic SDK** — a single model on a single platform — while the sales sheet's "run real-time queries against AI platforms" (plural) implies the same six-platform fan-out the weekly scan uses. The multi-platform infrastructure already exists in the codebase (`services/platformQuery/index.js`); it's just not wired into this endpoint. The live test answers "would *this* model recommend you?" — useful, but narrower than the copy implies.
+
+**Gap (PARTIAL → LIVE):** Replace the inline Anthropic-only call (lines 189-200) with `queryAllPlatforms({ companyName, category, city, categoryLabel })` from `services/platformQuery/index.js`, persist one `AIMentionScan` row per platform (mirroring how the weekly scan stores results), and surface a per-platform breakdown in the response. Tier-aware limits would then need to count platforms-tested rather than queries-issued, since a single live test would create up to six rows. No new infrastructure required — this is a wiring change in one route file.
