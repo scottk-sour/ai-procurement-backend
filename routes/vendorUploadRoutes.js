@@ -55,14 +55,14 @@ export function checkProfileCompleteness(vendor) {
     if (!vendor.description || String(vendor.description).trim().length < 50) return false;
     if (!vendor.vendorType) return false;
     const hasSpecialism =
-        (Array.isArray(vendor.practiceAreas)
+        (Array.isArray(vendor.specialisms)
+            && vendor.specialisms.some((s) => typeof s === 'string' && s.trim()))
+        || (Array.isArray(vendor.practiceAreas)
             && vendor.practiceAreas.some((s) => typeof s === 'string' && s.trim()))
         || (Array.isArray(vendor.industrySpecialisms)
             && vendor.industrySpecialisms.some((s) => typeof s === 'string' && s.trim()))
         || (Array.isArray(vendor.businessProfile?.specializations)
-            && vendor.businessProfile.specializations.some((s) => typeof s === 'string' && s.trim()))
-        || (Array.isArray(vendor.specialisms)
-            && vendor.specialisms.some((s) => typeof s === 'string' && s.trim()));
+            && vendor.businessProfile.specializations.some((s) => typeof s === 'string' && s.trim()));
     return Boolean(hasSpecialism);
 }
 
