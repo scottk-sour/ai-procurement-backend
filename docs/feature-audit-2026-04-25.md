@@ -142,3 +142,31 @@ Read-only audit. No code changed. Verdicts based on inspection of `models/`, `ro
 **Assessment:** The endpoint is real. It accepts a query, runs it, parses for the vendor's company name, identifies competitors, persists, and returns. Tier-aware rate limiting works (lifetime cap for free, monthly for starter, unlimited for pro). Results coexist with the weekly scan rows in `ai_mention_scans` and are distinguishable via `source: 'live_test'`. But it queries **only Claude Haiku via the Anthropic SDK** — a single model on a single platform — while the sales sheet's "run real-time queries against AI platforms" (plural) implies the same six-platform fan-out the weekly scan uses. The multi-platform infrastructure already exists in the codebase (`services/platformQuery/index.js`); it's just not wired into this endpoint. The live test answers "would *this* model recommend you?" — useful, but narrower than the copy implies.
 
 **Gap (PARTIAL → LIVE):** Replace the inline Anthropic-only call (lines 189-200) with `queryAllPlatforms({ companyName, category, city, categoryLabel })` from `services/platformQuery/index.js`, persist one `AIMentionScan` row per platform (mirroring how the weekly scan stores results), and surface a per-platform breakdown in the response. Tier-aware limits would then need to count platforms-tested rather than queries-issued, since a single live test would create up to six rows. No new infrastructure required — this is a wiring change in one route file.
+
+---
+
+## Item 7 — 10-point Website AI Audit
+
+**Verdict:** LIVE
+
+**Evidence:**
+- `routes/aeoAuditRoutes.js:18` — `POST /api/aeo-audit` accepts a `websiteUrl`, fetches the HTML, calls `analyseAeoSignals(html, websiteUrl)`, persists an `AeoAudit` row, returns the 10 scored checks plus aggregate score and recommendations.
+- `routes/aeoAuditRoutes.js:49-72` — tier-aware gating: free accounts allowed one audit ever, paid accounts allowed one per 7 days.
+- `services/aeoDetector.js:330` — `export function analyseAeoSignals(html, url)`. Exactly **10** `checks.push(...)` blocks (verified by `grep -c 'checks.push' services/aeoDetector.js` → 10 hits at lines 339, 359, 374, 388, 402, 417, 438, 455, 471, 491). The full list, in order, with the underlying signal:
+
+  1. **Schema.org Structured Data** (line 339) — counts `<script type="application/ld+json">` blocks. 3+ = 10/10, 2 = 8, 1 = 5, 0 = 0.
+  2. **Meta Title & Description** (line 359) — title length 20-70 chars, description 50-160 chars.
+  3. **H1 Heading** (line 374) — exactly one H1 = 10, multiple = 6, none = 0.
+  4. **Mobile Viewport** (line 388) — presence of `<meta name="viewport">`.
+  5. **SSL Certificate (HTTPS)** (line 402) — URL starts with `https://`.
+  6. **Page Weight** (line 417) — HTML byte size buckets (<100 KB / <200 / <500 / <1000 / over).
+  7. **Social Media Links** (line 438) — count of profile links across Facebook, Twitter/X, LinkedIn, Instagram, YouTube.
+  8. **Contact Information** (line 455) — phone / email / address regex hits.
+  9. **FAQ Section** (line 471) — `FAQPage` schema present (10) or section heading match (6).
+  10. **Content Length** (line 491) — visible word count buckets.
+
+- Fix guidance: every check carries a `recommendation` field with a one-sentence fix string when the check fails (lines 346, 366, 381, 395, 409, 424, 445, 462, 478, 498). The `recommendations[]` array on the response collects only the failing ones for top-of-page rendering.
+- Persistence: `models/AeoAudit.js` row stores `websiteUrl`, `overallScore`, `checks` array, `recommendations`, `tendoraiSchemaDetected` (cross-checks for `tendorai.com` references in the JSON-LD blocks), and a `blogDetection` sub-object from `detectBlog(...)` (separate signal).
+- Sister system note: `services/aeoReportGenerator.js` exists too, but per `CLAUDE.md` that's the LLM-generated marketing report — *not* the real detector. Item 7 is backed by the real detector at `services/aeoDetector.js`.
+
+**Assessment:** A real `POST /api/aeo-audit` endpoint accepts a URL, fetches the page, runs ten deterministic HTML checks, scores each out of 10, and returns the breakdown plus a list of failure-driven recommendations. Tier gating (free = once ever, paid = weekly) is enforced before any HTTP fetch. The 10 checks are defensible and traceable to AEO best practice — schema, meta, headings, mobile, HTTPS, page weight, social, contact, FAQ, content depth. The fix "guides" are single-sentence per-check strings rather than long-form how-to documents — accurate for "fix guides" if read loosely, leaner than the phrase implies if read strictly. Two technical caveats worth knowing: (1) **Page Weight uses HTML byte size, not real page-load speed**, because true LCP/TTFB measurement would need a headless browser; the comment in the code acknowledges this (line 417 area). (2) The check set is a defensible 10 for AEO but not the only possible 10 — no `robots.txt`, no `sitemap.xml`, no JSON-LD schema *validation* (only count), no Author/Person schema, no E-E-A-T author bylines. Calling it 10-point is honest; calling it the *complete* AI audit would be a reach. Within those bounds: LIVE, end-to-end, vendor-triggered, persisted, scored, with per-check fix text.
