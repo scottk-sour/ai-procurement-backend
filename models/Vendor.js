@@ -262,6 +262,38 @@ const vendorSchema = new mongoose.Schema({
     }]
   },
 
+  // Onboarding checklist — 7-item granular state for the
+  // /vendor-dashboard/getting-started checklist UI. Distinct from the
+  // pre-existing coarse `account.onboardingCompleted` boolean above
+  // (which stays as-is for backward compatibility). Three items are
+  // vendor-tickable via PATCH /:vendorId/onboarding-checklist; the
+  // other four auto-detect from existing system events.
+  onboardingChecklist: {
+    type: new mongoose.Schema({
+      profileComplete: { type: Boolean, default: false },
+      profileCompleteAt: { type: Date, default: null },
+
+      firstProductAdded: { type: Boolean, default: false },
+      firstProductAddedAt: { type: Date, default: null },
+
+      firstAuditRun: { type: Boolean, default: false },
+      firstAuditRunAt: { type: Date, default: null },
+
+      schemaCallScheduled: { type: Boolean, default: false },
+      schemaCallScheduledAt: { type: Date, default: null },
+
+      firstPillarPostGenerated: { type: Boolean, default: false },
+      firstPillarPostGeneratedAt: { type: Date, default: null },
+
+      firstPrimaryDataAdded: { type: Boolean, default: false },
+      firstPrimaryDataAddedAt: { type: Date, default: null },
+
+      firstLiveAITestRun: { type: Boolean, default: false },
+      firstLiveAITestRunAt: { type: Date, default: null },
+    }, { _id: false }),
+    default: () => ({}),
+  },
+
   // Stripe & Subscription
   stripeCustomerId: { type: String, sparse: true, index: true },
   stripeSubscriptionId: { type: String, sparse: true },
