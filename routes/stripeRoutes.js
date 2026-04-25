@@ -491,7 +491,7 @@ async function handleCheckoutComplete(session) {
               </table>
               <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="color: #374151; margin: 0; font-size: 14px;">
-                  <strong>90-day guarantee:</strong> If your AI Visibility Score doesn't improve within 90 days, we'll refund you in full.
+                  <strong>90-day promise</strong> &mdash; if your AI Visibility Score isn't moving in the right direction within 90 days of schema install, we'll review your account and process a full refund.
                 </p>
               </div>
               <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Go to Dashboard</a>
@@ -500,7 +500,7 @@ async function handleCheckoutComplete(session) {
               </p>
             </div>
           `,
-          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. 90-day guarantee — score improves or full refund. Questions? hello@tendorai.com`,
+          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. 90-day promise — review and refund if your score isn't moving in the right direction. Questions? hello@tendorai.com`,
           from: 'TendorAI <hello@tendorai.com>',
         });
         logger.info('Pro upgrade email sent', { vendorId: vendor._id, email: vendor.email });
