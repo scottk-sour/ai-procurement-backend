@@ -28,6 +28,44 @@ import { runSingleVendorScan } from "../services/aiMentionScanner.js";
 const router = express.Router();
 const { JWT_SECRET } = process.env;
 
+// ─── Onboarding checklist support ────────────────────────────────────
+// Items the vendor may self-tick via PATCH. Everything else on the
+// checklist is auto-detected from system events and PATCH rejects it.
+export const ONBOARDING_TICKABLE_ITEMS = new Set([
+    'schemaCallScheduled',
+    'firstAuditRun',
+    'firstLiveAITestRun',
+]);
+export const ONBOARDING_AUTO_DETECTED_ITEMS = new Set([
+    'profileComplete',
+    'firstProductAdded',
+    'firstPillarPostGenerated',
+    'firstPrimaryDataAdded',
+]);
+
+/**
+ * Profile-completeness threshold for the getting-started checklist.
+ * Returns true when ALL five conditions are satisfied. Exported for
+ * direct unit testing.
+ */
+export function checkProfileCompleteness(vendor) {
+    if (!vendor) return false;
+    if (!vendor.company || !String(vendor.company).trim()) return false;
+    if (!vendor.location?.city || !String(vendor.location.city).trim()) return false;
+    if (!vendor.description || String(vendor.description).trim().length < 50) return false;
+    if (!vendor.vendorType) return false;
+    const hasSpecialism =
+        (Array.isArray(vendor.practiceAreas)
+            && vendor.practiceAreas.some((s) => typeof s === 'string' && s.trim()))
+        || (Array.isArray(vendor.industrySpecialisms)
+            && vendor.industrySpecialisms.some((s) => typeof s === 'string' && s.trim()))
+        || (Array.isArray(vendor.businessProfile?.specializations)
+            && vendor.businessProfile.specializations.some((s) => typeof s === 'string' && s.trim()))
+        || (Array.isArray(vendor.specialisms)
+            && vendor.specialisms.some((s) => typeof s === 'string' && s.trim()));
+    return Boolean(hasSpecialism);
+}
+
 if (!JWT_SECRET) {
     console.error('âŒ ERROR: Missing JWT_SECRET in environment variables.');
     process.exit(1);
@@ -592,6 +630,24 @@ router.put('/profile', vendorAuth, async (req, res) => {
             console.error('[FirstScan] Failed for vendor', updatedVendor._id, err.message);
           });
         }
+
+        // Auto-detect: onboarding checklist — profileComplete.
+        // Wrapped so a checklist write failure cannot break the
+        // already-completed profile update.
+        try {
+          if (checkProfileCompleteness(updatedVendor)
+              && !updatedVendor.onboardingChecklist?.profileComplete) {
+            await Vendor.findByIdAndUpdate(updatedVendor._id, {
+              $set: {
+                'onboardingChecklist.profileComplete': true,
+                'onboardingChecklist.profileCompleteAt': new Date(),
+              },
+            });
+          }
+        } catch (checklistErr) {
+          console.error('[OnboardingChecklist] profileComplete detect failed for vendor',
+            updatedVendor._id, checklistErr.message);
+        }
     } catch (error) {
         console.error('Error updating vendor profile:', error.message);
         res.status(500).json({
@@ -611,6 +667,77 @@ router.post('/onboarding-complete', vendorAuth, async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ message: 'Failed to update onboarding status.' });
+    }
+});
+
+// PATCH /api/vendors/:vendorId/onboarding-checklist
+//
+// Vendor self-tick endpoint for the three checklist items the system
+// can't auto-detect (schemaCallScheduled, firstAuditRun,
+// firstLiveAITestRun). Auto-detected items reject with 400.
+//
+// Idempotent: a second tick on an already-true item leaves the
+// timestamp untouched and returns 200 with the existing state.
+router.patch('/:vendorId/onboarding-checklist', vendorAuth, async (req, res) => {
+    try {
+        const { vendorId } = req.params;
+        if (req.vendorId?.toString() !== vendorId) {
+            return res.status(403).json({ success: false, error: 'Not authorised' });
+        }
+
+        const { item } = req.body || {};
+        if (!item || typeof item !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Request body must include `item` (string).',
+            });
+        }
+
+        if (ONBOARDING_AUTO_DETECTED_ITEMS.has(item)) {
+            return res.status(400).json({
+                success: false,
+                error: `Item is auto-detected and cannot be manually set: ${item}`,
+            });
+        }
+        if (!ONBOARDING_TICKABLE_ITEMS.has(item)) {
+            return res.status(400).json({
+                success: false,
+                error: `Unknown checklist item: ${item}`,
+            });
+        }
+
+        const vendor = await Vendor.findById(vendorId).select('onboardingChecklist');
+        if (!vendor) {
+            return res.status(404).json({ success: false, error: 'Vendor not found' });
+        }
+
+        // Idempotent path: already true → return as-is, do not touch timestamp.
+        if (vendor.onboardingChecklist?.[item] === true) {
+            return res.json({
+                success: true,
+                onboardingChecklist: vendor.onboardingChecklist,
+            });
+        }
+
+        // First-time tick: set boolean + timestamp.
+        const updated = await Vendor.findByIdAndUpdate(
+            vendorId,
+            {
+                $set: {
+                    [`onboardingChecklist.${item}`]: true,
+                    [`onboardingChecklist.${item}At`]: new Date(),
+                },
+            },
+            { new: true, select: 'onboardingChecklist' },
+        );
+
+        return res.json({
+            success: true,
+            onboardingChecklist: updated.onboardingChecklist,
+        });
+    } catch (error) {
+        console.error('[OnboardingChecklist] PATCH failed:', error.message);
+        return res.status(500).json({ success: false, error: 'Failed to update checklist.' });
     }
 });
 
@@ -1390,6 +1517,29 @@ router.post("/products", async (req, res) => {
             data: product,
             remainingSlots: limit === Infinity ? null : limit - currentCount - 1
         });
+
+        // Auto-detect: onboarding checklist — firstProductAdded.
+        // Fire-and-forget; the response has already been sent.
+        try {
+            await Vendor.updateOne(
+                {
+                    _id: vendorId,
+                    $or: [
+                        { 'onboardingChecklist.firstProductAdded': { $ne: true } },
+                        { 'onboardingChecklist.firstProductAdded': { $exists: false } },
+                    ],
+                },
+                {
+                    $set: {
+                        'onboardingChecklist.firstProductAdded': true,
+                        'onboardingChecklist.firstProductAddedAt': new Date(),
+                    },
+                },
+            );
+        } catch (checklistErr) {
+            console.error('[OnboardingChecklist] firstProductAdded detect failed for vendor',
+                vendorId, checklistErr.message);
+        }
     } catch (error) {
         console.error("Error creating product:", error);
         if (error.name === 'ValidationError') {

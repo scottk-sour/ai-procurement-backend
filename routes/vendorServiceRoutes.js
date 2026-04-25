@@ -237,6 +237,31 @@ router.post(
       success: true,
       data: doc.toObject(),
     });
+
+    // Auto-detect: onboarding checklist — firstProductAdded.
+    // Fire-and-forget; the response has already been sent. Same flag
+    // as the legacy POST /api/vendors/products path — a vendor's
+    // first product or service event flips the same checklist item.
+    try {
+      await Vendor.updateOne(
+        {
+          _id: vendor._id,
+          $or: [
+            { 'onboardingChecklist.firstProductAdded': { $ne: true } },
+            { 'onboardingChecklist.firstProductAdded': { $exists: false } },
+          ],
+        },
+        {
+          $set: {
+            'onboardingChecklist.firstProductAdded': true,
+            'onboardingChecklist.firstProductAddedAt': new Date(),
+          },
+        },
+      );
+    } catch (checklistErr) {
+      console.error('[OnboardingChecklist] firstProductAdded detect failed for vendor',
+        vendor._id, checklistErr?.message || checklistErr);
+    }
   }),
 );
 

@@ -403,6 +403,62 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       plan: pillarSpec || null,
       pillar: pillar || null,
     });
+
+    // Auto-detect: onboarding checklist — firstPillarPostGenerated
+    // and firstPrimaryDataAdded. Only fires after the LLM call AND
+    // the JSON parse have succeeded — a failed generate doesn't
+    // trigger checklist progress.
+    //
+    // Each flag is written via an atomic updateOne whose query filters
+    // on the current state. If the flag is already true, the write
+    // is a no-op and the timestamp stays at the original first-time
+    // value (idempotent). The handler's vendor.findById doesn't select
+    // the checklist field, so we can't read-then-write — the query
+    // condition does the gating instead.
+    try {
+      const now = new Date();
+      const hasPillar = typeof pillar === 'string' && pillar.trim();
+      const hasPrimaryData = typeof primaryData === 'string' && primaryData.trim();
+      const writes = [];
+      if (hasPillar) {
+        writes.push(Vendor.updateOne(
+          {
+            _id: vendorId,
+            $or: [
+              { 'onboardingChecklist.firstPillarPostGenerated': { $ne: true } },
+              { 'onboardingChecklist.firstPillarPostGenerated': { $exists: false } },
+            ],
+          },
+          {
+            $set: {
+              'onboardingChecklist.firstPillarPostGenerated': true,
+              'onboardingChecklist.firstPillarPostGeneratedAt': now,
+            },
+          },
+        ));
+      }
+      if (hasPrimaryData) {
+        writes.push(Vendor.updateOne(
+          {
+            _id: vendorId,
+            $or: [
+              { 'onboardingChecklist.firstPrimaryDataAdded': { $ne: true } },
+              { 'onboardingChecklist.firstPrimaryDataAdded': { $exists: false } },
+            ],
+          },
+          {
+            $set: {
+              'onboardingChecklist.firstPrimaryDataAdded': true,
+              'onboardingChecklist.firstPrimaryDataAddedAt': now,
+            },
+          },
+        ));
+      }
+      if (writes.length) await Promise.all(writes);
+    } catch (checklistErr) {
+      console.error('[OnboardingChecklist] post-generate detect failed for vendor',
+        vendorId, checklistErr?.message || checklistErr);
+    }
   } catch (error) {
     console.error('[PostGenerate] Error:', error.message);
     console.error('[PostGenerate] Stack:', error.stack);
