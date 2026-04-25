@@ -59,3 +59,34 @@ Read-only audit. No code changed. Verdicts based on inspection of `models/`, `ro
 - `services/emailService.js:439` — `sendSchemaInstallCompleteNotification(vendorEmail, {vendorName, websiteUrl})` fires on completion.
 
 **Assessment:** Every link in the workflow is real: vendor submits credentials → admin gets notified → admin uses the decrypt endpoint to fetch credentials → admin manually installs the snippet on the vendor's CMS → admin marks the request `completed` → vendor gets a completion email. Generation, delivery, request tracking, admin tooling, and the bookend emails are all implemented. The "done-for-you installation" promise is honoured by an admin doing the actual work (with stored encrypted credentials), not by automation — that matches the "done-for-you" framing. The "within 48 hours" promise is an operational SLA, not a code-level guarantee; nothing monitors the request age and escalates. One mismatch worth flagging: the new `onboardingChecklist.schemaCallScheduled` field on Vendor (added in PR #37) is vendor-tickable and tracks whether the vendor has scheduled a call, not whether the install completed. There is no auto-flag on Vendor that flips when `SchemaInstallRequest.status` becomes `completed` — the install-completion state lives only on the SchemaInstallRequest collection. The frontend would need to query that separately to render an accurate "schema installed" tick on the getting-started checklist. Not a vapor — the install record exists — but the bridge between the install-tracking system and the onboarding-checklist system is missing.
+
+---
+
+## Item 4 — 90-day guarantee infrastructure
+
+**Verdict:** PARTIAL
+
+**Evidence:**
+
+*What exists:*
+- `models/VendorScoreHistory.js` — full schema for weekly score snapshots: `vendorId`, `score` (Number, required), `breakdown` sub-doc with seven component scores (`profile`, `products`, `reviews`, `aiMentions`, `engagement`, `tier`, `verified`), `weekStarting` (Date, required), timestamps. Indexes on `{vendorId: 1, weekStarting: -1}` and `{weekStarting: -1}` — built for "give me this vendor's score over time" queries.
+- `services/aiMentionScanner.js:331-388` — `saveScoreHistory(vendor, weekStarting)` is called from inside the weekly scan loop (line 472). Uses `findOneAndUpdate` keyed on `{vendorId, weekStarting}` so re-runs of the same week upsert rather than duplicate. Computes the breakdown live each Sunday.
+- `routes/visibilityRoutes.js` reads from `VendorScoreHistory` (only consumer outside the scanner).
+- `routes/stripeRoutes.js:404` — `case 'charge.refunded':` Stripe webhook branch.
+- `routes/stripeRoutes.js:668-732` — `handleChargeRefunded(charge)` reacts to a Stripe refund: downgrades the vendor to `free` tier, sets `subscriptionStatus: 'cancelled'`, appends a system note with the charge id and amount, logs an admin-action log line, and emails a refund confirmation to the vendor.
+- `routes/stripeRoutes.js:494, 503` — welcome email body and SMS-style text variant both quote the 90-day guarantee promise verbatim ("90-day guarantee — score improves or full refund").
+
+*What is missing:*
+- No baseline-score field. No `baselineScore`, `scoreAtInstall`, or `installScore` anywhere in `models/`.
+- No install-date marker on Vendor. Schema-install completion lives on `SchemaInstallRequest.completedAt`, but no Vendor field captures "your guarantee window started on X".
+- No 90-day window query. `grep -r "baseline" "90.day" "scoreAtInstall"` across `routes/`, `services/`, `models/` returns zero matches outside the welcome-email copy, the Stripe handler comments, and an unrelated "last 90 days" rule in the content-planner library.
+- No refund-eligibility decision code. Nothing reads `VendorScoreHistory`, compares against a baseline, applies the "improved by ≥10 points within 90 days from install" rule, and either flags or auto-refunds.
+- No refund-initiation code. `handleChargeRefunded` is webhook-only — it processes a refund that has *already happened* in Stripe. To issue the refund, an operator clicks a button in the Stripe dashboard.
+
+**Assessment:** The first two ingredients of a 90-day guarantee — measuring score over time, and reacting to a refund event — are real and live. Everything in between (baseline capture at install, install-date marker on Vendor, automated 90-day-window comparison, refund-eligibility decision, refund initiation) is missing. In practice this means the guarantee is enforced by a human reading the dashboard and making a judgment call, then issuing the refund manually in Stripe; the backend webhook only handles the bookkeeping after the fact. The promise text exists in the welcome email copy. The machinery to back it up at scale does not.
+
+**Gap (PARTIAL → LIVE):** To call this LIVE, four pieces are needed:
+1. A `baselineScore` field (and `baselineCapturedAt` date) on Vendor, written when `SchemaInstallRequest.status` flips to `completed`.
+2. A scheduled job (or on-demand admin endpoint) that, for every Pro vendor whose `baselineCapturedAt` is between 80 and 90 days old, computes the latest `VendorScoreHistory.score` and the delta against baseline.
+3. A flag or admin queue listing vendors whose 90-day delta is < 10 points so an operator can see them without inferring it themselves.
+4. Optionally: an automated Stripe `refunds.create` call when the rule fires, gated behind manual approval. (Manual remains a defensible choice — the auto-decision step is what's missing.)
