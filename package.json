@@ -24,6 +24,7 @@
     "scan:mentions": "node scripts/weeklyAIMentionScan.js",
     "email:weekly": "node scripts/sendWeeklyVendorEmails.js",
     "generate:reports": "node scripts/generateBatchReports.js",
+    "smoke:onboarding": "node scripts/smoke-test-onboarding-flags.mjs",
     "clean": "rm -rf node_modules package-lock.json && npm install",
     "build": "echo \"No build step required for Node.js\""
   },
