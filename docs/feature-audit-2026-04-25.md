@@ -170,3 +170,84 @@ Read-only audit. No code changed. Verdicts based on inspection of `models/`, `ro
 - Sister system note: `services/aeoReportGenerator.js` exists too, but per `CLAUDE.md` that's the LLM-generated marketing report — *not* the real detector. Item 7 is backed by the real detector at `services/aeoDetector.js`.
 
 **Assessment:** A real `POST /api/aeo-audit` endpoint accepts a URL, fetches the page, runs ten deterministic HTML checks, scores each out of 10, and returns the breakdown plus a list of failure-driven recommendations. Tier gating (free = once ever, paid = weekly) is enforced before any HTTP fetch. The 10 checks are defensible and traceable to AEO best practice — schema, meta, headings, mobile, HTTPS, page weight, social, contact, FAQ, content depth. The fix "guides" are single-sentence per-check strings rather than long-form how-to documents — accurate for "fix guides" if read loosely, leaner than the phrase implies if read strictly. Two technical caveats worth knowing: (1) **Page Weight uses HTML byte size, not real page-load speed**, because true LCP/TTFB measurement would need a headless browser; the comment in the code acknowledges this (line 417 area). (2) The check set is a defensible 10 for AEO but not the only possible 10 — no `robots.txt`, no `sitemap.xml`, no JSON-LD schema *validation* (only count), no Author/Person schema, no E-E-A-T author bylines. Calling it 10-point is honest; calling it the *complete* AI audit would be a reach. Within those bounds: LIVE, end-to-end, vendor-triggered, persisted, scored, with per-check fix text.
+
+---
+
+## Summary
+
+**5 LIVE / 2 PARTIAL / 0 VAPOR** out of seven sales-sheet claims:
+
+| # | Feature | Verdict |
+|---|---|---|
+| 1 | Weekly AI scans across 6 platforms | LIVE |
+| 2 | Email alert when any AI platform recommends you | LIVE |
+| 3 | Schema markup installed on website (done-for-you) | LIVE |
+| 4 | 90-day guarantee infrastructure | **PARTIAL** |
+| 5 | Competitor comparison | LIVE |
+| 6 | Live AI Search Test | **PARTIAL** |
+| 7 | 10-point Website AI Audit with fix guides | LIVE |
+
+**Overall product-vs-copy alignment:** Better than typical for a sales sheet of this length. The seven-platform stack is real, the email alerts fire from the live scan loop, the schema install workflow is fully wired with admin tracking and bookend emails, the AEO audit is deterministic and reproducible. The two soft spots are concentrated on the customer-facing edges — the live AI search test queries one model when the copy implies six, and the 90-day guarantee promise is enforced by human judgment rather than backend rules. Neither rises to "vapor" — both have substantial code already in place — but both will draw a complaint the first time a sharp-eyed Pro customer notices the gap. Two of the LIVE items also carry caveats worth knowing (Item 2's one-alert-per-cycle behaviour vs the per-platform implication in copy; Item 7's page-weight check using HTML byte size rather than actual load speed) — neither requires backend changes if the copy is honest about them.
+
+---
+
+## Top priorities to fix
+
+Ranked by commercial exposure — what a paying Pro vendor would notice first if they went looking.
+
+### 1. Live AI Search Test fans out to all six platforms
+
+- **Gap:** `routes/aiSearchTestRoutes.js:189-200` queries Claude Haiku only. The weekly scan already fans out to all six platforms via `services/platformQuery/index.js:queryAllPlatforms`, but the live test bypasses that helper.
+- **Why it matters commercially:** This is the single feature a Pro vendor will *click on* to validate the whole product. It is also the demo button on the dashboard. If a vendor runs the live test on a query they know they appear in on Perplexity but not Claude, they'll see "not mentioned" — and assume the product is broken.
+- **Suggested fix: build to match copy.** Replace the inline Anthropic call with `queryAllPlatforms(...)`, persist one `AIMentionScan` row per platform, return a per-platform breakdown.
+- **Effort:** small (~1-2 hours; the helper already exists, this is a wiring change in one route file plus reworking the tier-limit semantics from "queries-issued" to "platforms-tested").
+
+### 2. 90-day guarantee — no automated eligibility tracking
+
+- **Gap:** No `baselineScore`, no `baselineCapturedAt`, no scheduled job comparing 90-day deltas, no admin queue surfacing eligible-for-refund vendors. Copy promises a quantitative rule (≥10-point improvement in 90 days); enforcement is manual judgment.
+- **Why it matters commercially:** This is fine at low volume — Scott can read the dashboard for each Pro vendor and decide. It breaks at scale or under dispute. A vendor pointing at the literal copy and demanding a refund is hard to argue with when the backend has no scoring evidence either way.
+- **Suggested fix: both, in order — first change copy, then build.** Soften the welcome-email wording immediately ("if you don't see meaningful improvement we'll work with you on a refund") so the legal exposure goes away today. Then, when Pro count crosses ~50 vendors, build the baseline + 90-day comparison + admin queue so the rule scales.
+- **Effort:** small (copy change today) + medium (build, when needed: ~1-2 days for baseline field + scheduled job + admin queue route).
+
+### 3. Mention-alert email is one-per-cycle, not one-per-platform
+
+- **Gap:** `services/aiMentionScanner.js:455-468` emits one alert per scan cycle naming whichever platform processed first. Sales sheet copy reads as "alert per platform that recommends you".
+- **Why it matters commercially:** A vendor cited by ChatGPT *and* Perplexity in the same Sunday scan gets one email naming whichever was processed first. They miss the second platform until they log into the dashboard. Trust dent, not a refund risk.
+- **Suggested fix: change copy** (cheaper than rebuilding email throttling). Reword to "Weekly summary email whenever any AI platform recommends you, with platform-by-platform breakdown" — which is exactly what the existing email body already shows.
+- **Effort:** small (copy change only).
+
+### 4. Schema install — no auto-flag on onboarding checklist when install completes
+
+- **Gap:** When an admin marks `SchemaInstallRequest.status` as `completed` in `routes/adminRoutes.js:923`, no Vendor field is updated. The new `onboardingChecklist.schemaCallScheduled` field is vendor-tickable but tracks the *call*, not the install.
+- **Why it matters commercially:** Low — the vendor can self-tick. But the getting-started page will show "schema not installed yet" even after install is complete, until the vendor logs in and ticks the box manually. Confusing.
+- **Suggested fix: build to match.** Add a one-line update inside the admin PATCH handler: when the request transitions to `completed`, also write `onboardingChecklist.schemaInstalled = true / schemaInstalledAt = now` on the parent vendor. Requires adding `schemaInstalled` to the model enum (it's not currently one of the seven).
+- **Effort:** small (~30 min — model enum + admin handler + a test).
+
+### 5. "Within 48 hours" schema install SLA is unmonitored
+
+- **Gap:** Nothing measures the age of pending `SchemaInstallRequest` rows or escalates. Pure operational SLA.
+- **Why it matters commercially:** Low at current volume, real if Pro signups spike and a request sits in the queue for a week.
+- **Suggested fix: change copy or build.** Easiest change: reword to "typically within 5 working days" so a one-day slip doesn't break the promise. Build option: a simple admin dashboard tile showing "N requests pending, oldest X hours". Either is defensible.
+- **Effort:** small either way.
+
+---
+
+## Sales sheet copy changes recommended
+
+Specific lines that should be rewritten to match what the code actually does.
+
+| Current copy | Recommended rewrite | Reason |
+|---|---|---|
+| "Live AI Search Test — run real-time queries against AI platforms and instantly see if your business appears in the results" | Either: keep as-is **and ship the multi-platform fix** (Priority 1 above), OR: "Live AI Search Test — instantly run a real-time query against Claude and see whether AI recommends you" | Current copy implies all six platforms; code uses one. |
+| "Email alert when any AI platform recommends you — ChatGPT, Perplexity, Claude, Gemini, Grok, or Meta AI" | "Weekly summary email whenever any AI platform recommends you, with a platform-by-platform breakdown" | Current copy implies per-platform alerts; code emits one alert per scan cycle (the breakdown is in the email body, which the new copy correctly reflects). |
+| "90-day guarantee — if your AI Visibility Score doesn't improve by at least 10 points within 90 days of schema install, we refund every penny" | "90-day promise — if your AI Visibility Score isn't moving in the right direction within 90 days of schema install, we'll review your account and process a full refund" | Current copy commits to a precise rule the backend doesn't currently verify. New wording keeps the spirit (90 days, full refund) without the unenforceable threshold. Revisit when the eligibility logic ships. |
+| "AI-optimised schema markup installed on your website within 48 hours" | "AI-optimised schema markup installed on your website, typically within 5 working days" | "48 hours" is unmonitored and one missed weekend breaks the promise. The new wording is honest about realistic turnaround. |
+
+## Sales sheet copy that's accurate as-is
+
+These four claims are defensible without changes — code matches copy.
+
+- **"Weekly AI visibility scans across ChatGPT, Perplexity, Claude, Gemini, Grok, and Meta AI"** — Sunday 03:00 UTC cron, six platform query functions, AIMentionScan persistence. Subject only to all six API keys being configured in production env.
+- **"Done-for-you installation"** (schema) — encrypted credential capture, admin tooling, bookend emails. The "done-for-you" framing is honoured by an admin doing the manual install with the vendor's stored CMS credentials.
+- **"Competitor comparison — see who AI recommends instead"** — `competitorsMentioned[]` captured per query, per platform, per scan, exposed via `GET /api/ai-mentions/competitors` with paid-tier vs free-tier branching. Comprehensive and end-to-end.
+- **"10-point Website AI Audit with fix guides"** — exactly 10 deterministic checks, each scored, each with a one-sentence fix recommendation. "Fix guides" reads loosely as one-line guidance per check; that's defensible.
