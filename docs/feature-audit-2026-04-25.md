@@ -90,3 +90,21 @@ Read-only audit. No code changed. Verdicts based on inspection of `models/`, `ro
 2. A scheduled job (or on-demand admin endpoint) that, for every Pro vendor whose `baselineCapturedAt` is between 80 and 90 days old, computes the latest `VendorScoreHistory.score` and the delta against baseline.
 3. A flag or admin queue listing vendors whose 90-day delta is < 10 points so an operator can see them without inferring it themselves.
 4. Optionally: an automated Stripe `refunds.create` call when the rule fires, gated behind manual approval. (Manual remains a defensible choice — the auto-decision step is what's missing.)
+
+---
+
+## Item 5 — Competitor comparison
+
+**Verdict:** LIVE
+
+**Evidence:**
+- `models/AIMentionScan.js:20` — `competitorsMentioned: [String]` on every scan row. One row per `(vendor, prompt, platform)`, so competitors are captured **per query, per platform, per scan**.
+- `services/platformQuery/prompt.js:260-310` — `parsePlatformResponse(...)` extraction logic builds a `competitors` array (line 260: `const competitors = [];`) by walking the AI response and collecting up to 10 named firms per response (line 335: `competitors: competitors.slice(0, 10)`). Three fallback passes — first cited-by-reason, then plain mentions, then last-resort scan — so a competitor mentioned anywhere in the response gets captured.
+- `services/platformQuery/index.js:59, 97, 116` — error / timeout / no-key fallback branches all default `competitors: []` so the field is always present in the result shape.
+- Persistence: every `AIMentionScan` insert in `services/aiMentionScanner.js` carries the parsed `competitorsMentioned[]` array; the field is indexed indirectly via the per-vendor / per-platform indexes on `models/AIMentionScan.js:30-33`.
+- API: `routes/aiMentionRoutes.js:158-316` — `GET /api/ai-mentions/competitors`. Two branches:
+  - Free tier (lines 179-226): aggregate counts only — total competitor count and the top three competitor mention-counts, no names.
+  - Paid tier (lines 237-313): full per-competitor list with names. Lines 280-296 build `topCompetitors` by querying `Vendor.find({_id: {$in: competitorIds}})` to enrich competitor entries with company names where the competitor is itself a TendorAI vendor; external firms (not TendorAI vendors) appear as raw strings from `competitorsMentioned[]`.
+- Per-query history: `routes/aiMentionRoutes.js:89` — the per-vendor mentions list endpoint already selects `competitorsMentioned` alongside `prompt` and `platform`, so the dashboard can show "for this query on this platform, these competitors were cited".
+
+**Assessment:** Competitor capture is real, comprehensive, and end-to-end. Every weekly scan and every live AI search test (Item 6) populates `competitorsMentioned[]` on the scan row. The parser uses the deterministic name-matching layer from `services/platformQuery/nameMatch.js` (the work that fixed the "firm cited as its own competitor" bug), so suffix variations like `Ltd` / `Limited` and URL-only citations don't fall through. Free-tier vendors see counts to motivate an upgrade; paid-tier vendors see names. Where a competitor is itself a registered TendorAI vendor the response includes resolvable identity; external firms appear as strings. One narrow caveat against the sales sheet wording: "see who AI recommends instead" reads as substitutive ("who got recommended *in your place*"), but the captured competitor list includes any firm named in the AI response, not just firms recommended ahead of the vendor. In practice this is what a dashboard wants — broader coverage, not narrower — but worth knowing.
