@@ -57,6 +57,19 @@ const app = express();
 // Trust proxy for Render
 app.set('trust proxy', 1);
 
+// ─── Health check ─────────────────────────────────────────────────────
+// Mounted before every other middleware so a keep-warm probe can
+// reach it even if a downstream middleware misbehaves. No auth, no
+// rate limit, no body parser dependency. Shape is intentionally tiny
+// to keep the keep-warm payload cheap.
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
 // ========================================
 // ALLOWED ORIGINS (single source of truth)
 // ========================================
