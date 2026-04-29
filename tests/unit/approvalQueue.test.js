@@ -213,7 +213,7 @@ describe('ApprovalQueue Service', () => {
       const mockItem = {
         _id: 'approval-1',
         status: 'approved',
-        itemType: 'content_draft',
+        itemType: 'directory_submission',
         save: vi.fn().mockImplementation(function () {
           return Promise.resolve(this);
         }),

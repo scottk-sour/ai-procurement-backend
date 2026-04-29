@@ -51,9 +51,42 @@ const executionHandlers = {
   },
 
   async content_draft(item) {
-    // Publishes or updates a VendorPost from draftPayload when implemented.
-    // Expected draftPayload: { title, body, category, tags, linkedInText, facebookText }
-    throw new Error('Execution handler for "content_draft" is not yet connected — implement in services/approvalQueue.js');
+    const payload = item.draftPayload || {};
+    if (!payload.title) throw new Error('draftPayload.title is required to create a VendorPost');
+    if (!payload.body) throw new Error('draftPayload.body is required to create a VendorPost');
+
+    const { default: Vendor } = await import('../models/Vendor.js');
+    const vendor = await Vendor.findById(item.vendorId).select('_id').lean();
+    if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
+
+    const { default: VendorPost } = await import('../models/VendorPost.js');
+    const post = new VendorPost({
+      vendor: item.vendorId,
+      title: payload.title,
+      body: payload.body,
+      category: payload.category || 'guide',
+      tags: payload.tags || [],
+      status: 'draft',
+      aiGenerated: true,
+      topic: payload.topic,
+      stats: payload.stats,
+      linkedInText: payload.linkedInText,
+      facebookText: payload.facebookText,
+      pillar: payload.pillar,
+      plan: payload.plan,
+      primaryData: payload.primaryData,
+      relatedApprovalId: item._id,
+      agentRunId: item.metadata?.agentRunId || undefined,
+    });
+
+    await post.save();
+
+    return {
+      postId: post._id,
+      slug: post.slug,
+      vendorId: post.vendor,
+      createdAt: post.createdAt,
+    };
   },
 
   async directory_submission(item) {
