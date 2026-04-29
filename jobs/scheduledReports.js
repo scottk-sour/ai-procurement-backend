@@ -337,7 +337,13 @@ export function startScheduledReports() {
 
   logger.info('[ScheduledReports] Cron jobs registered:');
   logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
+  logger.info('  - Writer Agent (weekly): every Monday at 05:00 UTC');
   logger.info('  - Pro (monthly): 1st of every month at 06:00 UTC');
   logger.info('  - Pro (weekly): every Monday at 06:00 UTC');
   logger.info('  - Past_due downgrade (daily): every day at 09:00 UTC');
+
+  // Writer Agent cron — runs Monday 05:00 UTC, before weekly reports at 06:00
+  import('./writerAgent.js').then(m => m.registerWriterAgentCron()).catch(err => {
+    logger.error('[ScheduledReports] Failed to register Writer Agent cron:', err.message);
+  });
 }

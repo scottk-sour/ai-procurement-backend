@@ -1236,4 +1236,16 @@ router.get('/recent-signups', adminAuth, async (req, res) => {
   }
 });
 
+// ─── Writer Agent manual trigger ─────────────────────────────────────
+router.post('/writer-agent/run-for-vendor/:vendorId', adminAuth, async (req, res) => {
+  try {
+    const { runWriterAgentForVendor } = await import('../services/writerAgent.js');
+    console.log(`[ADMIN ACTION] writer_agent_manual_trigger vendor=${req.params.vendorId} by=${req.admin?.email}`);
+    const result = await runWriterAgentForVendor(req.params.vendorId, { dryRun: req.query.dryRun === 'true' });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
