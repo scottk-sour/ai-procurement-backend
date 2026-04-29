@@ -12,7 +12,7 @@ const vendorPostSchema = new mongoose.Schema({
   tags: [{ type: String, trim: true, lowercase: true }],
   status: {
     type: String,
-    enum: ['draft', 'published', 'hidden'],
+    enum: ['draft', 'pending_review', 'published', 'hidden'],
     default: 'draft',
   },
   slug: { type: String, unique: true, index: true },
@@ -22,6 +22,10 @@ const vendorPostSchema = new mongoose.Schema({
   stats: { type: String, trim: true },
   linkedInText: { type: String, trim: true },
   facebookText: { type: String, trim: true },
+
+  // Writer Agent tracing fields. Optional; existing posts unaffected.
+  agentRunId: { type: mongoose.Schema.Types.ObjectId, ref: 'AgentRun', index: true },
+  relatedApprovalId: { type: mongoose.Schema.Types.ObjectId, ref: 'ApprovalQueue', index: true },
 
   // v7 content-planner additions. All optional; existing posts unaffected.
   pillar: {
@@ -92,8 +96,17 @@ vendorPostSchema.pre('validate', function (next) {
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
       .substring(0, 80);
-    // Append vendor ID fragment + timestamp to ensure uniqueness
-    this.slug = `${base}-${this.vendor.toString().slice(-6)}`;
+    const vendorSuffix = this.vendor.toString().slice(-6);
+
+    if (this.aiGenerated || this.agentRunId) {
+      const d = this.createdAt || new Date();
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      this.slug = `${base}-${vendorSuffix}-${yyyy}${mm}${dd}`;
+    } else {
+      this.slug = `${base}-${vendorSuffix}`;
+    }
   }
   next();
 });
@@ -102,5 +115,6 @@ vendorPostSchema.pre('validate', function (next) {
 vendorPostSchema.index({ status: 1, createdAt: -1 });
 vendorPostSchema.index({ vendor: 1, status: 1 });
 vendorPostSchema.index({ tags: 1 });
+vendorPostSchema.index({ agentRunId: 1, status: 1 }, { sparse: true });
 
 export default mongoose.model('VendorPost', vendorPostSchema);
