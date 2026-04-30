@@ -1,7 +1,9 @@
 import Vendor from '../models/Vendor.js';
 import AgentRun from '../models/AgentRun.js';
 import { PILLAR_LIBRARIES, VERTICAL_ENTITIES } from './contentPlanner/pillarLibraries.js';
-import { SYSTEM_PROMPT_V7, VERTICAL_LABELS } from './contentPlanner/prompts.js';
+import { SYSTEM_PROMPT_V7, SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS } from './contentPlanner/prompts.js';
+import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
+import { countPlaceholders } from './contentPlanner/validators.js';
 import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval } from './approvalQueue.js';
@@ -90,9 +92,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const { dryRun = false } = options;
   const logPrefix = dryRun ? '[WriterAgent DRY-RUN]' : '[WriterAgent]';
 
-  const vendor = await Vendor.findById(vendorId)
-    .select('tier vendorType company location.city practiceAreas')
-    .lean();
+  const vendor = await Vendor.findById(vendorId).lean();
   if (!vendor) throw new Error(`Vendor not found: ${vendorId}`);
 
   if (!isProTier(vendor.tier)) {
@@ -141,6 +141,15 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     .replace(/\{firmName\}/g, vendor.company || 'your firm')
     .replace(/\{year\}/g, String(new Date().getFullYear()));
 
+  let firmContext;
+  try {
+    firmContext = await getFirmContext(vendorId);
+  } catch (err) {
+    await failRun(agentRun._id, { failureReason: `firm_context_fetch_failed: ${err.message}` });
+    return { success: false, error: 'firm_context_fetch_failed', vendorId: String(vendorId) };
+  }
+  const firmContextBlock = renderFirmContextBlock(firmContext);
+
   const userPrompt = buildUserPrompt({
     topic: topicTitle,
     stats: '',
@@ -161,7 +170,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       model: MODEL,
       max_tokens: 4000,
       temperature: 0.7,
-      system: SYSTEM_PROMPT_V7,
+      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\n${firmContextBlock}`,
       messages: [{ role: 'user', content: userPrompt }],
     });
   } catch (err) {
@@ -188,6 +197,20 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     return { success: false, error: 'ai_response_json_invalid', vendorId: String(vendorId) };
   }
 
+  // V1.1 fields from agent output
+  const agentReportedPlaceholderCount = typeof parsed.placeholderCount === 'number'
+    ? parsed.placeholderCount
+    : null;
+  const topicSuitabilityFlag = ['ok', 'thin_data', 'unsuitable'].includes(parsed.topicSuitabilityFlag)
+    ? parsed.topicSuitabilityFlag
+    : 'ok';
+
+  // Independent placeholder count — don't trust agent's self-report blindly
+  const verifiedPlaceholderCount =
+    countPlaceholders(parsed.body || '') +
+    countPlaceholders(parsed.linkedInText || '') +
+    countPlaceholders(parsed.facebookText || '');
+
   const inputTokens = response.usage?.input_tokens || 0;
   const outputTokens = response.usage?.output_tokens || 0;
   const costEstimateUSD = (inputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +
@@ -202,6 +225,40 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       partialArtifacts: { costEstimateUSD, platformCostSoFar, projectedTotal },
     });
     return { success: false, error: 'monthly_cost_cap_reached', vendorId: String(vendorId) };
+  }
+
+  if (topicSuitabilityFlag === 'unsuitable') {
+    const summary = `Topic "${parsed.title}" flagged unsuitable for ${vendor.company} (${verifiedPlaceholderCount} placeholders required). No approval created.`;
+    await completeRun(agentRun._id, {
+      summary,
+      artifacts: {
+        pillarId: next.pillarId,
+        topicIndex: next.topicIndex,
+        lastPillar: next.pillarId,
+        lastTopicIndex: next.topicIndex,
+        postsDrafted: 0,
+        skippedReason: 'topic_unsuitable',
+        topicSuitabilityFlag,
+        placeholderCount: verifiedPlaceholderCount,
+        agentReportedPlaceholderCount,
+        draftTitle: parsed.title,
+        costEstimateUSD,
+        inputTokens,
+        outputTokens,
+        model: MODEL,
+      },
+      metricsAfter: { writerAgentMonthlyCostUSD: projectedTotal },
+    });
+    console.log(`${logPrefix} ${vendor.company}: topic "${parsed.title}" UNSUITABLE — no approval created`);
+    return {
+      success: true,
+      skipped: true,
+      reason: 'topic_unsuitable',
+      agentRunId: agentRun._id,
+      costEstimateUSD,
+      vendorId: String(vendorId),
+      ...(dryRun ? { dryRun: true } : {}),
+    };
   }
 
   const approval = await createApproval({
@@ -228,6 +285,8 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       topic: topicTitle,
       category: 'guide',
       tags: [next.pillarId, vendor.vendorType, vendor.location?.city?.toLowerCase()].filter(Boolean),
+      placeholderCount: verifiedPlaceholderCount,
+      topicSuitabilityFlag,
     },
     metadata: {
       agentRunId: agentRun._id,
@@ -237,6 +296,9 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       inputTokens,
       outputTokens,
       model: MODEL,
+      placeholderCount: verifiedPlaceholderCount,
+      topicSuitabilityFlag,
+      agentReportedPlaceholderCount,
       ...(dryRun ? { dryRun: true } : {}),
     },
     source: 'writer-agent-cron',
@@ -257,6 +319,9 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       inputTokens,
       outputTokens,
       model: MODEL,
+      placeholderCount: verifiedPlaceholderCount,
+      topicSuitabilityFlag,
+      agentReportedPlaceholderCount,
     },
     metricsAfter: { writerAgentMonthlyCostUSD: projectedTotal },
     relatedApprovalIds: [approval._id],

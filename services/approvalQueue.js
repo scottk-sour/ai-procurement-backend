@@ -1,4 +1,5 @@
 import ApprovalQueue from '../models/ApprovalQueue.js';
+import { validateContentDraft } from './contentPlanner/validators.js';
 
 export async function createApproval({ vendorId, agentName, itemType, title, draftPayload, metadata, source }) {
   const item = new ApprovalQueue({
@@ -54,6 +55,15 @@ const executionHandlers = {
     const payload = item.draftPayload || {};
     if (!payload.title) throw new Error('draftPayload.title is required to create a VendorPost');
     if (!payload.body) throw new Error('draftPayload.body is required to create a VendorPost');
+
+    // Pre-publish validator — hard block on errors, log warnings.
+    const validation = validateContentDraft(payload);
+    if (!validation.passed) {
+      throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
+    }
+    if (validation.warnings.length > 0) {
+      console.warn(`[approvalQueue.content_draft] Warnings for approval ${item._id}:`, validation.warnings);
+    }
 
     const { default: Vendor } = await import('../models/Vendor.js');
     const vendor = await Vendor.findById(item.vendorId).select('_id').lean();
