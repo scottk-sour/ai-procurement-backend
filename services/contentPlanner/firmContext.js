@@ -1,5 +1,12 @@
 import Vendor from '../../models/Vendor.js';
 
+function cleanUrl(value) {
+  if (typeof value !== 'string') return value;
+  const markdownLinkMatch = value.match(/^\[.*?\]\((.*?)\)$/);
+  if (markdownLinkMatch) return markdownLinkMatch[1];
+  return value;
+}
+
 /**
  * Build a firmContext object for the Writer Agent system prompt.
  * Returns only verified facts from the database. Empty strings,
@@ -72,7 +79,7 @@ export async function getFirmContext(vendorId) {
   const contact = vendor.contactInfo || {};
   const contactFacts = {};
   if (present(contact.phone)) contactFacts.phone = contact.phone;
-  if (present(contact.website)) contactFacts.website = contact.website;
+  if (present(contact.website)) contactFacts.website = cleanUrl(contact.website);
   if (Object.keys(contactFacts).length > 0) ctx.contact = contactFacts;
 
   const bp = vendor.businessProfile || {};
