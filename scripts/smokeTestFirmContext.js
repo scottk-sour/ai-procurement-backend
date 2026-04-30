@@ -26,6 +26,15 @@ async function main() {
   console.log('VENDOR TYPE:', vendor.vendorType);
   console.log('--------------------------------------');
 
+  console.log('=== DEBUG: raw website from DB ===');
+  console.log('Value with JSON.stringify:', JSON.stringify(vendor.contactInfo?.website));
+  console.log('Length:', vendor.contactInfo?.website?.length);
+  console.log('Char codes:', vendor.contactInfo?.website
+    ? Array.from(vendor.contactInfo.website).map(c => c.charCodeAt(0)).join(',')
+    : 'null');
+  console.log('Regex test:', vendor.contactInfo?.website?.match(/^\[.*?\]\((.*?)\)$/));
+  console.log('=== END DEBUG ===');
+
   const ctx = await getFirmContext(vendor._id);
   console.log('FIRM CONTEXT JSON:');
   console.log(JSON.stringify(ctx, null, 2));
