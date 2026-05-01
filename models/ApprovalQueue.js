@@ -47,6 +47,7 @@ const approvalQueueSchema = new mongoose.Schema({
   executedAt: { type: Date },
   executionResult: { type: mongoose.Schema.Types.Mixed },
   executionError: { type: String },
+  liveUrl: { type: String, default: null },
   source: { type: String },
 });
 

@@ -78,6 +78,8 @@ router.post('/:id/execute', async (req, res) => {
     let liveUrl = null;
     if (item.itemType === 'content_draft' && item.executionResult?.slug) {
       liveUrl = `https://tendorai.com/resources/${item.executionResult.slug}`;
+      item.liveUrl = liveUrl;
+      await item.save();
       pingBingIndexNow([liveUrl]).then(result => {
         if (result.ok) console.log(`[IndexNow] Pinged for ${liveUrl}`);
       });
