@@ -7,6 +7,7 @@ import {
   listPending,
   getApprovalById,
 } from '../services/approvalQueue.js';
+import { pingBingIndexNow } from '../services/indexNowService.js';
 
 const router = express.Router();
 
@@ -73,7 +74,16 @@ router.post('/:id/execute', async (req, res) => {
   try {
     const item = await executeApprovedItem(req.params.id);
     console.log(`[ADMIN ACTION] approval_executed id=${item._id} agent=${item.agentName} type=${item.itemType} by=${req.admin?.email}`);
-    res.json({ success: true, item });
+
+    let liveUrl = null;
+    if (item.itemType === 'content_draft' && item.executionResult?.slug) {
+      liveUrl = `https://tendorai.com/resources/${item.executionResult.slug}`;
+      pingBingIndexNow([liveUrl]).then(result => {
+        if (result.ok) console.log(`[IndexNow] Pinged for ${liveUrl}`);
+      });
+    }
+
+    res.json({ success: true, item, liveUrl });
   } catch (err) {
     const status = err.message.includes('not found') ? 404 : err.message.includes('must be') ? 409 : 500;
     res.status(status).json({ success: false, error: err.message });
