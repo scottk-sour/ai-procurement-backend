@@ -6,6 +6,7 @@ import Review from '../models/Review.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import { sendEmail } from './emailService.js';
+import AgentRun from '../models/AgentRun.js';
 
 // Map vendorType to readable label and prompt templates
 const VENDOR_TYPE_CONFIG = {
@@ -435,6 +436,7 @@ export async function runWeeklyMentionScan() {
 
   for (let i = 0; i < vendors.length; i++) {
     const vendor = vendors[i];
+    const vendorStartTime = new Date();
     console.log(`\n[${i + 1}/${vendors.length}] Scanning ${vendor.company}...`);
 
     try {
@@ -474,9 +476,44 @@ export async function runWeeklyMentionScan() {
       }
 
       vendorsScanned.add(vendor._id.toString());
+
+      const completedPlatforms = mentionDocs.filter(d => !d.responseSnippet?.startsWith('API error')).length;
+      const mentionCount = mentionDocs.filter(d => d.mentioned).length;
+      const topPlatforms = mentionDocs.filter(d => d.mentioned).map(d => d.platform).filter(Boolean);
+      try {
+        await AgentRun.create({
+          vendorId: vendor._id,
+          agentName: 'reconnaissance',
+          weekStarting: AgentRun.normaliseWeekStarting(new Date()),
+          status: completedPlatforms === mentionDocs.length ? 'completed' : 'partial',
+          startedAt: vendorStartTime,
+          completedAt: new Date(),
+          durationMs: Date.now() - vendorStartTime.getTime(),
+          summary: `Queried ${completedPlatforms}/${mentionDocs.length} AI platforms. ${mentionCount} mention(s) found.${topPlatforms.length ? ' Platforms: ' + topPlatforms.join(', ') + '.' : ''}`,
+          artifacts: { platformsQueried: completedPlatforms, mentionsFound: mentionCount, topPlatforms },
+        });
+      } catch (runErr) {
+        console.error(`  AgentRun write failed for ${vendor.company}:`, runErr.message);
+      }
     } catch (err) {
       console.error(`  Failed to scan ${vendor.company}:`, err.message);
       platformErrors++;
+
+      try {
+        await AgentRun.create({
+          vendorId: vendor._id,
+          agentName: 'reconnaissance',
+          weekStarting: AgentRun.normaliseWeekStarting(new Date()),
+          status: 'failed',
+          startedAt: vendorStartTime,
+          completedAt: new Date(),
+          durationMs: Date.now() - vendorStartTime.getTime(),
+          summary: `Scan failed: ${err.message}`,
+          failureReason: err.message,
+        });
+      } catch (runErr) {
+        console.error(`  AgentRun write failed for ${vendor.company}:`, runErr.message);
+      }
     }
 
     // 30-second delay between vendors to avoid rate limits

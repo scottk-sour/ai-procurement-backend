@@ -6,6 +6,7 @@ import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { sendEmail } from '../services/emailService.js';
 import { runWeeklyMentionScan } from '../services/aiMentionScanner.js';
 import logger from '../services/logger.js';
+import AgentRun from '../models/AgentRun.js';
 
 // ============================================================
 // Reverse maps: vendor practiceAreas/services → AEO report category slug
@@ -169,6 +170,7 @@ async function generateVendorReports(tier) {
   let errorCount = 0;
 
   for (const vendor of vendors) {
+    const vendorStartTime = new Date();
     try {
       const category = deriveCategory(vendor);
       const city = vendor.location?.city;
@@ -216,11 +218,43 @@ async function generateVendorReports(tier) {
       successCount++;
       logger.info(`[ScheduledReports] Report generated for ${vendor.company} (${vendor._id})`);
 
+      try {
+        await AgentRun.create({
+          vendorId: vendor._id,
+          agentName: 'reporter',
+          weekStarting: AgentRun.normaliseWeekStarting(new Date()),
+          status: 'completed',
+          startedAt: vendorStartTime,
+          completedAt: new Date(),
+          durationMs: Date.now() - vendorStartTime.getTime(),
+          summary: `Generated weekly visibility report. PDF saved. Email sent to ${vendor.email}.`,
+          artifacts: { reportId: report._id.toString() },
+        });
+      } catch (runErr) {
+        logger.error(`[ScheduledReports] AgentRun write failed for ${vendor.company}:`, runErr.message);
+      }
+
       // Rate limit: 10s delay between vendors to respect Claude API limits
       await sleep(10000);
     } catch (err) {
       errorCount++;
       logger.error(`[ScheduledReports] Error processing vendor ${vendor.company} (${vendor._id}):`, err.message);
+
+      try {
+        await AgentRun.create({
+          vendorId: vendor._id,
+          agentName: 'reporter',
+          weekStarting: AgentRun.normaliseWeekStarting(new Date()),
+          status: 'failed',
+          startedAt: vendorStartTime,
+          completedAt: new Date(),
+          durationMs: Date.now() - vendorStartTime.getTime(),
+          summary: `Report generation failed: ${err.message}`,
+          failureReason: err.message,
+        });
+      } catch (runErr) {
+        logger.error(`[ScheduledReports] AgentRun write failed for ${vendor.company}:`, runErr.message);
+      }
     }
   }
 
