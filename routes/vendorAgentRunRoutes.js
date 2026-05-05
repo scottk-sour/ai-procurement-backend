@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import vendorAuth from '../middleware/vendorAuth.js';
 import AgentRun from '../models/AgentRun.js';
 
@@ -6,16 +7,24 @@ const router = express.Router();
 
 router.use(vendorAuth);
 
+async function getLatestRunsForWeek(vendorId, weekStarting) {
+  const runs = await AgentRun.aggregate([
+    { $match: { vendorId: new mongoose.Types.ObjectId(vendorId), weekStarting } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: '$agentName', latestRun: { $first: '$$ROOT' } } },
+    { $replaceRoot: { newRoot: '$latestRun' } },
+    { $sort: { agentName: 1 } },
+  ]);
+  return AgentRun.populate(runs, { path: 'relatedApprovalIds', select: 'title status itemType' });
+}
+
 // GET /api/vendor/agent-runs/current-week
 router.get('/current-week', async (req, res) => {
   try {
     const vendorId = req.vendorId;
     const weekStarting = AgentRun.normaliseWeekStarting(new Date());
 
-    const runs = await AgentRun.find({ vendorId, weekStarting })
-      .sort({ agentName: 1 })
-      .populate('relatedApprovalIds', 'title status itemType')
-      .lean();
+    const runs = await getLatestRunsForWeek(vendorId, weekStarting);
 
     res.json({ success: true, weekStarting, runs });
   } catch (err) {
@@ -71,10 +80,7 @@ router.get('/week/:weekStarting', async (req, res) => {
     const vendorId = req.vendorId;
     const weekStarting = AgentRun.normaliseWeekStarting(new Date(req.params.weekStarting));
 
-    const runs = await AgentRun.find({ vendorId, weekStarting })
-      .sort({ agentName: 1 })
-      .populate('relatedApprovalIds', 'title status itemType')
-      .lean();
+    const runs = await getLatestRunsForWeek(vendorId, weekStarting);
 
     res.json({ success: true, weekStarting, runs });
   } catch (err) {

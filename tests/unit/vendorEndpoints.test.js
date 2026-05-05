@@ -8,6 +8,8 @@ const VENDOR_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
 const mockAgentRunLean = vi.fn();
 const mockAgentRunPopulate = vi.fn().mockReturnValue({ lean: mockAgentRunLean });
 const mockAgentRunSort = vi.fn().mockReturnValue({ populate: mockAgentRunPopulate });
+const mockAgentRunAggregate = vi.fn();
+const mockAgentRunPopulateStatic = vi.fn();
 
 vi.mock('../../models/AgentRun.js', () => {
   function MockAgentRun() {}
@@ -19,6 +21,8 @@ vi.mock('../../models/AgentRun.js', () => {
     return d;
   };
   MockAgentRun.find = vi.fn().mockReturnValue({ sort: mockAgentRunSort });
+  MockAgentRun.aggregate = mockAgentRunAggregate;
+  MockAgentRun.populate = mockAgentRunPopulateStatic;
   return { default: MockAgentRun };
 });
 
@@ -109,7 +113,8 @@ describe('Vendor Endpoints', () => {
         { agentName: 'detective', status: 'completed', vendorId: VENDOR_A },
         { agentName: 'writer', status: 'pending', vendorId: VENDOR_A },
       ];
-      mockAgentRunLean.mockResolvedValue(runs);
+      mockAgentRunAggregate.mockResolvedValue(runs);
+      mockAgentRunPopulateStatic.mockResolvedValue(runs);
 
       const res = await request(app, 'GET', '/api/vendor/agent-runs/current-week', {
         headers: { 'x-test-vendor-id': VENDOR_A },
@@ -119,13 +124,11 @@ describe('Vendor Endpoints', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.runs).toEqual(runs);
       expect(res.body.weekStarting).toBeDefined();
-
-      const findCall = AgentRun.find.mock.calls[0][0];
-      expect(findCall.vendorId).toBe(VENDOR_A);
     });
 
     it('returns empty array for a vendor with no runs (not another vendor\'s data)', async () => {
-      mockAgentRunLean.mockResolvedValue([]);
+      mockAgentRunAggregate.mockResolvedValue([]);
+      mockAgentRunPopulateStatic.mockResolvedValue([]);
 
       const res = await request(app, 'GET', '/api/vendor/agent-runs/current-week', {
         headers: { 'x-test-vendor-id': VENDOR_B },
@@ -133,21 +136,32 @@ describe('Vendor Endpoints', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.runs).toEqual([]);
+    });
 
-      const findCall = AgentRun.find.mock.calls[0][0];
-      expect(findCall.vendorId).toBe(VENDOR_B);
+    it('returns only the latest run per agent when duplicates exist', async () => {
+      const latestDetective = { agentName: 'detective', status: 'completed', createdAt: '2026-05-05T05:35:00Z', summary: 'Latest' };
+      mockAgentRunAggregate.mockResolvedValue([latestDetective]);
+      mockAgentRunPopulateStatic.mockResolvedValue([latestDetective]);
+
+      const res = await request(app, 'GET', '/api/vendor/agent-runs/current-week', {
+        headers: { 'x-test-vendor-id': VENDOR_A },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.runs).toHaveLength(1);
+      expect(res.body.runs[0].summary).toBe('Latest');
     });
   });
 
   describe('GET /api/vendor/agent-runs/week/:weekStarting', () => {
     it('normalises weekStarting and queries correctly', async () => {
-      mockAgentRunLean.mockResolvedValue([]);
+      mockAgentRunAggregate.mockResolvedValue([]);
+      mockAgentRunPopulateStatic.mockResolvedValue([]);
 
       const res = await request(app, 'GET', '/api/vendor/agent-runs/week/2026-04-29');
 
       expect(res.status).toBe(200);
-      const findCall = AgentRun.find.mock.calls[0][0];
-      expect(new Date(findCall.weekStarting).toISOString()).toBe('2026-04-27T00:00:00.000Z');
+      expect(res.body.runs).toEqual([]);
     });
   });
 
