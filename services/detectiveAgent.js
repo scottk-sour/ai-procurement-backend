@@ -99,11 +99,17 @@ export async function runDetectiveForVendor(vendorId) {
   for (const p of silentPlatforms.slice(0, 2)) {
     const platformScans = scans.filter(s => s.platform === p);
     const topOnPlatform = platformScans.flatMap(s => s.competitorsMentioned || []);
-    const topComp = topOnPlatform.length ? topOnPlatform[0] : 'unknown';
+    const topCompCount = {};
+    for (const c of topOnPlatform) topCompCount[c] = (topCompCount[c] || 0) + 1;
+    const topComp = Object.keys(topCompCount).length
+      ? Object.entries(topCompCount).sort((a, b) => b[1] - a[1])[0][0]
+      : null;
     findings.push({
       category: 'platform_silence', severity: 'high', platform: p,
       evidence: `Not mentioned by ${p} on any of ${platformScans.length} queries this week`,
-      recommendation: `Investigate why ${p} doesn't recommend you. Top competitor on this platform: ${topComp}`,
+      recommendation: topComp
+        ? `Investigate why ${p} doesn't recommend you — top competitor was ${topComp}`
+        : `Investigate why ${p} doesn't recommend you — no specific firms were named in responses, suggesting ${p} couldn't find authoritative information for this query`,
       downstreamAgent: null,
     });
   }
