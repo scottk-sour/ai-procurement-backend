@@ -100,9 +100,19 @@ const executionHandlers = {
   },
 
   async directory_submission(item) {
-    // Submits vendor to external directories when implemented.
-    // Expected draftPayload: { directoryName, submissionData }
-    throw new Error('Execution handler for "directory_submission" is not yet connected — implement in services/approvalQueue.js');
+    const { directoryName, listingId } = item.draftPayload || {};
+    if (!listingId) throw new Error('directory_submission missing listingId in draftPayload');
+
+    const { default: DirectoryListing } = await import('../models/DirectoryListing.js');
+    const listing = await DirectoryListing.findById(listingId);
+    if (!listing) throw new Error(`DirectoryListing ${listingId} not found`);
+
+    listing.status = 'live';
+    listing.submittedAt = listing.submittedAt || new Date();
+    listing.verifiedAt = new Date();
+    await listing.save();
+
+    return { directory: directoryName, listingId: listing._id };
   },
 
   async review_request_batch(item) {

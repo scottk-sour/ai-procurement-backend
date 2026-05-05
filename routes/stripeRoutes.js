@@ -456,6 +456,15 @@ async function handleCheckoutComplete(session) {
       subscriptionId: session.subscription
     });
 
+    // Fire Listings Agent on Pro upgrade (fire-and-forget)
+    if (['managed', 'verified', 'enterprise'].includes(vendor.tier)) {
+      import('../services/listingsAgent.js').then(m =>
+        m.runListingsForVendor(vendor._id).catch(err =>
+          console.error('[ProSignup] Listings trigger failed:', err.message)
+        )
+      );
+    }
+
     // Send Pro upgrade confirmation email
     if (vendor.email) {
       const dashboardUrl = 'https://www.tendorai.com/vendor-dashboard';

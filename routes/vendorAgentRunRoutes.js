@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import vendorAuth from '../middleware/vendorAuth.js';
 import AgentRun from '../models/AgentRun.js';
+import DirectoryListing from '../models/DirectoryListing.js';
 
 const router = express.Router();
 
@@ -83,6 +84,18 @@ router.get('/week/:weekStarting', async (req, res) => {
     const runs = await getLatestRunsForWeek(vendorId, weekStarting);
 
     res.json({ success: true, weekStarting, runs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/vendor/directory-listings
+router.get('/directory-listings', async (req, res) => {
+  try {
+    const listings = await DirectoryListing.find({ vendorId: req.vendorId })
+      .sort({ status: -1, directory: 1 })
+      .lean();
+    res.json({ success: true, listings });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

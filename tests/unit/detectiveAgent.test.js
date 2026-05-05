@@ -22,6 +22,7 @@ vi.mock('../../models/AIMentionScan.js', () => ({ default: { find: vi.fn() } }))
 vi.mock('../../models/AeoReport.js', () => ({ default: { findOne: vi.fn() } }));
 vi.mock('../../models/VendorProduct.js', () => ({ default: { find: vi.fn() } }));
 vi.mock('../../models/Review.js', () => ({ default: { aggregate: vi.fn() } }));
+vi.mock('../../models/DirectoryListing.js', () => ({ default: { find: vi.fn() } }));
 vi.mock('../../utils/visibilityScore.js', () => ({
   calculateVisibilityScore: vi.fn(() => ({ score: 45, tips: [{ message: 'Add products', impact: 'high', category: 'products', action: 'Go to Products' }] })),
 }));
@@ -31,6 +32,7 @@ const { default: AIMentionScan } = await import('../../models/AIMentionScan.js')
 const { default: AeoReport } = await import('../../models/AeoReport.js');
 const { default: VendorProduct } = await import('../../models/VendorProduct.js');
 const { default: Review } = await import('../../models/Review.js');
+const { default: DirectoryListing } = await import('../../models/DirectoryListing.js');
 const { runDetectiveForVendor } = await import('../../services/detectiveAgent.js');
 
 describe('Detective Agent', () => {
@@ -40,6 +42,7 @@ describe('Detective Agent', () => {
     VendorProduct.find.mockReturnValue({ lean: vi.fn().mockResolvedValue([]) });
     Review.aggregate.mockResolvedValue([{ reviewCount: 0, averageRating: 0 }]);
     AeoReport.findOne.mockReturnValue({ sort: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(null) }) }) });
+    DirectoryListing.find.mockReturnValue({ lean: vi.fn().mockResolvedValue([]) });
   });
 
   it('returns failed status for non-Pro vendor', async () => {

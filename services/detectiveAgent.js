@@ -136,6 +136,32 @@ export async function runDetectiveForVendor(vendorId) {
     }
   }
 
+  // Directory gap findings
+  try {
+    const { default: DirectoryListing } = await import('../models/DirectoryListing.js');
+    const listings = await DirectoryListing.find({ vendorId }).lean();
+    const listedDirectories = new Set(listings.filter(l => l.status === 'live').map(l => l.directory));
+    const importantDirectories = [
+      { key: 'bing_places', name: 'Bing Places', severity: 'high' },
+      { key: 'yell', name: 'Yell.com', severity: 'medium' },
+      { key: 'freeindex', name: 'FreeIndex', severity: 'medium' },
+      { key: 'trustpilot', name: 'Trustpilot', severity: 'medium' },
+    ];
+    for (const dir of importantDirectories) {
+      if (findings.length >= 5) break;
+      if (!listedDirectories.has(dir.key)) {
+        findings.push({
+          category: 'directory_gap', severity: dir.severity,
+          evidence: `Not yet listed on ${dir.name}`,
+          recommendation: `Get listed on ${dir.name} — ${dir.severity === 'high' ? 'feeds AI search results' : 'increases citation footprint'}`,
+          downstreamAgent: 'listings',
+        });
+      }
+    }
+  } catch (err) {
+    console.error(`[Detective] Directory listing check failed for ${vendor.company}:`, err.message);
+  }
+
   if (topCompetitors.length > 0 && findings.length < 5) {
     findings.push({
       category: 'competitive_intelligence', severity: 'medium',

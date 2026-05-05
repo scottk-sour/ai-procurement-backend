@@ -1248,4 +1248,38 @@ router.post('/writer-agent/run-for-vendor/:vendorId', adminAuth, async (req, res
   }
 });
 
+// ─── Listings Agent manual trigger + concierge completion ─────────────
+router.post('/listings-agent/run-for-vendor/:vendorId', adminAuth, async (req, res) => {
+  try {
+    const { runListingsForVendor } = await import('../services/listingsAgent.js');
+    console.log(`[ADMIN ACTION] listings_agent_manual_trigger vendor=${req.params.vendorId} by=${req.admin?.email}`);
+    const result = await runListingsForVendor(req.params.vendorId, { skipBing: req.query.skipBing === 'true' });
+    res.json({ success: true, ...result._doc || result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/listings/concierge-complete/:listingId', adminAuth, async (req, res) => {
+  try {
+    const { default: DirectoryListing } = await import('../models/DirectoryListing.js');
+    const listing = await DirectoryListing.findById(req.params.listingId);
+    if (!listing) return res.status(404).json({ success: false, error: 'DirectoryListing not found' });
+
+    const { listingUrl, status = 'live', errorReason } = req.body;
+
+    listing.status = status;
+    if (listingUrl) listing.listingUrl = listingUrl;
+    if (status === 'live') listing.verifiedAt = new Date();
+    if (status === 'failed' && errorReason) listing.errorReason = errorReason;
+    listing.submittedAt = listing.submittedAt || new Date();
+    await listing.save();
+
+    console.log(`[ADMIN ACTION] concierge_complete listing=${listing._id} directory=${listing.directory} status=${status} by=${req.admin?.email}`);
+    res.json({ success: true, listing });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;
