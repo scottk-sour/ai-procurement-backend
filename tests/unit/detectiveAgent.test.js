@@ -80,6 +80,12 @@ describe('Detective Agent', () => {
     expect(result.artifacts.findings.length).toBeLessThanOrEqual(5);
     expect(result.artifacts.mentionSummary.platformsCited).toBe(2);
     expect(result.artifacts.mentionSummary.uniquePlatforms).toBe(6);
+
+    expect(result.artifacts.gapsIdentified).toBe(result.artifacts.findings.length);
+    expect(Array.isArray(result.artifacts.gaps)).toBe(true);
+    expect(result.artifacts.gaps.length).toBeLessThanOrEqual(3);
+    expect(Array.isArray(result.artifacts.competitorsAbove)).toBe(true);
+    expect(result.artifacts.competitorsAbove.length).toBeLessThanOrEqual(3);
   });
 
   it('correctly aggregates competitors sorted by citation count', async () => {

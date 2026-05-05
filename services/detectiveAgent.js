@@ -169,6 +169,9 @@ export async function runDetectiveForVendor(vendorId) {
     artifacts: {
       findings, mentionSummary, topCompetitors,
       scoreContext: { currentScore: scoreData?.score || null },
+      gapsIdentified: findings.length,
+      gaps: findings.slice(0, 3).map(f => f.recommendation),
+      competitorsAbove: topCompetitors.slice(0, 3).map(c => c.name),
     },
   });
 
