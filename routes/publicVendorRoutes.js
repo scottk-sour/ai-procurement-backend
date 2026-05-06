@@ -1619,4 +1619,38 @@ ${success ? '<a href="https://www.tendorai.com">Go to TendorAI</a>' : ''}
 </div></body></html>`;
 }
 
+// ─── Review request unsubscribe (GDPR) ──────────────────────────────
+router.get('/review-unsubscribe', async (req, res) => {
+  const { email, vendor, sig } = req.query;
+  if (!email || !vendor || !sig) {
+    return res.status(400).send(unsubscribePage('Invalid unsubscribe link.', false));
+  }
+
+  try {
+    const { verifyUnsubscribeSig } = await import('../services/reviewsAgent.js');
+    if (!verifyUnsubscribeSig(email, vendor, sig)) {
+      return res.status(403).send(unsubscribePage('Invalid unsubscribe link.', false));
+    }
+
+    const { default: ReviewOptOut } = await import('../models/ReviewOptOut.js');
+    await ReviewOptOut.findOneAndUpdate(
+      { email: email.toLowerCase(), vendor },
+      {
+        email: email.toLowerCase(),
+        vendor,
+        optedOutAt: new Date(),
+        source: 'unsubscribe_link',
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+      },
+      { upsert: true }
+    );
+
+    res.send(unsubscribePage("You've been unsubscribed from review requests from this firm.", true));
+  } catch (err) {
+    console.error('[ReviewUnsubscribe]', err.message);
+    res.status(500).send(unsubscribePage('Unsubscribe failed. Please contact support@tendorai.com.', false));
+  }
+});
+
 export default router;

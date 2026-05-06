@@ -257,7 +257,7 @@ export const leadNotificationTemplate = ({ vendorName, customerInfo, service, re
 // REVIEW REQUEST EMAIL (sent to customer after quote)
 // =====================================================
 
-export const reviewRequestTemplate = ({ customerName, vendorName, category, reviewUrl }) => wrapTemplate(`
+export const reviewRequestTemplate = ({ customerName, vendorName, category, reviewUrl, unsubscribeUrl }) => wrapTemplate(`
   <div class="container">
     <div class="header">
       <h1>How was your experience?</h1>
@@ -266,10 +266,10 @@ export const reviewRequestTemplate = ({ customerName, vendorName, category, revi
     <div class="content">
       <h2>Hi ${customerName},</h2>
       <p>You recently requested a ${category.toLowerCase()} quote from <strong>${vendorName}</strong> through TendorAI.</p>
-      <p>We'd love to hear how it went. Your review helps other businesses find great suppliers — and it only takes 30 seconds.</p>
+      <p>We'd appreciate hearing how it went. Your review helps other businesses find reliable suppliers.</p>
 
       <p style="text-align: center; margin: 32px 0;">
-        <a href="${reviewUrl}" class="button">Leave a Review →</a>
+        <a href="${reviewUrl}" class="button">Leave a Review</a>
       </p>
 
       <div class="info-box">
@@ -278,14 +278,20 @@ export const reviewRequestTemplate = ({ customerName, vendorName, category, revi
         </p>
       </div>
 
+      <p style="font-size: 13px; color: #6b7280;">
+        This email was sent on behalf of <strong>${vendorName}</strong> by TendorAI, who manage their customer feedback. You are receiving this because you contacted ${vendorName} via TendorAI.
+      </p>
+
       <p style="color: #6b7280; font-size: 13px;">
         This link is unique to your quote request and expires in 30 days.<br>
         Can't click the button? Copy this link: <a href="${reviewUrl}" style="color: #7c3aed; word-break: break-all;">${reviewUrl}</a>
       </p>
+      <p style="margin-top: 24px;">The TendorAI Team</p>
     </div>
     <div class="footer">
-      <p>You received this email because you requested a quote on <a href="https://www.tendorai.com">TendorAI</a></p>
-      <p>The UK's B2B procurement comparison platform</p>
+      <p>You received this email because you requested a quote on <a href="https://tendorai.com">TendorAI</a></p>
+      <p>The UK's B2B procurement platform</p>
+      ${unsubscribeUrl ? `<p style="margin-top: 8px;"><a href="${unsubscribeUrl}" style="color: #9ca3af; font-size: 11px;">Unsubscribe from review requests</a></p>` : ''}
     </div>
   </div>
 `);

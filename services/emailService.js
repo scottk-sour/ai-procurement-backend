@@ -188,7 +188,7 @@ export const sendLeadNotification = async (vendorEmail, leadDetails) => {
 // REVIEW REQUEST (sent to customer to request review)
 // =====================================================
 
-export const sendReviewRequestEmail = async (customerEmail, { customerName, vendorName, category, reviewToken }) => {
+export const sendReviewRequestEmail = async (customerEmail, { customerName, vendorName, category, reviewToken, unsubscribeUrl }) => {
   const reviewUrl = `https://www.tendorai.com/review?token=${reviewToken}`;
 
   return sendEmail({
@@ -198,9 +198,10 @@ export const sendReviewRequestEmail = async (customerEmail, { customerName, vend
       customerName: customerName || 'there',
       vendorName,
       category: category || 'office equipment',
-      reviewUrl
+      reviewUrl,
+      unsubscribeUrl,
     }),
-    text: `Hi ${customerName || 'there'}, we'd love to hear how your ${category || 'quote'} experience went with ${vendorName}. Leave a review: ${reviewUrl}`
+    text: `Hi ${customerName || 'there'}, we'd appreciate hearing how your ${category || 'quote'} experience went with ${vendorName}. Leave a review: ${reviewUrl}`
   });
 };
 

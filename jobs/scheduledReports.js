@@ -390,4 +390,9 @@ export function startScheduledReports() {
   import('./listingsAgent.js').then(m => m.registerListingsAgentCron()).catch(err => {
     logger.error('[ScheduledReports] Failed to register Listings Agent cron:', err.message);
   });
+
+  // Reviews Agent cron — runs Monday 06:15 UTC, after Reporter
+  import('./reviewsAgent.js').then(m => m.registerReviewsAgentCron()).catch(err => {
+    logger.error('[ScheduledReports] Failed to register Reviews Agent cron:', err.message);
+  });
 }
