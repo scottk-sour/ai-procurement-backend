@@ -650,17 +650,50 @@ async function generateWithOpenAI(userPrompt) {
 // ─── Parse raw response text into structured data ────────────────────────────
 
 function parseResponseJSON(responseText) {
-  const jsonMatch = responseText.match(/\{[\s\S]*?"searchedCompany"[\s\S]*?\}[\s\S]*$/);
-  if (!jsonMatch) {
-    throw new Error('Failed to parse AI response as JSON');
+  if (typeof responseText !== 'string' || responseText.trim() === '') {
+    throw new Error('parseResponseJSON received empty or non-string input');
   }
 
+  let cleaned = responseText
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  const start = cleaned.indexOf('{');
+  if (start === -1) {
+    throw new Error(`No JSON object found in AI response. First 200 chars: ${cleaned.substring(0, 200)}`);
+  }
+
+  let depth = 0;
+  let end = -1;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === '\\') { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+
+  if (end === -1) {
+    throw new Error(`Unbalanced braces in AI response. Started at index ${start}, depth never returned to zero.`);
+  }
+
+  const jsonStr = cleaned.slice(start, end + 1);
+
   try {
-    return JSON.parse(jsonMatch[0]);
+    return JSON.parse(jsonStr);
   } catch (e) {
-    const braceMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!braceMatch) throw new Error('No JSON found in AI response');
-    return JSON.parse(braceMatch[0]);
+    throw new Error(`JSON.parse failed: ${e.message}. First 300 chars of extracted JSON: ${jsonStr.substring(0, 300)}`);
   }
 }
 
@@ -745,6 +778,16 @@ export async function generateFullReport({
 }) {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
     throw new Error('Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is configured');
+  }
+
+  if (!companyName || typeof companyName !== 'string' || companyName.trim() === '') {
+    throw new Error(`generateFullReport requires companyName (string). Got: ${typeof companyName === 'string' ? '"' + companyName + '"' : typeof companyName}`);
+  }
+  if (!city || typeof city !== 'string' || city.trim() === '') {
+    throw new Error(`generateFullReport requires city (string). Got: ${typeof city === 'string' ? '"' + city + '"' : typeof city}`);
+  }
+  if (!category || typeof category !== 'string') {
+    throw new Error(`generateFullReport requires category (string). Got: ${typeof category === 'string' ? '"' + category + '"' : typeof category}`);
   }
 
   const { prompt: userPrompt, vendorType } = buildUserPrompt({ companyName, category, city, customIndustry });
@@ -982,3 +1025,5 @@ export async function generateFullReport({
 
   return result;
 }
+
+export { parseResponseJSON as _parseResponseJSON };
