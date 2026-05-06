@@ -130,7 +130,7 @@ const STARTER_ACCOUNT_TIERS = ['silver', 'bronze', 'starter'];
 /**
  * Generate AEO reports for all vendors on a given tier.
  */
-async function generateVendorReports(tier) {
+export async function generateVendorReports(tier) {
   const tierLabel = tier === 'pro' ? 'Pro (weekly)' : 'Pro (monthly)';
   logger.info(`[ScheduledReports] Starting ${tierLabel} report generation...`);
 
