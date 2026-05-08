@@ -75,6 +75,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "docx": "^9.6.1",
     "nodemon": "^3.1.7",
     "vitest": "^4.0.18"
   },
