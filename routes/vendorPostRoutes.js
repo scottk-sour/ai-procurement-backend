@@ -11,10 +11,10 @@ import { SYSTEM_PROMPT_V7, VERTICAL_LABELS } from '../services/contentPlanner/pr
 
 const router = express.Router();
 
-// ─── v7 content generator — prompt, labels, user-prompt builder ────────
+// ─── Content OS content generator — prompt, labels, user-prompt builder ────
 
 /**
- * Build the v7 user prompt from a request/vendor/library context.
+ * Build the Content OS user prompt from a request/vendor/library context.
  * Exported for unit testing — pure function, no side effects.
  *
  * @param {Object} ctx
@@ -37,7 +37,7 @@ export function buildUserPrompt(ctx) {
 
   const lines = [];
 
-  lines.push(`Write a v7-compliant blog post for ${vendorName || ('a ' + verticalLabel + ' firm')}${vendorCity ? ' based in ' + vendorCity : ''}.`);
+  lines.push(`Write a Content OS compliant blog post for ${vendorName || ('a ' + verticalLabel + ' firm')}${vendorCity ? ' based in ' + vendorCity : ''}.`);
 
   lines.push('');
   lines.push(`Topic: ${topic.trim()}`);
@@ -205,17 +205,17 @@ router.put('/:vendorId/posts/:postId', vendorAuth, async (req, res) => {
   }
 });
 
-// POST /api/vendors/:vendorId/posts/generate — v7 AI blog generation.
+// POST /api/vendors/:vendorId/posts/generate — Content OS AI blog generation.
 //
 // Request body (all optional except topic):
 //   topic        string   — required
 //   stats        string   — free-text facts to weave in
-//   pillar       string   — one of the six v7 pillar ids (costs-fees, ...).
+//   pillar       string   — one of the six Content OS pillar ids (costs-fees, ...).
 //                           If present and valid, the matching topic
 //                           template is looked up in PILLAR_LIBRARIES and
 //                           the prompt is built with must-includes, named
 //                           entities, word-count target, and query
-//                           targeting baked in. If absent, generic v7
+//                           targeting baked in. If absent, generic Content OS
 //                           prompt is used (backward compatible with the
 //                           current frontend).
 //   topicIndex   integer  — which of the four topics within the pillar
