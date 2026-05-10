@@ -170,7 +170,7 @@ describe('Weekly Pro Digest', () => {
           status: 'completed',
           artifacts: {
             findings: [
-              { type: 'platform_silence', severity: 'high', title: 'Not on Perplexity', detail: 'Not mentioned', recommendation: 'Claim profile' },
+              { category: 'platform_silence', severity: 'high', evidence: 'Not mentioned by perplexity on any of 3 queries this week', recommendation: 'Claim profile' },
             ],
           },
         },
@@ -185,7 +185,10 @@ describe('Weekly Pro Digest', () => {
 
     expect(result.agentActivity.detective.ran).toBe(true);
     expect(result.agentActivity.detective.findingsCount).toBe(1);
-    expect(result.agentActivity.detective.topFinding.title).toBe('Not on Perplexity');
+    expect(result.agentActivity.detective.topFinding.type).toBe('platform_silence');
+    expect(result.agentActivity.detective.topFinding.title).toBe('Not mentioned by perplexity on any of 3 queries this week');
+    expect(result.agentActivity.detective.topFinding.detail).toBe('Not mentioned by perplexity on any of 3 queries this week');
+    expect(result.agentActivity.detective.topFinding.recommendation).toBe('Claim profile');
   });
 
   it('populates citations when mention scans exist', async () => {
@@ -216,6 +219,77 @@ describe('Weekly Pro Digest', () => {
     expect(result.competitorMoves).toHaveLength(2);
     expect(result.competitorMoves[0].competitor).toBe('Rival Law');
     expect(result.competitorMoves[0].platform).toBe('perplexity');
+  });
+
+  it('detective topFinding extracts first sentence as title from evidence', async () => {
+    const weekStarting = mockAgentRunNormalise(new Date());
+    mockAgentRunFind.mockReturnValue({
+      lean: vi.fn().mockResolvedValue([
+        {
+          agentName: 'detective',
+          weekStarting,
+          status: 'completed',
+          artifacts: {
+            findings: [
+              {
+                category: 'website_gap',
+                severity: 'medium',
+                evidence: 'Missing structured data on key pages. Schema markup not detected on service pages.',
+                recommendation: 'Fix on your website: add LocalBusiness schema',
+              },
+            ],
+          },
+        },
+      ]),
+    });
+
+    const result = await buildWeeklyProDigest(VENDOR_ID);
+
+    expect(result.agentActivity.detective.topFinding.type).toBe('website_gap');
+    expect(result.agentActivity.detective.topFinding.title).toBe('Missing structured data on key pages');
+    expect(result.agentActivity.detective.topFinding.detail).toBe('Missing structured data on key pages. Schema markup not detected on service pages.');
+    expect(result.agentActivity.detective.topFinding.severity).toBe('medium');
+    expect(result.agentActivity.detective.topFinding.recommendation).toBe('Fix on your website: add LocalBusiness schema');
+  });
+
+  it('detective topFinding is null when findings array is empty', async () => {
+    const weekStarting = mockAgentRunNormalise(new Date());
+    mockAgentRunFind.mockReturnValue({
+      lean: vi.fn().mockResolvedValue([
+        {
+          agentName: 'detective',
+          weekStarting,
+          status: 'completed',
+          artifacts: { findings: [] },
+        },
+      ]),
+    });
+
+    const result = await buildWeeklyProDigest(VENDOR_ID);
+
+    expect(result.agentActivity.detective.ran).toBe(true);
+    expect(result.agentActivity.detective.findingsCount).toBe(0);
+    expect(result.agentActivity.detective.topFinding).toBeNull();
+  });
+
+  it('reconnaissance reads platformsQueried for queriesScanned and platformsScanned', async () => {
+    const weekStarting = mockAgentRunNormalise(new Date());
+    mockAgentRunFind.mockReturnValue({
+      lean: vi.fn().mockResolvedValue([
+        {
+          agentName: 'reconnaissance',
+          weekStarting,
+          status: 'completed',
+          artifacts: { platformsQueried: 5, mentionsFound: 2, topPlatforms: ['chatgpt', 'perplexity'] },
+        },
+      ]),
+    });
+
+    const result = await buildWeeklyProDigest(VENDOR_ID);
+
+    expect(result.agentActivity.reconnaissance.ran).toBe(true);
+    expect(result.agentActivity.reconnaissance.queriesScanned).toBe(5);
+    expect(result.agentActivity.reconnaissance.platformsScanned).toBe(5);
   });
 
   it('throws for non-existent vendor', async () => {

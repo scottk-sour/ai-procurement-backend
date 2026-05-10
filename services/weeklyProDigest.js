@@ -146,13 +146,15 @@ async function buildAgentActivity(vendorId, weekStarting) {
       result.detective.ran = true;
       const findings = detectiveRun.artifacts?.findings || [];
       result.detective.findingsCount = findings.length;
-      if (findings.length > 0) {
+      if (findings.length > 0 && findings[0]) {
         const top = findings[0];
+        const fullEvidence = top.evidence || '';
+        const firstSentence = fullEvidence.split(/[.!?]/)[0]?.trim();
         result.detective.topFinding = {
-          type: top.type || '',
+          type: top.category || '',
           severity: top.severity || '',
-          title: top.title || '',
-          detail: top.detail || '',
+          title: firstSentence || fullEvidence,
+          detail: fullEvidence,
           recommendation: top.recommendation || '',
         };
       }
@@ -191,8 +193,8 @@ async function buildAgentActivity(vendorId, weekStarting) {
     const reconRun = runMap.reconnaissance;
     if (reconRun && (reconRun.status === 'completed' || reconRun.status === 'partial')) {
       result.reconnaissance.ran = true;
-      result.reconnaissance.queriesScanned = reconRun.artifacts?.queriesScanned || 0;
-      result.reconnaissance.platformsScanned = reconRun.artifacts?.platformsScanned || 0;
+      result.reconnaissance.queriesScanned = reconRun.artifacts?.platformsQueried || 0;
+      result.reconnaissance.platformsScanned = reconRun.artifacts?.platformsQueried || 0;
     }
   } catch { /* ignore — return defaults */ }
 
