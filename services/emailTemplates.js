@@ -587,6 +587,169 @@ export const newLeadNotificationTemplate = ({ vendorName, service, postcode, req
 `);
 };
 
+// =====================================================
+// WEEKLY PRO DIGEST
+// =====================================================
+
+export const weeklyProDigestTemplate = (digest) => {
+  const { vendor, weekStarting, weekEnding, score, citations, agentActivity, needsAttention } = digest;
+
+  const firstName = vendor.firstName || 'there';
+  const firmName = vendor.firmName || 'your firm';
+
+  const startDay = new Date(weekStarting).getUTCDate();
+  const endDate = new Date(weekEnding);
+  const endDay = endDate.getUTCDate();
+  const monthName = endDate.toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+  const year = endDate.getUTCFullYear();
+  const dateRange = `${startDay}–${endDay} ${monthName} ${year}`;
+
+  const scoreDisplay = score.current != null ? `${score.current}/100` : 'being calculated';
+  let deltaDisplay = '';
+  if (score.delta != null && score.delta !== 0) {
+    const sign = score.delta > 0 ? '+' : '';
+    deltaDisplay = ` (${sign}${score.delta} from last week)`;
+  }
+
+  const platformsWithCitations = Object.values(citations.byPlatform).filter(p => p.mentioned > 0).length;
+
+  let citationLine;
+  if (citations.total === 0) {
+    citationLine = 'No citations captured this week — Detective is investigating why';
+  } else {
+    citationLine = `${citations.total} AI citation${citations.total !== 1 ? 's' : ''} captured across ${platformsWithCitations} platform${platformsWithCitations !== 1 ? 's' : ''}`;
+  }
+
+  const agentActions =
+    (agentActivity.writer.draftsProduced || 0) +
+    (agentActivity.listings.submitted || 0) +
+    (agentActivity.reviews.sent || 0) +
+    (agentActivity.detective.findingsCount || 0) +
+    (agentActivity.reconnaissance.queriesScanned || 0);
+
+  const isNewVendor = (() => {
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return score.current == null && agentActions === 0 && citations.total === 0;
+  })();
+
+  const topFinding = agentActivity.detective.topFinding;
+
+  let needsAttentionHtml = '';
+  if (needsAttention.length > 0) {
+    const items = needsAttention.slice(0, 5).map(item =>
+      `<li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.5;">${item.title}</li>`
+    ).join('');
+    needsAttentionHtml = `
+              <div style="margin:24px 0 0;">
+                <p style="color:#1A56A0;font-size:15px;font-weight:600;margin:0 0 8px;">Items needing your input (${needsAttention.length}):</p>
+                <ul style="margin:0 0 8px;padding-left:24px;">${items}</ul>
+                <p style="margin:0;"><a href="https://www.tendorai.com/vendor-dashboard/approvals" style="color:#1A56A0;font-size:14px;text-decoration:none;">Review in dashboard &rarr;</a></p>
+              </div>`;
+  }
+
+  let topFindingHtml = '';
+  if (topFinding) {
+    topFindingHtml = `
+              <div style="background:#f0f4f8;border-left:4px solid #1A56A0;border-radius:0 6px 6px 0;padding:14px 18px;margin:24px 0 0;">
+                <p style="color:#1A56A0;font-size:14px;font-weight:600;margin:0 0 4px;">Top diagnosis this week</p>
+                <p style="color:#374151;font-size:14px;line-height:1.5;margin:0 0 6px;"><strong>${topFinding.title}</strong></p>
+                <p style="color:#374151;font-size:14px;line-height:1.5;margin:0;">${topFinding.recommendation}</p>
+              </div>`;
+  }
+
+  let mainContent;
+  if (isNewVendor) {
+    mainContent = `
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">Setting up your TendorAI account this week — full report next Monday.</p>`;
+  } else {
+    mainContent = `
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">This week:</p>
+              <ul style="margin:0 0 24px;padding-left:24px;">
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.5;">AI Visibility Score: <strong>${scoreDisplay}</strong>${deltaDisplay}</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.5;">${citationLine}</li>
+                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.5;">${agentActions} action${agentActions !== 1 ? 's' : ''} completed by your TendorAI agents</li>
+              </ul>`;
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your TendorAI week — ${firmName}</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Score: ${scoreDisplay}${deltaDisplay} | ${citationLine}</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+
+          <tr>
+            <td style="background:#ffffff;padding:24px 40px 16px;text-align:center;border-bottom:1px solid #e5e7eb;">
+              <img src="https://www.tendorai.com/logo.png" alt="TendorAI" width="140" style="display:inline-block;max-width:140px;height:auto;" />
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:32px 40px;">
+
+              <p style="color:#374151;font-size:16px;line-height:1.7;margin:0 0 4px;">Hi ${firstName},</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">Your weekly TendorAI report is ready.</p>
+
+              ${mainContent}
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:0 0 24px;">
+                    <a href="https://www.tendorai.com/vendor-dashboard" style="display:inline-block;background:#1A56A0;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">View Full Report &rarr;</a>
+                  </td>
+                </tr>
+              </table>
+
+              ${needsAttentionHtml}
+              ${topFindingHtml}
+
+              <div style="padding-top:24px;border-top:1px solid #e5e7eb;margin-top:24px;">
+                <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;">— Scott</p>
+                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">TendorAI</p>
+              </div>
+
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
+                <a href="https://www.tendorai.com/vendor-dashboard/settings" style="color:#6b7280;text-decoration:none;">Manage email preferences</a>
+                &nbsp;&middot;&nbsp;
+                <a href="https://www.tendorai.com/unsubscribe" style="color:#6b7280;text-decoration:none;">Unsubscribe</a>
+              </p>
+              <p style="margin:8px 0 0;color:#9ca3af;font-size:11px;">Sent every Monday morning to ${vendor.id ? 'your account email' : 'you'}.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+};
+
+export function weeklyProDigestSubject(digest) {
+  const firmName = digest.vendor.firmName || 'your firm';
+  const endDate = new Date(digest.weekEnding);
+  const startDay = new Date(digest.weekStarting).getUTCDate();
+  const endDay = endDate.getUTCDate();
+  const monthName = endDate.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
+  const year = endDate.getUTCFullYear();
+  return `Your TendorAI week — ${firmName}, ${startDay}–${endDay} ${monthName} ${year}`;
+}
+
 // Export all templates
 export default {
   passwordResetTemplate,
@@ -598,5 +761,7 @@ export default {
   reviewRequestTemplate,
   verifiedReviewNotificationTemplate,
   aeoReportTemplate,
-  newLeadNotificationTemplate
+  newLeadNotificationTemplate,
+  weeklyProDigestTemplate,
+  weeklyProDigestSubject,
 };
