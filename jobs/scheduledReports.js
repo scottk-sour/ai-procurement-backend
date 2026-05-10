@@ -85,34 +85,8 @@ function deriveCategory(vendor) {
   return vendorType;
 }
 
-/**
- * Send the report notification email via Resend.
- */
-async function sendReportEmail(vendor, reportUrl, periodLabel) {
-  await sendEmail({
-    to: vendor.email,
-    subject: `Your AI Visibility Report for ${periodLabel} is ready`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #1a1a2e;">Hi ${vendor.name || vendor.company},</h2>
-        <p>Your latest AI Visibility (AEO) Report is ready.</p>
-        <p>
-          <a href="${reportUrl}" style="display: inline-block; padding: 12px 24px; background-color: #6366f1; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-            View Your Report
-          </a>
-        </p>
-        <p style="color: #666; font-size: 14px;">
-          This report shows how visible your business is to AI assistants like ChatGPT, Claude, and Perplexity,
-          and what you can do to improve your ranking.
-        </p>
-        <p style="color: #999; font-size: 12px;">
-          You're receiving this because you have an active ${PRO_TIER_VALUES.includes(vendor.tier) || PRO_ACCOUNT_TIERS.includes(vendor.account?.tier) ? 'Pro' : 'Starter'} subscription on TendorAI.
-        </p>
-      </div>
-    `,
-    text: `Hi ${vendor.name || vendor.company}, your latest AI Visibility Report for ${periodLabel} is ready. View it here: ${reportUrl}`,
-  });
-}
+// sendReportEmail removed — replaced by weeklyProDigestTemplate for Pro vendors.
+// Starter monthly cron still uses generateVendorReports() which sends its own email inline.
 
 /**
  * Sleep helper for rate limiting between vendors.
@@ -128,6 +102,8 @@ const STARTER_TIER_VALUES = ['starter', 'basic', 'visible'];
 const STARTER_ACCOUNT_TIERS = ['silver', 'bronze', 'starter'];
 
 /**
+ * @deprecated For Pro vendors, use the weekly digest cron at 08:00 UTC instead.
+ * This function is retained for the Starter monthly cron ('0 6 1 * *') only.
  * Generate AEO reports for all vendors on a given tier.
  */
 export async function generateVendorReports(tier) {
@@ -205,10 +181,14 @@ export async function generateVendorReports(tier) {
 
       const reportUrl = `${frontendUrl}/aeo-report/results/${report._id}`;
 
-      // Send email notification via Resend
       if (vendor.email) {
         try {
-          await sendReportEmail(vendor, reportUrl, periodLabel);
+          await sendEmail({
+            to: vendor.email,
+            subject: `Your AI Visibility Report for ${periodLabel} is ready`,
+            html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><h2>Hi ${vendor.company},</h2><p>Your latest AI Visibility Report is ready.</p><p><a href="${reportUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:6px;font-weight:bold;">View Your Report</a></p></div>`,
+            text: `Hi ${vendor.company}, your AI Visibility Report for ${periodLabel} is ready: ${reportUrl}`,
+          });
           logger.info(`[ScheduledReports] Sent report email to ${vendor.email} for ${vendor.company}`);
         } catch (emailErr) {
           logger.error(`[ScheduledReports] Email failed for ${vendor.company}:`, emailErr.message);
@@ -357,10 +337,73 @@ export function startScheduledReports() {
     generateVendorReports('starter');
   });
 
-  // Pro: every Monday at 6am UTC
-  cron.schedule('0 6 * * 1', () => {
-    logger.info('[ScheduledReports] Triggering weekly Pro reports...');
-    generateVendorReports('pro');
+  // Pro weekly digest: every Monday at 08:00 UTC (09:00 BST)
+  // Replaced the old generateVendorReports('pro') AEO re-generation cron.
+  // Sends a structured digest email with score delta, agent activity, and citations.
+  cron.schedule('0 8 * * 1', async () => {
+    logger.info('[ScheduledReports] Triggering weekly Pro digest emails...');
+    try {
+      const { buildWeeklyProDigestForAllVendors } = await import('../services/weeklyProDigest.js');
+      const { weeklyProDigestTemplate, weeklyProDigestSubject } = await import('../services/emailTemplates.js');
+
+      const results = await buildWeeklyProDigestForAllVendors();
+      let sent = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      for (const { vendorId, email, digest, error } of results) {
+        if (error || !digest) {
+          logger.error(`[WeeklyDigest] Build failed for vendor ${vendorId}: ${error}`);
+          failed++;
+          continue;
+        }
+        if (!email || email.includes('@placeholder.tendorai.com')) {
+          logger.info(`[WeeklyDigest] Skipping vendor ${vendorId}: no valid email`);
+          skipped++;
+          continue;
+        }
+
+        try {
+          const html = weeklyProDigestTemplate(digest);
+          const subject = weeklyProDigestSubject(digest);
+          await sendEmail({
+            to: email,
+            subject,
+            html,
+            text: `Hi ${digest.vendor.firstName || 'there'}, your weekly TendorAI report is ready. Score: ${digest.score.current ?? 'calculating'}. View: https://www.tendorai.com/vendor-dashboard`,
+          });
+
+          try {
+            await AgentRun.create({
+              vendorId,
+              agentName: 'reporter',
+              weekStarting: digest.weekStarting,
+              status: 'completed',
+              startedAt: new Date(),
+              completedAt: new Date(),
+              durationMs: 0,
+              summary: `Weekly digest email sent to ${email}. Score: ${digest.score.current ?? 'N/A'}.`,
+              artifacts: {
+                digestSent: true,
+                score: digest.score.current,
+                weekStarting: digest.weekStarting,
+              },
+            });
+          } catch (runErr) {
+            logger.error(`[WeeklyDigest] AgentRun write failed for ${vendorId}: ${runErr.message}`);
+          }
+
+          sent++;
+        } catch (emailErr) {
+          logger.error(`[WeeklyDigest] Email send failed for ${vendorId}: ${emailErr.message}`);
+          failed++;
+        }
+      }
+
+      logger.info(`[WeeklyDigest] Complete: ${sent} sent, ${skipped} skipped, ${failed} failed`);
+    } catch (err) {
+      logger.error('[WeeklyDigest] Cron run failed:', err.message);
+    }
   });
 
   // Past-due subscription downgrade: daily at 9am UTC
@@ -372,8 +415,8 @@ export function startScheduledReports() {
   logger.info('[ScheduledReports] Cron jobs registered:');
   logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
   logger.info('  - Writer Agent (weekly): every Monday at 05:00 UTC');
-  logger.info('  - Pro (monthly): 1st of every month at 06:00 UTC');
-  logger.info('  - Pro (weekly): every Monday at 06:00 UTC');
+  logger.info('  - Starter reports (monthly): 1st of every month at 06:00 UTC');
+  logger.info('  - Pro weekly digest (weekly): every Monday at 08:00 UTC');
   logger.info('  - Past_due downgrade (daily): every day at 09:00 UTC');
 
   // Writer Agent cron — runs Monday 05:00 UTC, before weekly reports at 06:00
