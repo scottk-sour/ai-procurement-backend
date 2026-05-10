@@ -345,11 +345,13 @@ export function startScheduledReports() {
     try {
       const { buildWeeklyProDigestForAllVendors } = await import('../services/weeklyProDigest.js');
       const { weeklyProDigestTemplate, weeklyProDigestSubject } = await import('../services/emailTemplates.js');
+      const { default: WeeklyReport } = await import('../models/WeeklyReport.js');
 
       const results = await buildWeeklyProDigestForAllVendors();
       let sent = 0;
       let skipped = 0;
       let failed = 0;
+      let snapshots = 0;
 
       for (const { vendorId, email, digest, error } of results) {
         if (error || !digest) {
@@ -357,6 +359,14 @@ export function startScheduledReports() {
           failed++;
           continue;
         }
+
+        try {
+          await WeeklyReport.findOrCreate(vendorId, digest.weekStarting, digest);
+          snapshots++;
+        } catch (snapErr) {
+          logger.error(`[WeeklyDigest] Snapshot write failed for ${vendorId}: ${snapErr.message}`);
+        }
+
         if (!email || email.includes('@placeholder.tendorai.com')) {
           logger.info(`[WeeklyDigest] Skipping vendor ${vendorId}: no valid email`);
           skipped++;
@@ -400,7 +410,7 @@ export function startScheduledReports() {
         }
       }
 
-      logger.info(`[WeeklyDigest] Complete: ${sent} sent, ${skipped} skipped, ${failed} failed`);
+      logger.info(`[WeeklyDigest] Complete: ${sent} sent, ${skipped} skipped, ${failed} failed, ${snapshots} snapshots written`);
     } catch (err) {
       logger.error('[WeeklyDigest] Cron run failed:', err.message);
     }
