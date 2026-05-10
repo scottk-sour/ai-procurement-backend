@@ -227,7 +227,8 @@ describe('WeeklyReport Routes', () => {
     expect(res.status).toBe(200);
   });
 
-  it('GET /:weekStarting/score-history returns history array', async () => {
+  it('GET /:weekStarting/score-history returns history in chronological order (oldest first)', async () => {
+    // Mock returns descending order (as .sort({ weekStarting: -1 }) would)
     const reports = [
       { weekStarting: new Date('2026-05-05'), weekEnding: new Date('2026-05-11'), digest: { score: { current: 42 } } },
       { weekStarting: new Date('2026-04-28'), weekEnding: new Date('2026-05-04'), digest: { score: { current: 35 } } },
@@ -244,10 +245,14 @@ describe('WeeklyReport Routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.history).toHaveLength(2);
-    const scores = res.body.history.map(h => h.score);
-    expect(scores).toContain(42);
-    expect(scores).toContain(35);
-    expect(res.body.joinedScore).toBeDefined();
+    // After .reverse(), oldest week comes first (chronological for line chart)
+    expect(res.body.history[0].score).toBe(35);
+    expect(res.body.history[1].score).toBe(42);
+    expect(new Date(res.body.history[0].weekStarting).getTime())
+      .toBeLessThan(new Date(res.body.history[1].weekStarting).getTime());
+    // joinedScore is the oldest score on file (earliest Pro week)
+    expect(res.body.joinedScore).toBe(35);
+    expect(res.body.joinedAt).toBe(new Date('2026-04-28').toISOString());
   });
 
   it('GET /:weekStarting returns 400 for invalid date', async () => {

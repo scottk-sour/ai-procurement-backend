@@ -104,7 +104,7 @@ router.get('/:weekStarting/score-history', async (req, res) => {
       score: r.digest?.score?.current ?? null,
     }));
 
-    const first = reports.length > 0 ? reports[reports.length - 1] : null;
+    const first = reports.length > 0 ? reports[0] : null; // oldest, after .reverse(); earliest Pro score on file
 
     res.json({
       success: true,
