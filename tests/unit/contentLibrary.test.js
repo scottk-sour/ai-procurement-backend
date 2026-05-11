@@ -327,6 +327,53 @@ describe('GET /api/content-library', () => {
     expect(topic1.primaryDataHook).not.toContain('{city}');
   });
 
+  // ── Pillar library structure validation ──────────────────────────
+
+  it('mortgage-advisor has 6 pillars with 24 total topics', () => {
+    const pillars = PILLAR_LIBRARIES['mortgage-advisor'];
+    expect(pillars).toHaveLength(6);
+    const totalTopics = pillars.reduce((sum, p) => sum + p.topics.length, 0);
+    expect(totalTopics).toBe(24);
+  });
+
+  it('estate-agent has 6 pillars with 24 total topics', () => {
+    const pillars = PILLAR_LIBRARIES['estate-agent'];
+    expect(pillars).toHaveLength(6);
+    const totalTopics = pillars.reduce((sum, p) => sum + p.topics.length, 0);
+    expect(totalTopics).toBe(24);
+  });
+
+  it('every topic in all verticals has required fields', () => {
+    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent']) {
+      const pillars = PILLAR_LIBRARIES[vendorType];
+      for (const pillar of pillars) {
+        for (const topic of pillar.topics) {
+          expect(topic.id, `${vendorType}/${pillar.id}: missing id`).toBeTruthy();
+          expect(topic.title, `${vendorType}/${topic.id}: missing title`).toBeTruthy();
+          expect(topic.primaryAIQuery, `${vendorType}/${topic.id}: missing primaryAIQuery`).toBeTruthy();
+          expect(topic.namedEntities?.length, `${vendorType}/${topic.id}: needs ≥2 namedEntities`).toBeGreaterThanOrEqual(2);
+          expect(topic.primaryDataHook, `${vendorType}/${topic.id}: missing primaryDataHook`).toBeTruthy();
+          expect(topic.wordCount, `${vendorType}/${topic.id}: missing wordCount`).toBeGreaterThan(0);
+          expect(topic.channel, `${vendorType}/${topic.id}: missing channel`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('every linkedInHookType (when present) is valid', () => {
+    const validTypes = ['opinion', 'data', 'personal', 'curiosity'];
+    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent']) {
+      const pillars = PILLAR_LIBRARIES[vendorType];
+      for (const pillar of pillars) {
+        for (const topic of pillar.topics) {
+          if (topic.linkedInHookType !== null && topic.linkedInHookType !== undefined) {
+            expect(validTypes, `${vendorType}/${topic.id}: invalid hookType "${topic.linkedInHookType}"`).toContain(topic.linkedInHookType);
+          }
+        }
+      }
+    }
+  });
+
   it('leaves vendor-fill placeholders literal across the whole response', async () => {
     currentVendor = defaultSolicitor();
     const r = await fetchLibrary();
