@@ -13,7 +13,7 @@ function sleep(ms) {
 
 export async function runWeeklyWriterAgent() {
   const startTime = Date.now();
-  logger.info(`[WriterAgent] Weekly run starting at ${new Date().toISOString()}`);
+  logger.info(`[WriterAgent] Run starting at ${new Date().toISOString()}`);
 
   let vendors;
   try {
@@ -65,7 +65,7 @@ export async function runWeeklyWriterAgent() {
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(1);
 
   const summaryLines = [
-    `Writer Agent weekly run completed in ${durationSec}s`,
+    `Writer Agent run completed in ${durationSec}s`,
     `Total vendors: ${vendors.length}`,
     `Drafted: ${draftedCount}`,
     `Skipped: ${skippedCount}`,
@@ -79,7 +79,7 @@ export async function runWeeklyWriterAgent() {
   try {
     await sendEmail({
       to: ADMIN_EMAIL,
-      subject: `Writer Agent weekly run: ${draftedCount} drafted, ${skippedCount} skipped, ${failedCount} failed`,
+      subject: `Writer Agent run: ${draftedCount} drafted, ${skippedCount} skipped, ${failedCount} failed`,
       text: summaryText,
       html: `<pre style="font-family: monospace; font-size: 14px; line-height: 1.6;">${summaryText}</pre>`,
     });
@@ -91,8 +91,8 @@ export async function runWeeklyWriterAgent() {
 export function registerWriterAgentCron() {
   if (process.env.ENABLE_CRON !== 'true') return;
 
-  cron.schedule('0 5 * * 1', async () => {
-    logger.info('[WriterAgent] Cron trigger: Monday 05:00 UTC');
+  cron.schedule('0 5 * * 1,3,5', async () => {
+    logger.info(`[WriterAgent] Cron trigger: ${new Date().toUTCString()}`);
     try {
       await runWeeklyWriterAgent();
     } catch (err) {
@@ -100,5 +100,5 @@ export function registerWriterAgentCron() {
     }
   });
 
-  logger.info('[WriterAgent] Cron registered: every Monday at 05:00 UTC');
+  logger.info('[WriterAgent] Cron registered: Mon/Wed/Fri at 05:00 UTC');
 }
