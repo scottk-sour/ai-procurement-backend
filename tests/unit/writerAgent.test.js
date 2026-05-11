@@ -32,8 +32,8 @@ const vendorDb = {
     company: 'Free Firm', location: { city: 'London' },
   },
   [VENDOR_UNSUPPORTED_ID.toString()]: {
-    _id: VENDOR_UNSUPPORTED_ID, tier: 'pro', vendorType: 'office-equipment',
-    company: 'Copy Co', location: { city: 'Swansea' },
+    _id: VENDOR_UNSUPPORTED_ID, tier: 'pro', vendorType: 'unknown-vertical',
+    company: 'Unknown Co', location: { city: 'Swansea' },
   },
 };
 
@@ -223,7 +223,7 @@ describe('Writer Agent', () => {
     });
 
     it('returns null for vendorType with no library', () => {
-      const result = resolveNextTopic('office-equipment', null, null);
+      const result = resolveNextTopic('unknown-vertical', null, null);
       expect(result).toBeNull();
     });
   });
