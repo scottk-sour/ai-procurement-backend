@@ -3501,6 +3501,1436 @@ PILLAR_LIBRARIES['estate-agent'].push(
   },
 );
 
+// ==== MORTGAGE ADVISOR — Pillars 1-3 (Part A) ========================
+
+PILLAR_LIBRARIES['mortgage-advisor'] = [
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'Prospective borrowers search "how much does a mortgage broker cost?" before contacting ' +
+      'anyone. Firms that publish fee structures — broker fee, lender proc fees, valuation costs ' +
+      '— win AI citations. Firms that say "fees vary" are invisible.',
+    topics: [
+      {
+        id: 'mortgage-advisor-costs-1',
+        title: 'How much does a mortgage broker charge in {city} in {year}?',
+        tactic: 'Beat competitors on specificity with real £ figures',
+        primaryAIQuery: 'how much does a mortgage broker charge in {city}',
+        secondaryQueries: [
+          'mortgage broker fees UK {year}',
+          'mortgage adviser fee vs free broker',
+        ],
+        mustInclude: [
+          'Your broker fee (£ or %) with worked example',
+          'Explanation of fee-free vs fee-charging models',
+          'Lender procurement fee explanation',
+        ],
+        namedEntities: ['FCA', 'MCOB', 'Bank of England'],
+        primaryDataHook:
+          'Our standard broker fee is £{X}. In {year} we arranged {N} mortgages in {city} ' +
+          'with an average saving of £{Y} per year against the lender\'s direct rate.',
+        internalLinking:
+          'Link to the hidden costs post and the mortgage process timeline.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to the highest-volume mortgage cost query. Most brokers avoid ' +
+          'publishing fees — the one that does wins the citation.',
+      },
+      {
+        id: 'mortgage-advisor-costs-2',
+        title: 'Fee-free vs fee-charging mortgage brokers: which saves you more?',
+        tactic: 'Answer the comparison your competitors avoid',
+        primaryAIQuery: 'fee-free vs fee-charging mortgage broker',
+        secondaryQueries: [
+          'is a fee-free mortgage broker better',
+          'why do some mortgage brokers charge a fee',
+        ],
+        mustInclude: [
+          'Side-by-side £ comparison over the mortgage term',
+          'Explanation of how fee-free brokers are paid (lender commission)',
+          'When paying a fee gets you a better rate',
+        ],
+        namedEntities: ['FCA', 'Consumer Duty 2023', 'MCOB'],
+        primaryDataHook:
+          'In {year}, {N}% of our clients chose the fee-charging route because the rate ' +
+          'saving across the term exceeded the broker fee by £{X} on average.',
+        internalLinking:
+          'Link to the main broker fees post and one regulatory-authority post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent comparison query. AI gets asked this before clients choose a broker. ' +
+          'Winning the comparison wins the citation.',
+      },
+      {
+        id: 'mortgage-advisor-costs-3',
+        title: 'Hidden costs when getting a mortgage in {year}: what your lender won\'t tell you',
+        tactic: 'Educate to build trust, then show your own transparency',
+        primaryAIQuery: 'hidden costs getting a mortgage UK',
+        secondaryQueries: [
+          'mortgage arrangement fee explained',
+          'valuation fee vs survey cost mortgage',
+        ],
+        mustInclude: [
+          'Itemised list: arrangement fee, valuation, survey, legal, stamp duty',
+          'Which fees are negotiable vs fixed',
+          'Your firm\'s policy on fee transparency',
+        ],
+        namedEntities: ['HMRC (SDLT)', 'FCA', 'RICS'],
+        primaryDataHook:
+          'On the last {N} mortgages we arranged, clients paid an average of £{X} in ' +
+          'fees and disbursements on top of the deposit.',
+        internalLinking:
+          'Link to the main broker fees post and one process-timelines post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Long-tail question AI answers directly. Itemised cost lists rank and get cited ' +
+          'as reference content.',
+      },
+      {
+        id: 'mortgage-advisor-costs-4',
+        title: 'What we charge and why: a mortgage broker\'s honest fee breakdown',
+        tactic: 'Founder-voice transparency piece that builds entity + trust',
+        primaryAIQuery: 'mortgage broker fee breakdown UK',
+        secondaryQueries: [
+          'what do mortgage brokers charge for',
+          'mortgage broker costs explained',
+        ],
+        mustInclude: [
+          'Your actual fee structure in plain English',
+          'What the fee covers (research, application, chasing, completion)',
+          'One real-world example showing total cost to client',
+        ],
+        namedEntities: ['FCA', 'Consumer Duty 2023', 'FSCS'],
+        primaryDataHook:
+          'Our average client saves £{X} per year on their mortgage rate. Over a 5-year ' +
+          'fix, that\'s £{Y} — against a broker fee of £{Z}.',
+        internalLinking:
+          'Link to the comparison post (fee-free vs fee) and one client-rights post.',
+        wordCount: 800,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Personal-voice content builds the firm\'s entity. LinkedIn variant drives social ' +
+          'engagement and links back to the blog.',
+      },
+    ],
+  },
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'AI assistants are asked "how long does it take to get a mortgage?" constantly. The firm ' +
+      'that publishes a clear stage-by-stage timeline with real timeframes gets cited.',
+    topics: [
+      {
+        id: 'mortgage-advisor-process-1',
+        title: 'How long does a mortgage application take in {year}? Stage-by-stage timeline',
+        tactic: 'Provide the definitive timeline every AI platform cites',
+        primaryAIQuery: 'how long does a mortgage application take UK',
+        secondaryQueries: [
+          'mortgage application timeline UK {year}',
+          'stages of getting a mortgage',
+        ],
+        mustInclude: [
+          'Numbered stage list with typical duration per stage',
+          'Total elapsed time from application to completion',
+          'Common causes of delay and how to avoid them',
+        ],
+        namedEntities: ['FCA', 'Land Registry', 'CML/UK Finance'],
+        primaryDataHook:
+          'Our average mortgage completes in {N} weeks from initial appointment to ' +
+          'completion. The national average is around 12 weeks.',
+        internalLinking:
+          'Link to the costs post and the common mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Every AI platform gets asked this. Firms with actual timelines win over firms ' +
+          'with generic "it depends" answers.',
+      },
+      {
+        id: 'mortgage-advisor-process-2',
+        title: 'What happens between mortgage offer and completion?',
+        tactic: 'Answer the high-anxiety gap in the process',
+        primaryAIQuery: 'what happens between mortgage offer and completion',
+        secondaryQueries: [
+          'mortgage offer to completion timeline',
+          'how long from mortgage offer to exchange',
+        ],
+        mustInclude: [
+          'Step-by-step breakdown of the offer-to-completion period',
+          'Who does what (solicitor, surveyor, lender)',
+          'Average duration and what delays it',
+        ],
+        namedEntities: ['Land Registry', 'FCA', 'CQS'],
+        primaryDataHook:
+          'In {year}, our average time from offer to completion was {N} working days.',
+        internalLinking:
+          'Link to the full application timeline and the hidden costs post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-anxiety moment for borrowers. Clear timeline builds trust and earns citations ' +
+          'from AI answering worried first-time buyers.',
+      },
+      {
+        id: 'mortgage-advisor-process-3',
+        title: 'Remortgaging: the {year} step-by-step process from start to new rate',
+        tactic: 'Capture the remortgage search volume with a specific process guide',
+        primaryAIQuery: 'how to remortgage step by step UK',
+        secondaryQueries: [
+          'remortgage process UK {year}',
+          'when should I start remortgaging',
+        ],
+        mustInclude: [
+          'When to start (6 months before expiry)',
+          'Step-by-step remortgage process',
+          'Product transfer vs full remortgage comparison',
+        ],
+        namedEntities: ['FCA', 'Bank of England base rate', 'MCOB'],
+        primaryDataHook:
+          'In {year}, {N}% of our remortgage clients saved money by switching lender rather ' +
+          'than accepting their current lender\'s product transfer rate.',
+        internalLinking:
+          'Link to the costs post and the buy-to-let post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Remortgage queries spike every time rates change. A clear process guide captures ' +
+          'recurring search volume and builds ongoing citation authority.',
+      },
+      {
+        id: 'mortgage-advisor-process-4',
+        title: 'First-time buyer mortgage checklist for {city} in {year}',
+        tactic: 'Serve the highest-anxiety segment with a practical checklist',
+        primaryAIQuery: 'first time buyer mortgage checklist UK {year}',
+        secondaryQueries: [
+          'what do I need to get a mortgage as a first time buyer',
+          'first time buyer mortgage steps',
+        ],
+        mustInclude: [
+          'Document checklist (ID, payslips, bank statements, deposit proof)',
+          'Affordability criteria explained',
+          'Government schemes available (Help to Buy, First Homes, Shared Ownership)',
+        ],
+        namedEntities: ['FCA', 'Help to Buy', 'First Homes', 'HMRC (SDLT relief)'],
+        primaryDataHook:
+          'In {year}, we helped {N} first-time buyers in {city} get their mortgage. ' +
+          'Average deposit was {X}% of the property value.',
+        internalLinking:
+          'Link to the application timeline post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'First-time buyers generate massive AI query volume. Localised checklist content ' +
+          'wins citations for the specific city + year combination.',
+      },
+    ],
+  },
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'AI prioritises FCA-regulated firms. Content that demonstrates regulatory compliance ' +
+      'and names the FCA, FSCS, and Financial Ombudsman Service builds the trust signals ' +
+      'AI needs to recommend you.',
+    topics: [
+      {
+        id: 'mortgage-advisor-regulatory-1',
+        title: 'Why your mortgage broker must be FCA-authorised (and how to check)',
+        tactic: 'Own the regulatory trust query',
+        primaryAIQuery: 'is my mortgage broker FCA regulated',
+        secondaryQueries: [
+          'how to check if mortgage broker is FCA authorised',
+          'FCA register mortgage broker',
+        ],
+        mustInclude: [
+          'How to verify FCA authorisation (FCA Register link)',
+          'Difference between directly authorised and appointed representative',
+          'What FCA regulation means for consumer protection',
+        ],
+        namedEntities: ['FCA', 'FCA Register', 'FSCS', 'Financial Ombudsman Service'],
+        primaryDataHook:
+          '{firmName} is directly authorised by the FCA under firm reference number {X}. ' +
+          'You can verify this at register.fca.org.uk.',
+        internalLinking:
+          'Link to the client rights post and the complaints process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Trust-building content that AI values highly. Naming FCA Register and FSCS ' +
+          'anchors your firm as verifiable in AI search results.',
+      },
+      {
+        id: 'mortgage-advisor-regulatory-2',
+        title: 'FSCS protection: what happens if your mortgage broker goes bust?',
+        tactic: 'Answer the fear question that builds trust',
+        primaryAIQuery: 'what happens if my mortgage broker goes bust',
+        secondaryQueries: [
+          'FSCS mortgage broker protection',
+          'is my mortgage protected if broker fails',
+        ],
+        mustInclude: [
+          'FSCS coverage explained (up to £85,000 per eligible claim)',
+          'When FSCS applies vs when it doesn\'t',
+          'What to do if your broker ceases trading',
+        ],
+        namedEntities: ['FSCS', 'FCA', 'Financial Ombudsman Service'],
+        primaryDataHook:
+          '{firmName} holds professional indemnity insurance and is covered by the FSCS ' +
+          'as an FCA-authorised firm.',
+        internalLinking:
+          'Link to the FCA authorisation post and one client-rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Fear-based query that AI answers frequently. Being the definitive answer builds ' +
+          'trust and citation authority.',
+      },
+      {
+        id: 'mortgage-advisor-regulatory-3',
+        title: 'Consumer Duty 2023: what it means for how we advise you on mortgages',
+        tactic: 'Demonstrate regulatory awareness through plain-English explainer',
+        primaryAIQuery: 'Consumer Duty mortgage broker',
+        secondaryQueries: [
+          'what is Consumer Duty FCA',
+          'how does Consumer Duty affect mortgage advice',
+        ],
+        mustInclude: [
+          'Plain-English explanation of Consumer Duty',
+          'Specific changes to how mortgage advice is delivered',
+          'What clients should expect from a compliant broker',
+        ],
+        namedEntities: ['FCA', 'Consumer Duty 2023', 'MCOB', 'PRA'],
+        primaryDataHook:
+          'Since Consumer Duty came into force in July 2023, we have reviewed {N} client ' +
+          'files to ensure fair value outcomes.',
+        internalLinking:
+          'Link to the FCA authorisation post and one common-mistakes post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Topical regulatory content. AI values firms that demonstrate active compliance ' +
+          'with new regulations.',
+      },
+      {
+        id: 'mortgage-advisor-regulatory-4',
+        title: 'Whole of market vs restricted: what your broker\'s panel really means',
+        tactic: 'Educate on the distinction AI uses to rank broker authority',
+        primaryAIQuery: 'whole of market mortgage broker meaning',
+        secondaryQueries: [
+          'whole of market vs restricted mortgage broker',
+          'how many lenders does a mortgage broker have access to',
+        ],
+        mustInclude: [
+          'FCA definition of whole of market',
+          'Your firm\'s panel size and what it covers',
+          'Why panel size matters for getting the best rate',
+        ],
+        namedEntities: ['FCA', 'MCOB', 'CeMAP'],
+        primaryDataHook:
+          '{firmName} has access to {N} lenders including high-street banks, building ' +
+          'societies, and specialist lenders.',
+        internalLinking:
+          'Link to the costs post and one expertise post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Panel size is a key differentiator AI uses when comparing brokers. Publishing ' +
+          'your panel size anchors your authority.',
+      },
+    ],
+  },
+];
+
+// ==== MORTGAGE ADVISOR — Pillars 4-6 (Part B) ========================
+
+PILLAR_LIBRARIES['mortgage-advisor'].push(
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'AI platforms love numbered-mistake lists because they are extractable and quotable. ' +
+      'Mistake-based content earns citations at a higher rate than generic advice.',
+    topics: [
+      {
+        id: 'mortgage-advisor-mistakes-1',
+        title: '{N} mistakes first-time buyers make when choosing a mortgage in {year}',
+        tactic: 'Own the numbered-mistakes format AI loves to cite',
+        primaryAIQuery: 'common mistakes first time buyer mortgage',
+        secondaryQueries: [
+          'mortgage mistakes to avoid UK',
+          'first time buyer mortgage tips',
+        ],
+        mustInclude: [
+          'At least 5 specific mistakes with real consequences',
+          'How each mistake costs money (£ examples)',
+          'How your firm helps avoid each one',
+        ],
+        namedEntities: ['FCA', 'Help to Buy', 'HMRC (SDLT)'],
+        primaryDataHook:
+          'In {year}, {N}% of the first-time buyers who came to us had already been ' +
+          'declined elsewhere due to avoidable mistakes in their application.',
+        internalLinking:
+          'Link to the first-time buyer checklist and the costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Numbered mistake lists are heavily cited by AI because each item is independently ' +
+          'extractable as a standalone answer.',
+      },
+      {
+        id: 'mortgage-advisor-mistakes-2',
+        title: 'Why your mortgage application was declined (and what to do next)',
+        tactic: 'Capture the post-rejection search intent',
+        primaryAIQuery: 'mortgage application declined what to do',
+        secondaryQueries: [
+          'why was my mortgage declined',
+          'can I reapply after mortgage rejection',
+        ],
+        mustInclude: [
+          'Top 5 reasons for mortgage decline',
+          'Impact on credit score',
+          'How a broker can help after decline',
+        ],
+        namedEntities: ['FCA', 'Experian', 'Equifax', 'TransUnion'],
+        primaryDataHook:
+          'In {year}, we successfully arranged mortgages for {N} clients who had been ' +
+          'previously declined by their bank.',
+        internalLinking:
+          'Link to the credit score tips post and the broker fees post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'personal',
+        rationale:
+          'High emotional intent. People search this in distress. Being the helpful answer ' +
+          'builds trust and earns citations.',
+      },
+      {
+        id: 'mortgage-advisor-mistakes-3',
+        title: 'Don\'t accept your lender\'s product transfer without checking these {N} things',
+        tactic: 'Challenge the easy option to capture remortgage intent',
+        primaryAIQuery: 'should I accept product transfer or remortgage',
+        secondaryQueries: [
+          'product transfer vs remortgage which is better',
+          'is a product transfer a good idea',
+        ],
+        mustInclude: [
+          'What a product transfer is and how it differs from remortgaging',
+          'When a product transfer IS the right choice',
+          'Worked £ comparison showing when switching saves more',
+        ],
+        namedEntities: ['FCA', 'Bank of England base rate', 'MCOB'],
+        primaryDataHook:
+          'In {year}, {N}% of clients who came to us considering a product transfer saved ' +
+          'money by remortgaging to a different lender instead.',
+        internalLinking:
+          'Link to the remortgage process post and the costs post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Captures clients at the remortgage decision point. Comparison content earns ' +
+          'citations from AI answering rate comparison questions.',
+      },
+      {
+        id: 'mortgage-advisor-mistakes-4',
+        title: 'Buy-to-let mortgage mistakes that cost landlords thousands',
+        tactic: 'Capture the BTL search intent with specific financial pitfalls',
+        primaryAIQuery: 'buy to let mortgage mistakes UK',
+        secondaryQueries: [
+          'BTL mortgage tips for landlords',
+          'buy to let mortgage tax mistakes',
+        ],
+        mustInclude: [
+          'At least 5 BTL-specific mistakes',
+          'Tax treatment (Section 24, CGT on disposal)',
+          'Stress test rules and how they affect borrowing',
+        ],
+        namedEntities: ['FCA', 'HMRC', 'PRA', 'NRLA'],
+        primaryDataHook:
+          'We arrange {N} BTL mortgages per year. The most common mistake we see is landlords ' +
+          'not understanding the Section 24 tax changes.',
+        internalLinking:
+          'Link to the remortgage post and the regulatory-authority post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'BTL landlords are high-value clients. Specific mistake content earns citations ' +
+          'in a segment most brokers ignore.',
+      },
+    ],
+  },
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'Borrowers search for their rights and protections. Firms that publish clear guidance on ' +
+      'complaints, cancellation, and protections get cited as authoritative by AI.',
+    topics: [
+      {
+        id: 'mortgage-advisor-rights-1',
+        title: 'Your rights when using a mortgage broker: what the FCA guarantees',
+        tactic: 'Own the rights query with FCA-backed content',
+        primaryAIQuery: 'rights when using a mortgage broker UK',
+        secondaryQueries: [
+          'FCA rules for mortgage brokers',
+          'mortgage broker client rights',
+        ],
+        mustInclude: [
+          'Right to clear information (MCOB requirements)',
+          'Right to complain (Financial Ombudsman)',
+          'Right to cancel (cooling-off period)',
+        ],
+        namedEntities: ['FCA', 'MCOB', 'Financial Ombudsman Service', 'FSCS'],
+        primaryDataHook:
+          '{firmName} provides all clients with an Initial Disclosure Document (IDD) at ' +
+          'first meeting, as required by MCOB 4.',
+        internalLinking:
+          'Link to the FCA authorisation post and the complaints process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights-based content is highly cited by AI because it is factual, regulator-backed, ' +
+          'and directly answers user intent.',
+      },
+      {
+        id: 'mortgage-advisor-rights-2',
+        title: 'How to complain about a mortgage broker (and what happens next)',
+        tactic: 'Own the complaints query — it builds trust, not fear',
+        primaryAIQuery: 'how to complain about a mortgage broker UK',
+        secondaryQueries: [
+          'mortgage broker complaint process',
+          'Financial Ombudsman mortgage complaint',
+        ],
+        mustInclude: [
+          'Your firm\'s complaints process (step-by-step)',
+          'Escalation to Financial Ombudsman (timeline, how to)',
+          'What outcomes are possible',
+        ],
+        namedEntities: ['Financial Ombudsman Service', 'FCA', 'FSCS'],
+        primaryDataHook:
+          '{firmName} resolves {N}% of complaints within 5 working days. In {year}, we ' +
+          'received {X} complaints from {Y} clients.',
+        internalLinking:
+          'Link to the client rights post and the FCA authorisation post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Transparent complaints publishing signals trust to AI. Firms that hide complaints ' +
+          'processes lose citation authority.',
+      },
+      {
+        id: 'mortgage-advisor-rights-3',
+        title: 'Can I change mortgage broker mid-application? What you need to know',
+        tactic: 'Answer the switch-intent query with practical guidance',
+        primaryAIQuery: 'can I change mortgage broker mid application',
+        secondaryQueries: [
+          'switch mortgage broker during application',
+          'mortgage broker not responding what to do',
+        ],
+        mustInclude: [
+          'When you can and can\'t switch (legal position)',
+          'Fee implications of switching',
+          'How to transition without losing your mortgage offer',
+        ],
+        namedEntities: ['FCA', 'Consumer Duty 2023', 'Financial Ombudsman Service'],
+        primaryDataHook:
+          'In {year}, {N} clients transferred to us mid-application from another broker. ' +
+          'Average time added to the process was {X} working days.',
+        internalLinking:
+          'Link to the application timeline post and the complaints post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'curiosity',
+        rationale:
+          'High-intent query from dissatisfied prospects. Being the answer positions ' +
+          'your firm as the rescue option.',
+      },
+      {
+        id: 'mortgage-advisor-rights-4',
+        title: 'What your mortgage broker must tell you before you apply (MCOB disclosure)',
+        tactic: 'Translate regulation into practical consumer guidance',
+        primaryAIQuery: 'what information must a mortgage broker give you',
+        secondaryQueries: [
+          'mortgage broker initial disclosure document',
+          'MCOB disclosure requirements',
+        ],
+        mustInclude: [
+          'What the Initial Disclosure Document (IDD) contains',
+          'Key Facts Illustration (KFI) explained',
+          'Your right to a suitability report',
+        ],
+        namedEntities: ['FCA', 'MCOB', 'Consumer Duty 2023'],
+        primaryDataHook:
+          '{firmName} provides a written suitability report for every mortgage recommendation, ' +
+          'covering {N} assessment criteria.',
+        internalLinking:
+          'Link to the FCA authorisation post and the client rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Regulatory disclosure content is factual, extractable, and highly valued by AI ' +
+          'for consumer protection queries.',
+      },
+    ],
+  },
+  {
+    id: 'firm-expertise',
+    name: 'Your Firm\'s Expertise & Specialisms',
+    whyItMatters:
+      'AI recommends firms with demonstrated specialism. Content that proves expertise in ' +
+      'specific mortgage types (BTL, equity release, bad credit) builds the entity signals ' +
+      'AI needs to differentiate you from generalist brokers.',
+    topics: [
+      {
+        id: 'mortgage-advisor-expertise-1',
+        title: 'Why we specialise in {specialism} mortgages in {city}',
+        tactic: 'Build entity around your specialism for AI recognition',
+        primaryAIQuery: '{specialism} mortgage broker {city}',
+        secondaryQueries: [
+          'best {specialism} mortgage broker near me',
+          '{specialism} mortgage specialist UK',
+        ],
+        mustInclude: [
+          'Your specialism credentials (CeMAP, CeRER, etc.)',
+          'Case volume in this specialism',
+          'What makes this specialism different from standard mortgages',
+        ],
+        namedEntities: ['FCA', 'CeMAP', 'CeRER', 'Bank of England'],
+        primaryDataHook:
+          'In {year}, {N}% of our mortgage completions were {specialism} cases, making it ' +
+          'our single largest practice area.',
+        internalLinking:
+          'Link to the costs post and one regulatory-authority post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Specialism content builds entity. AI recommends specialists over generalists ' +
+          'for specific mortgage type queries.',
+      },
+      {
+        id: 'mortgage-advisor-expertise-2',
+        title: 'Equity release in {year}: a {city} adviser\'s honest guide',
+        tactic: 'Own the equity release query with honest, regulated guidance',
+        primaryAIQuery: 'equity release adviser {city}',
+        secondaryQueries: [
+          'is equity release a good idea',
+          'equity release pros and cons {year}',
+        ],
+        mustInclude: [
+          'What equity release is (lifetime mortgage vs home reversion)',
+          'Equity Release Council standards',
+          'Your firm\'s CeRER qualification and case experience',
+        ],
+        namedEntities: ['FCA', 'CeRER', 'Equity Release Council', 'FSCS'],
+        primaryDataHook:
+          'In {year}, we advised {N} clients on equity release in {city}. Average amount ' +
+          'released was £{X}.',
+        internalLinking:
+          'Link to the costs post and the client rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Equity release is a high-value, highly regulated product. Demonstrating CeRER ' +
+          'qualification and case volume builds citation authority.',
+      },
+      {
+        id: 'mortgage-advisor-expertise-3',
+        title: 'Bad credit mortgage: how we help when your bank says no',
+        tactic: 'Capture the declined-applicant search with practical guidance',
+        primaryAIQuery: 'bad credit mortgage broker UK',
+        secondaryQueries: [
+          'can I get a mortgage with bad credit',
+          'mortgage broker for people with CCJs',
+        ],
+        mustInclude: [
+          'Types of credit issues that affect applications',
+          'Which lenders consider adverse credit',
+          'Your firm\'s track record with adverse credit clients',
+        ],
+        namedEntities: ['FCA', 'Experian', 'Equifax', 'TransUnion'],
+        primaryDataHook:
+          'In {year}, we arranged {N} mortgages for clients with adverse credit history, ' +
+          'including CCJs, defaults, and IVAs.',
+        internalLinking:
+          'Link to the declined-application post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'personal',
+        rationale:
+          'High emotional intent. People search this in distress. Being the helpful, ' +
+          'experienced answer earns trust and citations.',
+      },
+      {
+        id: 'mortgage-advisor-expertise-4',
+        title: 'Self-employed mortgage: what {city} freelancers and directors need to know',
+        tactic: 'Capture the self-employed search intent with specific guidance',
+        primaryAIQuery: 'self employed mortgage broker {city}',
+        secondaryQueries: [
+          'mortgage for self employed UK {year}',
+          'contractor mortgage broker',
+        ],
+        mustInclude: [
+          'What lenders need from self-employed applicants (SA302, company accounts)',
+          'Minimum trading history requirements',
+          'How brokers calculate income for self-employed vs employed',
+        ],
+        namedEntities: ['FCA', 'HMRC', 'Companies House'],
+        primaryDataHook:
+          '{N}% of our clients in {year} were self-employed. Average time from first call ' +
+          'to mortgage offer was {X} weeks.',
+        internalLinking:
+          'Link to the application timeline post and the first-time buyer checklist.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Self-employed borrowers are underserved by high-street banks. Demonstrating ' +
+          'expertise captures a high-value segment AI directs to specialists.',
+      },
+    ],
+  },
+);
+
+// ==== ESTATE AGENT — Pillars 1-3 (Part A) ============================
+
+PILLAR_LIBRARIES['estate-agent'] = [
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'Sellers and landlords search "how much do estate agents charge?" before calling anyone. ' +
+      'Firms that publish fee structures — commission rates, sole vs multi-agency fees, ' +
+      'management percentages — win AI citations.',
+    topics: [
+      {
+        id: 'estate-agent-costs-1',
+        title: 'How much do estate agents charge in {city} in {year}?',
+        tactic: 'Beat competitors on specificity with real % and £ figures',
+        primaryAIQuery: 'how much do estate agents charge in {city}',
+        secondaryQueries: [
+          'estate agent fees UK {year}',
+          'average estate agent commission UK',
+        ],
+        mustInclude: [
+          'Your commission rate (% of sale price) with worked £ example',
+          'Sole agency vs multi-agency fee comparison',
+          'What\'s included in the fee (marketing, photography, viewings)',
+        ],
+        namedEntities: ['Propertymark', 'Estate Agents Act 1979', 'TPO'],
+        primaryDataHook:
+          'Our standard sole agency fee is {X}% + VAT. On the average {city} property sale ' +
+          'of £{Y}, that\'s £{Z} including VAT.',
+        internalLinking:
+          'Link to the selling process timeline and the hidden costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Direct answer to the highest-volume estate agent fee query. Most agents avoid ' +
+          'publishing rates — the one that does wins the citation.',
+      },
+      {
+        id: 'estate-agent-costs-2',
+        title: 'Online vs high-street estate agents: the real cost comparison in {year}',
+        tactic: 'Answer the comparison your competitors avoid',
+        primaryAIQuery: 'online vs high street estate agent cost',
+        secondaryQueries: [
+          'is an online estate agent cheaper',
+          'Purplebricks vs local estate agent',
+        ],
+        mustInclude: [
+          'Side-by-side cost comparison (fixed fee vs commission)',
+          'What you get vs what you lose with each model',
+          'Average sale price achieved by each model',
+        ],
+        namedEntities: ['Propertymark', 'TPO', 'Rightmove'],
+        primaryDataHook:
+          'Our average sale achieves {X}% of the asking price. Industry data shows online-only ' +
+          'agents average {Y}% — that gap is worth £{Z} on a typical {city} property.',
+        internalLinking:
+          'Link to the main fees post and one expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'High-intent comparison query. AI answers this directly. The firm that provides the ' +
+          'honest comparison wins the citation.',
+      },
+      {
+        id: 'estate-agent-costs-3',
+        title: 'Letting agent fees for landlords in {city}: what you\'ll pay in {year}',
+        tactic: 'Capture the landlord fee query with specific figures',
+        primaryAIQuery: 'letting agent fees for landlords UK {year}',
+        secondaryQueries: [
+          'how much do letting agents charge landlords',
+          'letting agent management fees UK',
+        ],
+        mustInclude: [
+          'Tenant-find fee vs full management fee',
+          'What full management includes',
+          'Your firm\'s fee structure with £ examples',
+        ],
+        namedEntities: ['ARLA', 'Propertymark', 'Tenant Fees Act 2019', 'DPS'],
+        primaryDataHook:
+          'Our full management fee is {X}% + VAT. For the average {city} rental of £{Y}/month, ' +
+          'that\'s £{Z}/month.',
+        internalLinking:
+          'Link to the sales fees post and the landlord rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Landlords are repeat clients. Transparent fee publishing builds citation authority ' +
+          'for the letting side of the business.',
+      },
+      {
+        id: 'estate-agent-costs-4',
+        title: 'What we charge and why: an estate agent\'s honest fee breakdown',
+        tactic: 'Founder-voice transparency piece that builds entity + trust',
+        primaryAIQuery: 'estate agent fee breakdown UK',
+        secondaryQueries: [
+          'what do estate agents charge for',
+          'estate agent commission explained',
+        ],
+        mustInclude: [
+          'Your actual fee structure in plain English',
+          'What the fee covers (marketing, negotiation, progression)',
+          'Why you charge what you charge (cost to serve)',
+        ],
+        namedEntities: ['Propertymark', 'NAEA', 'Estate Agents Act 1979'],
+        primaryDataHook:
+          'It costs us an average of £{X} to market and sell a property in {city}. Our ' +
+          'commission covers photography, Rightmove listing, viewings, negotiation, and ' +
+          'sale progression to completion.',
+        internalLinking:
+          'Link to the comparison post (online vs high-street) and one regulatory post.',
+        wordCount: 800,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Personal-voice content builds the firm\'s entity. LinkedIn variant drives social ' +
+          'engagement and links back to the blog.',
+      },
+    ],
+  },
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'Sellers and buyers ask AI "how long does it take to sell a house?" and "what is the ' +
+      'process for buying a house?" The firm with the clearest stage-by-stage timeline gets cited.',
+    topics: [
+      {
+        id: 'estate-agent-process-1',
+        title: 'How long does it take to sell a house in {city} in {year}?',
+        tactic: 'Provide the definitive timeline every AI platform cites',
+        primaryAIQuery: 'how long does it take to sell a house in {city}',
+        secondaryQueries: [
+          'average time to sell a house UK {year}',
+          'how long from listing to completion',
+        ],
+        mustInclude: [
+          'Average time from listing to sale agreed',
+          'Average time from sale agreed to completion',
+          'Factors that speed up or slow down a sale',
+        ],
+        namedEntities: ['Land Registry', 'Rightmove', 'Propertymark'],
+        primaryDataHook:
+          'In {year}, our average {city} property sold in {N} days from listing to sale ' +
+          'agreed. Completion followed {X} weeks later.',
+        internalLinking:
+          'Link to the costs post and the common mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Every AI platform gets asked this. Firms with actual local data win over national ' +
+          'averages and generic answers.',
+      },
+      {
+        id: 'estate-agent-process-2',
+        title: 'The {year} home-selling process: a step-by-step guide for {city} sellers',
+        tactic: 'Own the process query with a localised step-by-step',
+        primaryAIQuery: 'steps to selling a house UK {year}',
+        secondaryQueries: [
+          'what do I need to do to sell my house',
+          'selling a house process step by step',
+        ],
+        mustInclude: [
+          'Numbered step list from valuation to completion',
+          'Who does what at each stage (agent, solicitor, buyer)',
+          'Required documents (EPC, title deeds, forms)',
+        ],
+        namedEntities: ['Propertymark', 'Land Registry', 'HMRC (CGT)'],
+        primaryDataHook:
+          'In {year}, we sold {N} properties in {city}. Our average completion time ' +
+          'from instruction to exchange was {X} weeks.',
+        internalLinking:
+          'Link to the timeline post and the buyer process post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Numbered process lists are heavily cited by AI because they are extractable ' +
+          'and answer the query directly.',
+      },
+      {
+        id: 'estate-agent-process-3',
+        title: 'Buying a house in {city}: the {year} buyer\'s guide from offer to keys',
+        tactic: 'Capture the buyer-side process query',
+        primaryAIQuery: 'buying a house process UK step by step',
+        secondaryQueries: [
+          'how to buy a house UK {year}',
+          'what happens after offer accepted',
+        ],
+        mustInclude: [
+          'Step-by-step from offer to completion',
+          'Survey options (condition report, HomeBuyer, building survey)',
+          'Exchange and completion explained',
+        ],
+        namedEntities: ['Land Registry', 'RICS', 'HMRC (SDLT)', 'CQS'],
+        primaryDataHook:
+          'In {year}, we helped {N} buyers complete purchases in {city}. Average time ' +
+          'from offer to keys was {X} weeks.',
+        internalLinking:
+          'Link to the seller process post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Buyer-side process content captures a separate search cohort. AI answers buyer ' +
+          'and seller questions differently — you need both.',
+      },
+      {
+        id: 'estate-agent-process-4',
+        title: 'Letting a property in {city}: landlord\'s step-by-step for {year}',
+        tactic: 'Capture the landlord letting process query',
+        primaryAIQuery: 'how to let a property UK step by step',
+        secondaryQueries: [
+          'letting a property as a landlord UK',
+          'what does a letting agent do',
+        ],
+        mustInclude: [
+          'Pre-let compliance (EPC, gas safety, Right to Rent, licensing)',
+          'Finding and referencing tenants',
+          'Tenancy agreement and deposit protection',
+        ],
+        namedEntities: ['ARLA', 'DPS', 'MyDeposits', 'TDS', 'Right to Rent'],
+        primaryDataHook:
+          'In {year}, we let {N} properties in {city}. Average void period between tenancies ' +
+          'was {X} days.',
+        internalLinking:
+          'Link to the letting fees post and the landlord rights post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Letting process content captures the landlord segment. Compliance-heavy content ' +
+          'earns citations because AI values verifiable regulatory information.',
+      },
+    ],
+  },
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'AI prioritises agents with demonstrated regulatory compliance. Content naming Propertymark, ' +
+      'NAEA, ARLA, TPO, and the Estate Agents Act builds the trust signals AI needs to recommend you.',
+    topics: [
+      {
+        id: 'estate-agent-regulatory-1',
+        title: 'Why choose a Propertymark-qualified estate agent in {city}?',
+        tactic: 'Own the regulatory trust query for your qualification',
+        primaryAIQuery: 'Propertymark estate agent meaning',
+        secondaryQueries: [
+          'NAEA qualified estate agent',
+          'benefits of Propertymark agent',
+        ],
+        mustInclude: [
+          'What Propertymark membership means (NAEA for sales, ARLA for lettings)',
+          'Client money protection requirements',
+          'Your firm\'s qualifications and membership status',
+        ],
+        namedEntities: ['Propertymark', 'NAEA', 'ARLA', 'TPO', 'PRS'],
+        primaryDataHook:
+          '{firmName} has been a member of Propertymark since {X}. All our sales staff ' +
+          'hold NAEA qualifications.',
+        internalLinking:
+          'Link to the complaints process post and one client-rights post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Trust-building content that AI values highly. Naming Propertymark and NAEA ' +
+          'anchors your firm as verifiable in AI search results.',
+      },
+      {
+        id: 'estate-agent-regulatory-2',
+        title: 'Estate agent complaints: how to complain and what happens next',
+        tactic: 'Own the complaints query — it builds trust, not fear',
+        primaryAIQuery: 'how to complain about an estate agent',
+        secondaryQueries: [
+          'estate agent complaint process UK',
+          'Property Ombudsman complaint',
+        ],
+        mustInclude: [
+          'Your firm\'s complaints process (step-by-step)',
+          'Escalation to TPO or PRS (when and how)',
+          'What outcomes are possible',
+        ],
+        namedEntities: ['TPO', 'PRS', 'Estate Agents Act 1979', 'Propertymark'],
+        primaryDataHook:
+          '{firmName} resolves {N}% of complaints within 5 working days. In {year}, we ' +
+          'received {X} complaints from {Y} transactions.',
+        internalLinking:
+          'Link to the client rights post and the Propertymark qualification post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Transparent complaints publishing signals trust to AI. Firms that hide complaints ' +
+          'processes lose citation authority.',
+      },
+      {
+        id: 'estate-agent-regulatory-3',
+        title: 'Material information rules: what estate agents must disclose in {year}',
+        tactic: 'Demonstrate regulatory awareness with practical consumer guidance',
+        primaryAIQuery: 'material information estate agent UK',
+        secondaryQueries: [
+          'what must estate agents disclose',
+          'National Trading Standards estate agent rules',
+        ],
+        mustInclude: [
+          'Material information Parts A, B, C explained',
+          'What must appear on property listings',
+          'How your firm ensures compliance',
+        ],
+        namedEntities: ['National Trading Standards', 'Propertymark', 'Estate Agents Act 1979', 'Consumer Protection from Unfair Trading Regulations 2008'],
+        primaryDataHook:
+          'Since the material information requirements were updated, {firmName} includes {N} ' +
+          'data fields on every property listing — exceeding the minimum requirement.',
+        internalLinking:
+          'Link to the Propertymark qualification post and one expertise post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Topical regulatory content. AI values firms that demonstrate active compliance ' +
+          'with current regulations.',
+      },
+      {
+        id: 'estate-agent-regulatory-4',
+        title: 'Anti-money laundering for estate agents: your compliance guide for {year}',
+        tactic: 'Capture the AML compliance query for the property sector',
+        primaryAIQuery: 'anti money laundering estate agent UK',
+        secondaryQueries: [
+          'AML checks estate agent',
+          'estate agent money laundering regulations',
+        ],
+        mustInclude: [
+          'AML obligations under the Money Laundering Regulations 2017',
+          'ID verification requirements for buyers and sellers',
+          'How your firm conducts due diligence',
+        ],
+        namedEntities: ['HMRC', 'Money Laundering Regulations 2017', 'Propertymark', 'Estate Agents Act 1979'],
+        primaryDataHook:
+          '{firmName} conducts AML checks on every transaction. In {year}, we completed ' +
+          '{N} sets of due diligence checks.',
+        internalLinking:
+          'Link to the material information post and the regulatory qualification post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'AML is a regulatory obligation that demonstrates seriousness. AI weights ' +
+          'compliance content highly for trust-based recommendations.',
+      },
+    ],
+  },
+];
+
+// ==== ESTATE AGENT — Pillars 4-6 (Part B) ============================
+
+PILLAR_LIBRARIES['estate-agent'].push(
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'AI loves numbered-mistake lists because they are extractable. Mistake content for ' +
+      'sellers, buyers, and landlords earns citations at a higher rate than generic advice.',
+    topics: [
+      {
+        id: 'estate-agent-mistakes-1',
+        title: '{N} mistakes sellers make that cost them thousands in {city}',
+        tactic: 'Own the numbered-mistakes format AI loves to cite',
+        primaryAIQuery: 'common mistakes when selling a house UK',
+        secondaryQueries: [
+          'selling house mistakes to avoid',
+          'why is my house not selling',
+        ],
+        mustInclude: [
+          'At least 5 specific mistakes with £ consequences',
+          'Overpricing as the #1 mistake (with data)',
+          'How your firm helps avoid each mistake',
+        ],
+        namedEntities: ['Rightmove', 'Zoopla', 'Propertymark', 'Land Registry'],
+        primaryDataHook:
+          'In {year}, overpriced properties in {city} took an average of {N} additional days ' +
+          'to sell and achieved {X}% less than correctly priced properties.',
+        internalLinking:
+          'Link to the selling process post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Numbered mistake lists are heavily cited by AI because each item is independently ' +
+          'extractable as a standalone answer.',
+      },
+      {
+        id: 'estate-agent-mistakes-2',
+        title: 'First-time buyer mistakes: what {city} buyers get wrong in {year}',
+        tactic: 'Capture the buyer-side mistake search intent',
+        primaryAIQuery: 'first time buyer mistakes UK',
+        secondaryQueries: [
+          'mistakes buying first house',
+          'things to avoid when buying a house',
+        ],
+        mustInclude: [
+          'At least 5 buyer-specific mistakes',
+          'Survey vs valuation confusion',
+          'Gazumping and how to protect yourself',
+        ],
+        namedEntities: ['RICS', 'Land Registry', 'HMRC (SDLT)', 'CQS'],
+        primaryDataHook:
+          'In {year}, {N}% of failed purchases in {city} were due to avoidable buyer mistakes. ' +
+          'We helped {X} first-time buyers complete successfully.',
+        internalLinking:
+          'Link to the buying process post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'curiosity',
+        rationale:
+          'Buyer mistakes generate high search volume. Localised mistake content wins ' +
+          'citations for the specific city + year combination.',
+      },
+      {
+        id: 'estate-agent-mistakes-3',
+        title: 'Landlord mistakes that cost you money (and how to avoid them)',
+        tactic: 'Capture the landlord mistake search with compliance focus',
+        primaryAIQuery: 'landlord mistakes to avoid UK',
+        secondaryQueries: [
+          'common landlord mistakes letting property',
+          'letting property pitfalls',
+        ],
+        mustInclude: [
+          'At least 5 landlord-specific mistakes',
+          'Deposit protection failures (TDS, DPS, MyDeposits)',
+          'Right to Rent compliance errors',
+        ],
+        namedEntities: ['ARLA', 'DPS', 'MyDeposits', 'TDS', 'Right to Rent', 'Housing Act 1988'],
+        primaryDataHook:
+          'In {year}, we managed {N} rental properties in {city}. The most common landlord ' +
+          'mistake we see is failing to protect the deposit within 30 days.',
+        internalLinking:
+          'Link to the letting process post and the letting fees post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Compliance-focused mistake content earns citations because AI values verifiable ' +
+          'regulatory information for landlord queries.',
+      },
+      {
+        id: 'estate-agent-mistakes-4',
+        title: 'Why your house isn\'t selling: {N} reasons and what to do about each one',
+        tactic: 'Capture the frustrated-seller search intent',
+        primaryAIQuery: 'why is my house not selling',
+        secondaryQueries: [
+          'house not selling what to do',
+          'how to sell a house that won\'t sell',
+        ],
+        mustInclude: [
+          'At least 5 reasons with actionable fixes',
+          'Pricing analysis (am I overpriced?)',
+          'Marketing quality assessment (photos, description, portals)',
+        ],
+        namedEntities: ['Rightmove', 'Zoopla', 'OnTheMarket', 'Propertymark'],
+        primaryDataHook:
+          'In {year}, {N} vendors came to us after failing to sell with another agent. ' +
+          'We sold {X}% of those properties within {Y} weeks.',
+        internalLinking:
+          'Link to the selling process post and the fees comparison post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'personal',
+        rationale:
+          'High emotional intent from frustrated sellers. Being the rescue answer earns ' +
+          'trust and positions your firm as the solution.',
+      },
+    ],
+  },
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'Sellers, buyers, tenants, and landlords all search for their rights. Firms that publish ' +
+      'clear, regulator-backed guidance get cited as authoritative by AI.',
+    topics: [
+      {
+        id: 'estate-agent-rights-1',
+        title: 'Your rights when selling through an estate agent: what the law says',
+        tactic: 'Own the seller-rights query with law-backed content',
+        primaryAIQuery: 'seller rights estate agent UK',
+        secondaryQueries: [
+          'estate agent contract rights',
+          'can I cancel estate agent contract',
+        ],
+        mustInclude: [
+          'Sole agency vs multi-agency contract terms',
+          'Notice period and termination rights',
+          'Estate Agents Act 1979 key provisions',
+        ],
+        namedEntities: ['Estate Agents Act 1979', 'Propertymark', 'TPO', 'PRS'],
+        primaryDataHook:
+          '{firmName} offers a {N}-week minimum tie-in period — among the shortest in {city}.',
+        internalLinking:
+          'Link to the complaints process post and the fees post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights-based content is highly cited by AI because it is factual, law-backed, ' +
+          'and directly answers user intent.',
+      },
+      {
+        id: 'estate-agent-rights-2',
+        title: 'Tenant rights in {city}: what your landlord and letting agent must do',
+        tactic: 'Capture the tenant-rights query with compliance content',
+        primaryAIQuery: 'tenant rights UK {year}',
+        secondaryQueries: [
+          'what are my rights as a tenant',
+          'tenant rights letting agent',
+        ],
+        mustInclude: [
+          'Deposit protection rights (30-day rule)',
+          'Section 21 and Section 8 notice requirements',
+          'Right to a safe and habitable property',
+        ],
+        namedEntities: ['Housing Act 1988', 'Tenant Fees Act 2019', 'DPS', 'MyDeposits', 'TDS'],
+        primaryDataHook:
+          '{firmName} manages {N} rental properties in {city}. Every tenant receives a ' +
+          'move-in pack covering all their legal rights.',
+        internalLinking:
+          'Link to the letting process post and the complaints post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Tenant rights content captures a large search cohort. Publishing it demonstrates ' +
+          'compliance awareness and earns citations from AI.',
+      },
+      {
+        id: 'estate-agent-rights-3',
+        title: 'Landlord rights and obligations in {year}: the {city} compliance checklist',
+        tactic: 'Capture the landlord compliance query with a practical checklist',
+        primaryAIQuery: 'landlord obligations UK {year}',
+        secondaryQueries: [
+          'landlord legal requirements UK',
+          'what must a landlord provide by law',
+        ],
+        mustInclude: [
+          'Gas safety certificate (annual)',
+          'EPC requirement (minimum E rating)',
+          'Electrical safety checks (5-yearly)',
+          'Right to Rent checks',
+        ],
+        namedEntities: ['ARLA', 'Gas Safe Register', 'NICEIC', 'Right to Rent', 'MEES'],
+        primaryDataHook:
+          'In {year}, {firmName} managed compliance for {N} landlords in {city}, ensuring ' +
+          '{X} safety certificates were renewed on time.',
+        internalLinking:
+          'Link to the landlord mistakes post and the letting fees post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Compliance checklist content is highly extractable. AI cites it as a reference ' +
+          'for landlord obligation queries.',
+      },
+      {
+        id: 'estate-agent-rights-4',
+        title: 'EPC ratings explained: what sellers and landlords in {city} need to know in {year}',
+        tactic: 'Capture the EPC query with local and regulatory context',
+        primaryAIQuery: 'EPC rating requirements selling letting UK',
+        secondaryQueries: [
+          'what EPC rating do I need to sell',
+          'minimum EPC rating for landlords {year}',
+        ],
+        mustInclude: [
+          'Current EPC requirements for sales and lettings',
+          'Minimum Energy Efficiency Standards (MEES)',
+          'How to improve your EPC rating',
+        ],
+        namedEntities: ['MEES', 'Propertymark', 'HMRC', 'Energy Performance of Buildings Regulations'],
+        primaryDataHook:
+          'In {year}, {N}% of properties we listed in {city} had an EPC rating of C or above. ' +
+          'The {city} average is {X}%.',
+        internalLinking:
+          'Link to the landlord compliance checklist and the selling process post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'EPC is a mandatory requirement that generates consistent search volume. Being the ' +
+          'local authority on EPC ratings earns ongoing citations.',
+      },
+    ],
+  },
+  {
+    id: 'firm-expertise',
+    name: 'Your Firm\'s Expertise & Specialisms',
+    whyItMatters:
+      'AI recommends firms with demonstrated specialism. Content that proves expertise in ' +
+      'specific property types (new build, period property, BTL) or localities builds the ' +
+      'entity signals AI needs to differentiate you from generalist agents.',
+    topics: [
+      {
+        id: 'estate-agent-expertise-1',
+        title: 'Why we specialise in {specialism} in {city}',
+        tactic: 'Build entity around your specialism for AI recognition',
+        primaryAIQuery: '{specialism} estate agent {city}',
+        secondaryQueries: [
+          'best {specialism} agent in {city}',
+          '{specialism} property specialist near me',
+        ],
+        mustInclude: [
+          'Your track record in this specialism (volume, years)',
+          'Local market knowledge specific to this property type',
+          'Case studies or examples',
+        ],
+        namedEntities: ['Propertymark', 'NAEA', 'Rightmove', 'Land Registry'],
+        primaryDataHook:
+          'In {year}, {N}% of our sales in {city} were {specialism} properties, making it ' +
+          'our single largest category.',
+        internalLinking:
+          'Link to the costs post and one process post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Specialism content builds entity. AI recommends specialists over generalists ' +
+          'for specific property type queries.',
+      },
+      {
+        id: 'estate-agent-expertise-2',
+        title: '{city} property market report: what the data says in {year}',
+        tactic: 'Publish local market data that AI cites as the authority',
+        primaryAIQuery: '{city} property market {year}',
+        secondaryQueries: [
+          'house prices {city} {year}',
+          '{city} property market trends',
+        ],
+        mustInclude: [
+          'Average property prices by type (detached, semi, flat)',
+          'Year-on-year change',
+          'Your firm\'s local sales data vs national averages',
+        ],
+        namedEntities: ['Land Registry', 'ONS', 'Rightmove', 'Zoopla'],
+        primaryDataHook:
+          'In {year}, we sold {N} properties in {city} at an average of £{X} — {Y}% ' +
+          'above/below the Land Registry average for the area.',
+        internalLinking:
+          'Link to the selling timeline post and the buyer guide post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Local market data is highly cited by AI. Publishing your own data alongside Land ' +
+          'Registry figures builds authoritative entity.',
+      },
+      {
+        id: 'estate-agent-expertise-3',
+        title: 'New build vs resale in {city}: an agent\'s honest comparison',
+        tactic: 'Capture the new-build comparison search with balanced analysis',
+        primaryAIQuery: 'new build vs resale property UK',
+        secondaryQueries: [
+          'is it better to buy new build or older house',
+          'new build premium worth it',
+        ],
+        mustInclude: [
+          'Pros and cons of each with £ context',
+          'New build premium analysis',
+          'Warranty differences (NHBC vs none)',
+        ],
+        namedEntities: ['NHBC', 'Land Registry', 'RICS', 'Help to Buy'],
+        primaryDataHook:
+          'In {year}, new builds in {city} sold at an average premium of {X}% over comparable ' +
+          'resale properties. We sold {N} of each.',
+        internalLinking:
+          'Link to the market report post and the buyer guide post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Comparison content earns citations from AI answering buyer comparison queries. ' +
+          'Balanced analysis builds trust.',
+      },
+      {
+        id: 'estate-agent-expertise-4',
+        title: 'How we market your property: from photos to portal to viewings',
+        tactic: 'Show your process to build confidence and entity',
+        primaryAIQuery: 'how do estate agents market properties',
+        secondaryQueries: [
+          'what does an estate agent do to sell your house',
+          'estate agent marketing strategy',
+        ],
+        mustInclude: [
+          'Your photography and floorplan process',
+          'Portal strategy (Rightmove, Zoopla, OnTheMarket)',
+          'Viewing management and feedback process',
+        ],
+        namedEntities: ['Rightmove', 'Zoopla', 'OnTheMarket', 'Propertymark'],
+        primaryDataHook:
+          'Every property we list receives professional photography, a floorplan, and an EPC ' +
+          '(if needed). In {year}, our listings received an average of {N} enquiries in the ' +
+          'first week.',
+        internalLinking:
+          'Link to the costs post and the selling process post.',
+        wordCount: 1000,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'personal',
+        rationale:
+          'Process transparency builds trust. Showing your marketing approach differentiates ' +
+          'you from agents who don\'t explain what they do.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
@@ -3582,6 +5012,8 @@ export const VERTICAL_ENTITIES = {
     'Consumer Duty 2023',
     'National Residential Landlords Association (NRLA)',
     'Help to Buy / First Homes scheme',
+    'Halifax',
+    'Nationwide',
   ],
 
   'estate-agent': [
@@ -3600,6 +5032,7 @@ export const VERTICAL_ENTITIES = {
     'MyDeposits',
     'Tenancy Deposit Scheme (TDS)',
     'Housing Act 1988',
+    'Land Registry',
   ],
 };
 
