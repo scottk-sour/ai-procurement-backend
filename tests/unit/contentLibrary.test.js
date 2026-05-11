@@ -109,12 +109,12 @@ describe('GET /api/content-library', () => {
     expect(r.body?.error).toMatch(/paid plan/i);
   });
 
-  it('returns 400 for unsupported vendor type (office-equipment)', async () => {
-    currentVendor = { ...defaultSolicitor(), vendorType: 'office-equipment' };
+  it('returns 200 with 6 pillars for an office-equipment vendor', async () => {
+    currentVendor = { ...defaultSolicitor(), vendorType: 'office-equipment', company: 'CopyTech Ltd' };
     const r = await fetchLibrary();
-    expect(r.status).toBe(400);
-    expect(r.body?.error).toMatch(/not available for vendor type/i);
-    expect(r.body?.error).toMatch(/office-equipment/);
+    expect(r.status).toBe(200);
+    expect(r.body?.vendorType).toBe('office-equipment');
+    expect(r.body.pillars).toHaveLength(6);
   });
 
   it('returns 200 with 6 pillars for a solicitor vendor', async () => {
@@ -343,8 +343,15 @@ describe('GET /api/content-library', () => {
     expect(totalTopics).toBe(24);
   });
 
+  it('office-equipment has 6 pillars with 24 total topics', () => {
+    const pillars = PILLAR_LIBRARIES['office-equipment'];
+    expect(pillars).toHaveLength(6);
+    const totalTopics = pillars.reduce((sum, p) => sum + p.topics.length, 0);
+    expect(totalTopics).toBe(24);
+  });
+
   it('every topic in all verticals has required fields', () => {
-    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent']) {
+    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent', 'office-equipment']) {
       const pillars = PILLAR_LIBRARIES[vendorType];
       for (const pillar of pillars) {
         for (const topic of pillar.topics) {
@@ -362,7 +369,7 @@ describe('GET /api/content-library', () => {
 
   it('every linkedInHookType (when present) is valid', () => {
     const validTypes = ['opinion', 'data', 'personal', 'curiosity'];
-    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent']) {
+    for (const vendorType of ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent', 'office-equipment']) {
       const pillars = PILLAR_LIBRARIES[vendorType];
       for (const pillar of pillars) {
         for (const topic of pillar.topics) {

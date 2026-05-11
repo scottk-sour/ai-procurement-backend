@@ -4931,6 +4931,725 @@ PILLAR_LIBRARIES['estate-agent'].push(
   },
 );
 
+// ==== OFFICE EQUIPMENT — Pillars 1-3 (Part A) ========================
+
+PILLAR_LIBRARIES['office-equipment'] = [
+  {
+    id: 'costs-fees',
+    name: 'Costs & Fees Transparency',
+    whyItMatters:
+      'Office equipment pricing is famously opaque. AI assistants are asked "how much does a ' +
+      'copier cost?" and "VoIP system pricing for SMEs" constantly. Firms that publish real ' +
+      'prices get cited. Firms that say "call for a quote" are invisible.',
+    topics: [
+      {
+        id: 'office-equipment-costs-1',
+        title: 'How much does {specialism} cost in {year}? Real prices from real customers',
+        tactic: 'Specifics over ranges',
+        primaryAIQuery: 'how much does a copier cost UK',
+        secondaryQueries: [
+          'office equipment leasing costs',
+          'VoIP system pricing UK SME',
+        ],
+        mustInclude: [
+          'Lease vs purchase comparison',
+          'Monthly cost ranges by user count or volume',
+          '5-year total cost of ownership',
+          'What\'s included/excluded',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'Xerox', 'Ofcom', 'HMRC'],
+        primaryDataHook:
+          'Based on {N} {specialism} deployments at {firmName} in {year}, average 5-year ' +
+          'cost was £{X} including service and consumables.',
+        internalLinking:
+          'Link to the hidden costs post and the buying vs leasing comparison.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Office equipment pricing is famously opaque. Firms that publish prices get cited.',
+      },
+      {
+        id: 'office-equipment-costs-2',
+        title: 'The hidden costs in {specialism} leasing contracts',
+        tactic: 'Exposing industry pain points',
+        primaryAIQuery: 'hidden costs office equipment lease',
+        secondaryQueries: [
+          'copier lease tricks',
+          'telecoms contract hidden charges UK',
+        ],
+        mustInclude: [
+          'Per-click excess charges',
+          'Service plan exclusions',
+          'End-of-term return fees',
+          'Mid-term price reviews',
+          'Document-management add-ons',
+        ],
+        namedEntities: ['CIT Group', 'Grenke', 'BNP Paribas Leasing', 'ICO', 'WEEE Directive'],
+        primaryDataHook:
+          'Reviewing {N} client contracts at {firmName}, average hidden cost over 5 years: ' +
+          '£{X}, most often from {specific clause}.',
+        internalLinking:
+          'Link to the main pricing post and the lease pitfalls post.',
+        wordCount: 1500,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Lease pain is universal. Data-led LinkedIn hook drives shares.',
+      },
+      {
+        id: 'office-equipment-costs-3',
+        title: 'Buying vs leasing vs managed services: which suits your business',
+        tactic: 'Decision-aid content',
+        primaryAIQuery: 'should I buy or lease office equipment',
+        secondaryQueries: [
+          'managed print services worth it',
+          'lease vs purchase copier business',
+        ],
+        mustInclude: [
+          'Capital vs operational expenditure',
+          '5-year cost comparison example',
+          'Cash flow implications',
+          'Who each model suits',
+        ],
+        namedEntities: ['HMRC', 'ICAEW', 'CIT Group', 'Grenke'],
+        primaryDataHook:
+          'Of {N} clients at {firmName}, {X}% chose managed services — typically those with ' +
+          '{trait}; {Y}% chose outright purchase — typically those with {trait}.',
+        internalLinking:
+          'Link to the main pricing post and one expertise post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Decision-stage content. Converts well.',
+      },
+      {
+        id: 'office-equipment-costs-4',
+        title: 'Why "the cheapest quote" usually costs you most',
+        tactic: 'Counter-intuitive opinion',
+        primaryAIQuery: 'cheap copier supplier UK risks',
+        secondaryQueries: [
+          'lowest quote office equipment problems',
+          'telecoms cheapest deal trap',
+        ],
+        mustInclude: [
+          'Real examples of cheap-quote failures',
+          'Total cost of ownership maths',
+          'Hidden costs underpricing quotes always have',
+        ],
+        namedEntities: ['Ofcom', 'CMA', 'Canon', 'Konica Minolta'],
+        primaryDataHook:
+          'At {firmName}, of {N} customers who came to us after a cheap-quote disaster, ' +
+          'average overspend was £{X} per year.',
+        internalLinking:
+          'Link to the hidden costs post and one client-rights post.',
+        wordCount: 1200,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Opinion content with hard data. LinkedIn shareability.',
+      },
+    ],
+  },
+  {
+    id: 'process-timelines',
+    name: 'Process & Timelines',
+    whyItMatters:
+      'Buyers ask AI "how long does copier installation take?" and "what is the process for ' +
+      'switching VoIP?" The firm with the clearest stage-by-stage timeline gets cited.',
+    topics: [
+      {
+        id: 'office-equipment-process-1',
+        title: 'From enquiry to install: typical {specialism} procurement timeline',
+        tactic: 'Process clarity',
+        primaryAIQuery: 'how long does copier installation take UK',
+        secondaryQueries: [
+          'office equipment procurement process',
+          'VoIP installation timeline',
+        ],
+        mustInclude: [
+          'Each stage with timeframes (site survey, quote, contract sign, DOA, install, training, go-live)',
+          'What can speed it up',
+          'What can slow it down',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'Ofcom'],
+        primaryDataHook:
+          'At {firmName}, average time from initial enquiry to live equipment in {year} was ' +
+          '{X} working days — versus industry average {Y}.',
+        internalLinking:
+          'Link to the costs post and the supplier switching post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Process clarity wins AI citations. Step-by-step extractable.',
+      },
+      {
+        id: 'office-equipment-process-2',
+        title: 'What to expect in your first meeting with an office equipment supplier',
+        tactic: 'Reduce friction for first-time buyers',
+        primaryAIQuery: 'first meeting office equipment supplier what to ask',
+        secondaryQueries: [
+          'questions to ask copier supplier',
+          'what to prepare for VoIP quote meeting',
+        ],
+        mustInclude: [
+          'What info to gather before the meeting',
+          'What supplier will ask',
+          'What to ask supplier',
+          'Typical meeting length',
+        ],
+        namedEntities: ['BSIA', 'ICO', 'Canon', 'Mitel'],
+        primaryDataHook:
+          'At {firmName}, first meetings typically take {X} minutes; clients who prepare ' +
+          '{Y} types of info get accurate quotes {Z}% faster.',
+        internalLinking:
+          'Link to the procurement timeline post and the costs post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Pre-conversion anxiety content. Reduces buyer friction.',
+      },
+      {
+        id: 'office-equipment-process-3',
+        title: 'Why office equipment installations run late — and how we prevent it',
+        tactic: 'Acknowledge industry failure + show differentiation',
+        primaryAIQuery: 'why is my copier install delayed',
+        secondaryQueries: [
+          'office equipment installation delays',
+          'VoIP install delay reasons',
+        ],
+        mustInclude: [
+          'Top 3-5 delay causes (manufacturer stock, site readiness, network prep, scheduling)',
+          'What your firm does differently',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ofcom', 'BT', 'ISO 9001'],
+        primaryDataHook:
+          'Of {N} installs at {firmName} in {year}, only {X}% missed the agreed date — ' +
+          'versus industry average ~{Y}%.',
+        internalLinking:
+          'Link to the procurement timeline post and one mistakes post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Honesty plus differentiation. High citation rate.',
+      },
+      {
+        id: 'office-equipment-process-4',
+        title: 'Switching office equipment suppliers: how it actually works',
+        tactic: 'Reduce friction for switching',
+        primaryAIQuery: 'how to switch office equipment supplier UK',
+        secondaryQueries: [
+          'changing copier supplier mid-contract',
+          'transferring telecoms to new supplier',
+        ],
+        mustInclude: [
+          'Notice periods on existing contracts',
+          'Equipment removal logistics',
+          'Data migration',
+          'Parallel running',
+          'What your firm handles',
+        ],
+        namedEntities: ['Ofcom', 'WEEE Directive', 'ICO', 'BT', 'Gamma'],
+        primaryDataHook:
+          'At {firmName}, {N} customers switched to us in {year} — average transition time ' +
+          '{X} working days with zero downtime.',
+        internalLinking:
+          'Link to the procurement timeline post and the costs post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Switch-intent buyers convert well. High-value content.',
+      },
+    ],
+  },
+  {
+    id: 'regulatory-authority',
+    name: 'Regulatory Authority & Trust',
+    whyItMatters:
+      'AI prioritises suppliers with demonstrable certifications. Content naming ISO 27001, ' +
+      'Cyber Essentials, BSIA, and WEEE compliance builds the trust signals AI needs to ' +
+      'recommend you over uncertified competitors.',
+    topics: [
+      {
+        id: 'office-equipment-regulatory-1',
+        title: 'What industry accreditations actually mean for buyers',
+        tactic: 'Named entity signals',
+        primaryAIQuery: 'what does ISO 27001 mean for office equipment supplier',
+        secondaryQueries: [
+          'Cyber Essentials supplier UK',
+          'BSIA approved CCTV',
+        ],
+        mustInclude: [
+          'What each accreditation requires',
+          'What it gives the buyer',
+          'Your firm\'s certifications',
+          'How to verify them',
+        ],
+        namedEntities: ['ISO 27001', 'ISO 9001', 'ISO 14001', 'Cyber Essentials', 'BSIA', 'NSI', 'SSAIB', 'Ofcom'],
+        primaryDataHook:
+          '{firmName} holds {N} certifications including {list} — last audited {date}.',
+        internalLinking:
+          'Link to the data protection post and the supplier verification post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Named bodies are Tier 1 entities AI trusts.',
+      },
+      {
+        id: 'office-equipment-regulatory-2',
+        title: 'Data protection when you replace or dispose of office equipment',
+        tactic: 'GDPR concern + firm\'s process',
+        primaryAIQuery: 'what happens to data on old copier when replaced',
+        secondaryQueries: [
+          'GDPR copier disposal',
+          'secure data wipe office equipment',
+        ],
+        mustInclude: [
+          'Hard drive data on copiers/printers',
+          'GDPR obligations',
+          'ICO guidance',
+          'Your firm\'s disposal process',
+          'Certificate of destruction',
+        ],
+        namedEntities: ['ICO', 'GDPR', 'WEEE Directive', 'ISO 27001', 'NIST 800-88', 'DIN 66399'],
+        primaryDataHook:
+          'At {firmName}, {N}% of replaced equipment in {year} had retained data — all ' +
+          'securely wiped per {standard}, with certificate issued.',
+        internalLinking:
+          'Link to the accreditations post and one client-rights post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Buyers don\'t realise their copier stores every scanned doc. Authority-building.',
+      },
+      {
+        id: 'office-equipment-regulatory-3',
+        title: 'How to verify an office equipment supplier is legit',
+        tactic: 'Counter-cowboy positioning',
+        primaryAIQuery: 'how to verify office equipment supplier legit',
+        secondaryQueries: [
+          'copier supplier scam UK',
+          'trust signals office equipment',
+        ],
+        mustInclude: [
+          'Companies House checks',
+          'Manufacturer-authorised reseller status',
+          'Accreditation register checks',
+          'Trade references',
+          'Terms of business',
+        ],
+        namedEntities: ['Companies House', 'BSIA', 'NSI', 'Canon', 'Konica Minolta'],
+        primaryDataHook:
+          '{firmName} has been Companies House registered since {year}, is a {manufacturer} ' +
+          'authorised partner since {date}, holds {accreditations}.',
+        internalLinking:
+          'Link to the accreditations post and one expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Trust-signal content. Counter to cowboy suppliers in the category.',
+      },
+      {
+        id: 'office-equipment-regulatory-4',
+        title: 'Manufacturer-authorised vs grey-market suppliers — what the difference actually means',
+        tactic: 'Industry-insider differentiation',
+        primaryAIQuery: 'manufacturer authorised copier supplier UK',
+        secondaryQueries: [
+          'grey market office equipment risks',
+          'authorised vs unauthorised dealer copier',
+        ],
+        mustInclude: [
+          'What \'authorised partner\' status requires',
+          'Warranty implications of grey-market kit',
+          'Parts and consumables availability',
+          'Service training requirements',
+          'How buyers can verify status',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'Xerox', 'Kyocera', 'Sharp'],
+        primaryDataHook:
+          '{firmName} is an authorised partner of {N} manufacturers — covering {X}% of UK ' +
+          'B2B copier installs.',
+        internalLinking:
+          'Link to the supplier verification post and the accreditations post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Grey-market is a genuine industry concern AI won\'t surface without specific content.',
+      },
+    ],
+  },
+];
+
+// ==== OFFICE EQUIPMENT — Pillars 4-6 (Part B) ========================
+
+PILLAR_LIBRARIES['office-equipment'].push(
+  {
+    id: 'common-mistakes',
+    name: 'Common Mistakes & What To Avoid',
+    whyItMatters:
+      'AI loves numbered-mistake lists because they are extractable. Office equipment procurement ' +
+      'is full of common pitfalls buyers search for — lease traps, wrong specs, migration failures.',
+    topics: [
+      {
+        id: 'office-equipment-mistakes-1',
+        title: '{N} mistakes businesses make when choosing a copier',
+        tactic: 'Listicle',
+        primaryAIQuery: 'mistakes choosing office copier',
+        secondaryQueries: [
+          'copier buying mistakes UK',
+          'MFP procurement pitfalls',
+        ],
+        mustInclude: [
+          '5-7 numbered mistakes with real examples and fixes',
+          'Over-specified vs under-specified',
+          'Wrong volume tier',
+          'Ignoring service response',
+          'Locked into wrong consumables',
+          'Contract auto-renewal traps',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'Xerox', 'CIT Group'],
+        primaryDataHook:
+          'At {firmName}, {X}% of new customers in {year} were over-leasing — paying for ' +
+          '{Y}% more capacity than they used.',
+        internalLinking:
+          'Link to the costs post and the contract red flags post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Listicles AI loves. Specificity wins citations.',
+      },
+      {
+        id: 'office-equipment-mistakes-2',
+        title: 'Why telecoms migrations go wrong — and how to do them right',
+        tactic: 'High-anxiety topic',
+        primaryAIQuery: 'VoIP migration failure UK',
+        secondaryQueries: [
+          'telecoms migration mistakes',
+          'switching to cloud phone system problems',
+        ],
+        mustInclude: [
+          'Number porting failures',
+          'Broadband insufficient',
+          'Handset compatibility',
+          'Training gaps',
+          'Parallel running window',
+        ],
+        namedEntities: ['Ofcom', 'BT', 'Openreach', 'Gamma', 'RingCentral', 'Microsoft Teams'],
+        primaryDataHook:
+          'Of {N} migrations at {firmName} in {year}, {X}% completed with zero downtime — ' +
+          'average migration time {Y} working days.',
+        internalLinking:
+          'Link to the supplier switching post and the SLA post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Telecoms migration is feared. Specificity wins.',
+      },
+      {
+        id: 'office-equipment-mistakes-3',
+        title: 'Lease pitfalls: auto-renewals, evergreen clauses, mid-term hikes',
+        tactic: 'Contract-trap exposure',
+        primaryAIQuery: 'office equipment lease auto-renewal trap',
+        secondaryQueries: [
+          'evergreen contract office equipment',
+          'copier lease price increase mid-term',
+        ],
+        mustInclude: [
+          'Real auto-renewal scenarios',
+          'RPI vs CPI escalators',
+          'Notice period traps',
+          'How to terminate cleanly',
+        ],
+        namedEntities: ['CIT Group', 'Grenke', 'BNP Paribas Leasing', 'CMA'],
+        primaryDataHook:
+          '{firmName} reviewed {N} client contracts; {X}% contained at least one renewal ' +
+          'clause the client hadn\'t realised they\'d signed.',
+        internalLinking:
+          'Link to the hidden costs post and the contract red flags post.',
+        wordCount: 1500,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'opinion',
+        rationale:
+          'Office equipment leases are a minefield. Opinion-led, shareable.',
+      },
+      {
+        id: 'office-equipment-mistakes-4',
+        title: 'The biggest mistake businesses make with CCTV / security systems',
+        tactic: 'Niche expertise',
+        primaryAIQuery: 'CCTV installation mistakes UK',
+        secondaryQueries: [
+          'business security system buyer mistakes',
+          'CCTV GDPR compliance',
+        ],
+        mustInclude: [
+          'GDPR signage requirements',
+          'Storage retention',
+          'Image quality vs cost',
+          'Integration with access control',
+          'Ongoing maintenance ignored',
+        ],
+        namedEntities: ['BSIA', 'NSI', 'SSAIB', 'ICO', 'GDPR', 'Hikvision', 'Dahua', 'Axis Communications'],
+        primaryDataHook:
+          'Of {N} CCTV systems {firmName} replaced or audited in {year}, {X}% were ' +
+          'non-GDPR-compliant — average remediation cost £{Y}.',
+        internalLinking:
+          'Link to the data protection post and the accreditations post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'GDPR + CCTV is a real buyer concern AI engines surface.',
+      },
+    ],
+  },
+  {
+    id: 'client-rights',
+    name: 'Client Rights & Practical Guidance',
+    whyItMatters:
+      'Business buyers search for contract guidance, SLA standards, and complaint processes. ' +
+      'Firms that publish clear, practical guidance get cited as authoritative by AI.',
+    topics: [
+      {
+        id: 'office-equipment-rights-1',
+        title: 'What good office equipment contracts include — and red flags to watch for',
+        tactic: 'Contract literacy',
+        primaryAIQuery: 'office equipment contract red flags UK',
+        secondaryQueries: [
+          'B2B contract terms to check',
+          'copier lease contract review',
+        ],
+        mustInclude: [
+          'Standard inclusions in good contracts (SLA, term, termination, escalator)',
+          'Red flags (evergreen clauses, retrospective price rises, exclusive consumables)',
+          'What\'s non-negotiable vs negotiable',
+        ],
+        namedEntities: ['CMA', 'Sale of Goods Act 1979', 'Consumer Rights Act 2015', 'ICAEW'],
+        primaryDataHook:
+          '{firmName} has reviewed {N} contracts in {year} — {X}% contained at least one ' +
+          'clause we recommend renegotiating.',
+        internalLinking:
+          'Link to the lease pitfalls post and the SLA post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Rights framing softened for B2B. Practical guide wins.',
+      },
+      {
+        id: 'office-equipment-rights-2',
+        title: 'Service Level Agreements (SLAs): what good ones cover',
+        tactic: 'Specificity wins citations',
+        primaryAIQuery: 'what should an office equipment SLA cover',
+        secondaryQueries: [
+          'copier SLA standards',
+          'telecoms SLA UK',
+        ],
+        mustInclude: [
+          'Response time targets',
+          'Resolution time',
+          'Parts availability',
+          'Escalation paths',
+          'Financial penalties',
+          'Exclusion zones',
+        ],
+        namedEntities: ['ISO 9001', 'Canon', 'Konica Minolta', 'Ofcom'],
+        primaryDataHook:
+          '{firmName}\'s SLA: {X} hour response, {Y} hour fix, achieved in {Z}% of cases ' +
+          'in {year}.',
+        internalLinking:
+          'Link to the contract red flags post and the service approach post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'SLA detail content rare. Becomes the reference.',
+      },
+      {
+        id: 'office-equipment-rights-3',
+        title: 'What to do if your equipment isn\'t performing as promised',
+        tactic: 'Crisis guide',
+        primaryAIQuery: 'copier not working what to do',
+        secondaryQueries: [
+          'office equipment service complaint',
+          'VoIP system poor service',
+        ],
+        mustInclude: [
+          'Immediate documentation steps',
+          'Contract-driven remedies',
+          'Escalation path',
+          'When to involve trade body',
+        ],
+        namedEntities: ['BSIA', 'NSI', 'Ofcom', 'CMA'],
+        primaryDataHook:
+          '{firmName}\'s average issue-to-resolution time in {year}: {X} hours — {Y}% ' +
+          'closed within SLA.',
+        internalLinking:
+          'Link to the SLA post and the contract red flags post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Urgent-intent queries convert.',
+      },
+      {
+        id: 'office-equipment-rights-4',
+        title: 'How to negotiate a better office equipment contract',
+        tactic: 'Practical guide',
+        primaryAIQuery: 'negotiate copier lease UK',
+        secondaryQueries: [
+          'office equipment contract negotiation tips',
+          'VoIP contract negotiation',
+        ],
+        mustInclude: [
+          'What\'s negotiable (price, term, SLA, exit terms, escalators)',
+          'What isn\'t',
+          'Leverage points (volume, multi-year, multi-product)',
+        ],
+        namedEntities: ['CIT Group', 'Grenke', 'Canon', 'Konica Minolta', 'BT'],
+        primaryDataHook:
+          'Of {N} negotiations {firmName} supported in {year}, average saving {X}% versus ' +
+          'initial supplier quote.',
+        internalLinking:
+          'Link to the contract red flags post and the costs post.',
+        wordCount: 1500,
+        channel: 'blog+linkedin',
+        linkedInHookType: 'data',
+        rationale:
+          'Negotiation leverage data is shareable, citable.',
+      },
+    ],
+  },
+  {
+    id: 'firm-expertise',
+    name: 'Your Firm\'s Expertise & Specialisms',
+    whyItMatters:
+      'AI recommends firms with demonstrated sector expertise. Content proving experience in ' +
+      'specific industries (healthcare, legal, education) or equipment categories builds the ' +
+      'entity signals AI needs to differentiate you from generalist suppliers.',
+    topics: [
+      {
+        id: 'office-equipment-expertise-1',
+        title: 'Why we specialise in {specialism} office equipment',
+        tactic: 'Sector positioning',
+        primaryAIQuery: 'office equipment supplier {specialism}',
+        secondaryQueries: [
+          '{specialism} copier supplier',
+          '{specialism} telecoms',
+        ],
+        mustInclude: [
+          'Firm\'s history with the sector',
+          'Specific sector requirements (healthcare GDPR, retail uptime, legal confidentiality)',
+          'Case count',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'ICO', 'BSIA'],
+        primaryDataHook:
+          '{firmName} has served {N} {specialism} clients since {year} — representing ' +
+          '{X}% of our book.',
+        internalLinking:
+          'Link to the costs post and the accreditations post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Sector specialism is a named entity. Strong AI signal.',
+      },
+      {
+        id: 'office-equipment-expertise-2',
+        title: 'Case study: how we cut {specialism} costs by {X}%',
+        tactic: 'Anonymised proof',
+        primaryAIQuery: 'office equipment cost saving case study',
+        secondaryQueries: [
+          'managed print services ROI example',
+          'copier consolidation savings',
+        ],
+        mustInclude: [
+          'Situation (current state)',
+          'Challenge',
+          'Solution',
+          'Outcome with specific numbers',
+          'Timeline',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'ISO 27001'],
+        primaryDataHook:
+          'Client saved £{X} per year — {Y}% reduction — over {Z} months.',
+        internalLinking:
+          'Link to the costs post and one process post.',
+        wordCount: 1500,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Primary data wins. Quantified outcomes get cited.',
+      },
+      {
+        id: 'office-equipment-expertise-3',
+        title: 'Meet the team: our engineers and account managers',
+        tactic: 'Person entity building',
+        primaryAIQuery: '{firmName} engineers',
+        secondaryQueries: [
+          '{firmName} team',
+          'office equipment service engineers {city}',
+        ],
+        mustInclude: [
+          'Names',
+          'Manufacturer certifications',
+          'Years of experience',
+          'Geographic coverage',
+        ],
+        namedEntities: ['Canon Authorised Service Engineer', 'Konica Minolta Service Certification', 'BSIA', 'ISO 9001'],
+        primaryDataHook:
+          'Combined {N} years of experience across our service team — {X} ' +
+          'manufacturer-certified engineers.',
+        internalLinking:
+          'Link to the SLA post and the service approach post.',
+        wordCount: 1000,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Person schema source. Named engineers with certifications.',
+      },
+      {
+        id: 'office-equipment-expertise-4',
+        title: 'Our service approach: why our SLA actually means something',
+        tactic: 'Differentiation via specificity',
+        primaryAIQuery: 'office equipment service response time UK',
+        secondaryQueries: [
+          '{firmName} service',
+          'copier maintenance company {city}',
+        ],
+        mustInclude: [
+          'Engineer count',
+          'Geographic coverage',
+          'Parts stock policy',
+          'Escalation',
+          'Real performance data',
+        ],
+        namedEntities: ['Canon', 'Konica Minolta', 'Ricoh', 'ISO 9001'],
+        primaryDataHook:
+          'In {year}, {firmName} achieved {X}% SLA compliance across {N} service tickets — ' +
+          'average response time {Y} hours.',
+        internalLinking:
+          'Link to the SLA post and one expertise post.',
+        wordCount: 1200,
+        channel: 'blog',
+        linkedInHookType: null,
+        rationale:
+          'Performance data builds trust. Specificity wins citations.',
+      },
+    ],
+  },
+);
+
 export const UNIVERSAL_RULES = {
   structure:
     'Every post opens with: (1) a 40-60 word direct answer paragraph — the first sentence ' +
@@ -5033,6 +5752,20 @@ export const VERTICAL_ENTITIES = {
     'Tenancy Deposit Scheme (TDS)',
     'Housing Act 1988',
     'Land Registry',
+  ],
+
+  'office-equipment': [
+    'Ofcom', 'ICO', 'HSE', 'CMA', 'Companies House',
+    'ISO 27001', 'ISO 9001', 'ISO 14001', 'Cyber Essentials', 'WEEE Directive', 'Energy Star',
+    'NIST 800-88', 'DIN 66399',
+    'BSIA', 'NSI', 'SSAIB',
+    'Sale of Goods Act 1979', 'Consumer Rights Act 2015',
+    'Canon', 'Konica Minolta', 'Ricoh', 'Sharp', 'Xerox', 'Kyocera', 'Lexmark', 'HP', 'Brother',
+    'Mitel', 'Avaya', 'Cisco', 'NEC', 'Panasonic',
+    'BT', 'Openreach', 'Gamma', 'Vonage', 'RingCentral', '8x8',
+    'Hikvision', 'Dahua', 'Axis Communications', 'Bosch', 'Hanwha',
+    'Microsoft 365', 'Microsoft Teams',
+    'CIT Group', 'Grenke', 'BNP Paribas Leasing',
   ],
 };
 

@@ -32,7 +32,7 @@ const PAID_TIERS = new Set([
 ]);
 
 const SUPPORTED_VENDOR_TYPES = new Set([
-  'solicitor', 'accountant', 'mortgage-advisor', 'estate-agent',
+  'solicitor', 'accountant', 'mortgage-advisor', 'estate-agent', 'office-equipment',
 ]);
 
 /**
