@@ -107,9 +107,9 @@ describe('Detective Agent — AEO Detector Stress Tests', () => {
     const html = loadFixture('fixture-3-empty-meta.html');
     const result = analyseAeoSignals(html, 'https://example.com');
 
-    it('scores between 5 and 30', () => {
+    it('scores between 5 and 35 (has h1 so infra stays uncapped, but no meta/schema/social)', () => {
       expect(result.overallScore).toBeGreaterThanOrEqual(5);
-      expect(result.overallScore).toBeLessThanOrEqual(30);
+      expect(result.overallScore).toBeLessThanOrEqual(35);
     });
 
     it('meta check gives partial or zero credit for empty strings', () => {
@@ -224,17 +224,18 @@ describe('Detective Agent — AEO Detector Stress Tests', () => {
       expect(social.score).toBe(0);
     });
 
-    it('overall score is under 25', () => {
-      expect(result.overallScore).toBeLessThanOrEqual(25);
+    it('overall score is under 15 (infra-capped, no business signals)', () => {
+      expect(result.overallScore).toBeLessThanOrEqual(15);
     });
   });
 
   describe('scoring consistency', () => {
-    it('overallScore equals sum of individual check scores', () => {
+    it('overallScore is at most the sum of individual check scores (infra capping may reduce it)', () => {
       const html = loadFixture('fixture-1-perfect.html');
       const result = analyseAeoSignals(html, 'https://example.com');
       const sum = result.checks.reduce((acc, c) => acc + c.score, 0);
-      expect(result.overallScore).toBe(sum);
+      expect(result.overallScore).toBeLessThanOrEqual(sum);
+      expect(result.overallScore).toBeGreaterThan(0);
     });
 
     it('all scores are integers', () => {

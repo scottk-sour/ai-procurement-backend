@@ -501,6 +501,23 @@ export function analyseAeoSignals(html, url) {
 
   const overallScore = checks.reduce((sum, c) => sum + c.score, 0);
 
+  // Gate infrastructure scores: if the page has no business-useful signals
+  // (schema, meta content, h1, social, contact, FAQ all scored 0 and content
+  // is thin), cap SSL/viewport/speed to reduce score inflation on empty pages.
+  const businessSignals = checks.filter(c =>
+    ['schema', 'meta', 'h1', 'social', 'contact', 'faq'].includes(c.key)
+  ).reduce((s, c) => s + c.score, 0);
+  const infraCap = businessSignals === 0 ? 3 : 10;
+  let adjustedScore = 0;
+  for (const check of checks) {
+    if (['ssl', 'viewport', 'speed'].includes(check.key)) {
+      adjustedScore += Math.min(check.score, infraCap);
+    } else {
+      adjustedScore += check.score;
+    }
+  }
+  const finalScore = adjustedScore;
+
   // Detect TendorAI schema — scan JSON-LD blocks for tendorai.com and check for script tag
   let tendoraiSchemaDetected = false;
   for (const match of ldJsonMatches) {
@@ -514,7 +531,7 @@ export function analyseAeoSignals(html, url) {
       /src=["'][^"']*tendorai\.com[^"']*schema/i.test(html);
   }
 
-  return { overallScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads };
+  return { overallScore: finalScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads };
 }
 
 /**
