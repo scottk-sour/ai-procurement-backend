@@ -353,8 +353,8 @@ export function analyseAeoSignals(html, url) {
   const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
     || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
   const description = descMatch ? descMatch[1].trim() : '';
-  const titleOk = title.length >= 20 && title.length <= 70;
-  const descOk = description.length >= 50 && description.length <= 160;
+  const titleOk = title.length >= 20 && title.length <= 80;
+  const descOk = description.length >= 50 && description.length <= 200;
   const metaScore = (titleOk ? 5 : title.length > 0 ? 2 : 0) + (descOk ? 5 : description.length > 0 ? 2 : 0);
   checks.push({
     name: 'Meta Title & Description',
@@ -363,9 +363,9 @@ export function analyseAeoSignals(html, url) {
     maxScore: 10,
     passed: metaScore >= 7,
     details: `Title: ${title.length} chars${titleOk ? ' (good)' : ''}, Description: ${description.length} chars${descOk ? ' (good)' : ''}`,
-    recommendation: metaScore < 7 ? 'Optimise your meta title (20-70 chars) and description (50-160 chars) with clear business keywords.' : '',
+    recommendation: metaScore < 7 ? 'Optimise your meta title (20-80 chars) and description (50-200 chars) with clear business keywords.' : '',
   });
-  if (metaScore < 7) recommendations.push('Improve meta title (20-70 chars) and description (50-160 chars).');
+  if (metaScore < 7) recommendations.push('Improve meta title (20-80 chars) and description (50-200 chars).');
 
   // 3. H1 heading
   const h1Matches = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || [];
