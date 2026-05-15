@@ -187,6 +187,56 @@ describe('getFirmContext — FirmFacts integration', () => {
     expect(ctx.location.city).toBe('Newport');
   });
 
+  it('surfaces brandIdentity fields separately from firmFacts', async () => {
+    mockVendor();
+    mockFirmFacts({
+      vendorId: VENDOR_ID,
+      completionPercentage: 60,
+      stage2: {
+        toneOfVoice: { value: 'approachable', filledAt: new Date(), source: 'self' },
+        brandKeywords: { value: ['transparent', 'local', 'expert'], filledAt: new Date(), source: 'self' },
+        uniqueSellingPoints: { value: ['Fixed fees', 'Same-day response'], filledAt: new Date(), source: 'self' },
+        clientTypes: { value: ['First-time buyers', 'Investors'], filledAt: new Date(), source: 'self' },
+        formalComplaintsThisYear: { value: 1, filledAt: new Date(), source: 'self' },
+      },
+      brandIdentity: {
+        awards: { value: ['Law Society Excellence 2025'], filledAt: new Date(), source: 'self' },
+        competitors: { value: ['Morgan Cole', 'Hugh James'], filledAt: new Date(), source: 'self' },
+        feeEarnerCount: { value: null, filledAt: null, source: null },
+      },
+    });
+
+    const ctx = await getFirmContext(VENDOR_ID);
+
+    expect(ctx.brandIdentity).toBeDefined();
+    expect(ctx.brandIdentity.toneOfVoice).toBe('approachable');
+    expect(ctx.brandIdentity.brandKeywords).toEqual(['transparent', 'local', 'expert']);
+    expect(ctx.brandIdentity.uniqueSellingPoints).toEqual(['Fixed fees', 'Same-day response']);
+    expect(ctx.brandIdentity.clientTypes).toEqual(['First-time buyers', 'Investors']);
+    expect(ctx.brandIdentity.awards).toEqual(['Law Society Excellence 2025']);
+    expect(ctx.brandIdentity.competitors).toEqual(['Morgan Cole', 'Hugh James']);
+    expect(ctx.brandIdentity.feeEarnerCount).toBeUndefined();
+    expect(ctx.firmFacts.formalComplaintsThisYear).toBe(1);
+    expect(ctx.firmFacts.toneOfVoice).toBeUndefined();
+  });
+
+  it('omits brandIdentity section when no brand fields filled', async () => {
+    mockVendor();
+    mockFirmFacts({
+      vendorId: VENDOR_ID,
+      completionPercentage: 20,
+      stage1: {
+        regulatoryNumber: { value: '654321', filledAt: new Date(), source: 'verified_register' },
+        transactionCountLastYear: { value: null, filledAt: null, source: null },
+        typicalAllInCost: { value: null, filledAt: null, source: null },
+      },
+    });
+
+    const ctx = await getFirmContext(VENDOR_ID);
+
+    expect(ctx.brandIdentity).toBeUndefined();
+  });
+
   it('throws when Vendor not found (regardless of FirmFacts)', async () => {
     mockVendorFindById.mockReturnValue({ lean: vi.fn().mockResolvedValue(null) });
     mockFirmFacts({ vendorId: VENDOR_ID, completionPercentage: 50 });
@@ -254,5 +304,29 @@ describe('renderFirmContextBlock — adaptive guidance by completeness threshold
     const block = renderFirmContextBlock({ company: 'Test' });
     expect(block).toContain('0% of firm data fields are filled.');
     expect(block).toContain(LOW_GUIDANCE);
+  });
+
+  it('includes <brand_identity> section when brandIdentity is present', () => {
+    const block = renderFirmContextBlock({
+      company: 'Test',
+      firmFactsCompleteness: 60,
+      brandIdentity: {
+        toneOfVoice: 'approachable',
+        brandKeywords: ['transparent', 'local'],
+        uniqueSellingPoints: ['Fixed fees', 'Same-day response'],
+        clientTypes: ['SMEs', 'Sole Traders'],
+      },
+    });
+    expect(block).toContain('<brand_identity>');
+    expect(block).toContain('Tone: approachable');
+    expect(block).toContain('transparent, local');
+    expect(block).toContain('Fixed fees; Same-day response');
+    expect(block).toContain('SMEs, Sole Traders');
+    expect(block).toContain('</brand_identity>');
+  });
+
+  it('omits <brand_identity> section when brandIdentity is absent', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 20 });
+    expect(block).not.toContain('<brand_identity>');
   });
 });

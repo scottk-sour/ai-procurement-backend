@@ -31,7 +31,7 @@ async function main() {
   console.log('Connected to MongoDB.\n');
 
   const vendors = await Vendor.find({ tier: { $in: PRO_TIERS } })
-    .select('_id company vendorType location practiceAreas sraNumber icaewFirmNumber fcaNumber propertymarkNumber')
+    .select('_id company vendorType location practiceAreas sraNumber icaewFirmNumber fcaNumber propertymarkNumber firmFacts')
     .lean();
 
   console.log(`Found ${vendors.length} Pro vendor(s).\n`);
@@ -56,28 +56,48 @@ async function main() {
         vendor.propertymarkNumber ||
         null;
 
+      const ff = (val, src = 'self') => ({ value: val || null, filledAt: val ? new Date() : null, source: val ? src : null });
+      const empty = () => ({ value: null, filledAt: null, source: null });
+
+      // Branding fields from Vendor.firmFacts (frontend-managed subdocument)
+      const brand = vendor.firmFacts || {};
+
       const doc = new FirmFacts({
         vendorId: vendor._id,
         identity: {
-          firmName: { value: vendor.company || null, filledAt: new Date(), source: 'verified_register' },
-          city: { value: vendor.location?.city || null, filledAt: vendor.location?.city ? new Date() : null, source: vendor.location?.city ? 'self' : null },
-          vendorType: { value: vendor.vendorType || null, filledAt: new Date(), source: 'self' },
-          primarySpecialism: { value: vendor.practiceAreas?.[0] || null, filledAt: vendor.practiceAreas?.[0] ? new Date() : null, source: vendor.practiceAreas?.[0] ? 'self' : null },
-          yearEstablished: { value: null, filledAt: null, source: null },
+          firmName: ff(vendor.company, 'verified_register'),
+          city: ff(vendor.location?.city),
+          vendorType: ff(vendor.vendorType),
+          primarySpecialism: ff(vendor.practiceAreas?.[0]),
+          yearEstablished: brand.yearFounded ? ff(brand.yearFounded) : empty(),
         },
         stage1: {
-          regulatoryNumber: { value: regNumber, filledAt: regNumber ? new Date() : null, source: regNumber ? 'verified_register' : null },
-          transactionCountLastYear: { value: null, filledAt: null, source: null },
-          typicalAllInCost: { value: null, filledAt: null, source: null },
+          regulatoryNumber: ff(regNumber, 'verified_register'),
+          transactionCountLastYear: empty(),
+          typicalAllInCost: empty(),
+        },
+        stage2: {
+          clientTypes: brand.clientTypes?.length ? ff(brand.clientTypes) : empty(),
+          toneOfVoice: ff(brand.toneOfVoice),
+          brandKeywords: brand.brandKeywords?.length ? ff(brand.brandKeywords) : empty(),
+          uniqueSellingPoints: brand.uniqueSellingPoints?.length ? ff(brand.uniqueSellingPoints) : empty(),
+        },
+        brandIdentity: {
+          partners: brand.partners?.length ? ff(brand.partners) : empty(),
+          feeEarnerCount: ff(brand.feeEarnerCount),
+          additionalOffices: brand.additionalOffices?.length ? ff(brand.additionalOffices) : empty(),
+          awards: brand.awards?.length ? ff(brand.awards) : empty(),
+          memberships: brand.memberships?.length ? ff(brand.memberships) : empty(),
+          competitors: brand.competitors?.length ? ff(brand.competitors) : empty(),
         },
       });
 
       await doc.save();
       created++;
 
-      const filledCount = [vendor.company, vendor.location?.city, vendor.vendorType, vendor.practiceAreas?.[0], regNumber]
-        .filter(Boolean).length;
-      console.log(`  [created] ${vendor.company} — ${filledCount} identity fields migrated`);
+      const identityCount = [vendor.company, vendor.location?.city, vendor.vendorType, vendor.practiceAreas?.[0], regNumber].filter(Boolean).length;
+      const brandCount = [brand.clientTypes?.length, brand.toneOfVoice, brand.brandKeywords?.length, brand.uniqueSellingPoints?.length, brand.partners?.length, brand.feeEarnerCount, brand.awards?.length, brand.memberships?.length, brand.competitors?.length].filter(Boolean).length;
+      console.log(`  [created] ${vendor.company} — ${identityCount} identity + ${brandCount} branding fields migrated`);
     } catch (err) {
       errors++;
       console.error(`  [error] ${vendor.company}: ${err.message}`);
