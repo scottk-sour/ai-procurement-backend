@@ -353,8 +353,8 @@ export function analyseAeoSignals(html, url) {
   const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
     || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
   const description = descMatch ? descMatch[1].trim() : '';
-  const titleOk = title.length >= 20 && title.length <= 70;
-  const descOk = description.length >= 50 && description.length <= 160;
+  const titleOk = title.length >= 20 && title.length <= 80;
+  const descOk = description.length >= 50 && description.length <= 200;
   const metaScore = (titleOk ? 5 : title.length > 0 ? 2 : 0) + (descOk ? 5 : description.length > 0 ? 2 : 0);
   checks.push({
     name: 'Meta Title & Description',
@@ -363,9 +363,9 @@ export function analyseAeoSignals(html, url) {
     maxScore: 10,
     passed: metaScore >= 7,
     details: `Title: ${title.length} chars${titleOk ? ' (good)' : ''}, Description: ${description.length} chars${descOk ? ' (good)' : ''}`,
-    recommendation: metaScore < 7 ? 'Optimise your meta title (20-70 chars) and description (50-160 chars) with clear business keywords.' : '',
+    recommendation: metaScore < 7 ? 'Optimise your meta title (20-80 chars) and description (50-200 chars) with clear business keywords.' : '',
   });
-  if (metaScore < 7) recommendations.push('Improve meta title (20-70 chars) and description (50-160 chars).');
+  if (metaScore < 7) recommendations.push('Improve meta title (20-80 chars) and description (50-200 chars).');
 
   // 3. H1 heading
   const h1Matches = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || [];
@@ -501,6 +501,23 @@ export function analyseAeoSignals(html, url) {
 
   const overallScore = checks.reduce((sum, c) => sum + c.score, 0);
 
+  // Gate infrastructure scores: if the page has no business-useful signals
+  // (schema, meta content, h1, social, contact, FAQ all scored 0 and content
+  // is thin), cap SSL/viewport/speed to reduce score inflation on empty pages.
+  const businessSignals = checks.filter(c =>
+    ['schema', 'meta', 'h1', 'social', 'contact', 'faq'].includes(c.key)
+  ).reduce((s, c) => s + c.score, 0);
+  const infraCap = businessSignals === 0 ? 3 : 10;
+  let adjustedScore = 0;
+  for (const check of checks) {
+    if (['ssl', 'viewport', 'speed'].includes(check.key)) {
+      adjustedScore += Math.min(check.score, infraCap);
+    } else {
+      adjustedScore += check.score;
+    }
+  }
+  const finalScore = adjustedScore;
+
   // Detect TendorAI schema — scan JSON-LD blocks for tendorai.com and check for script tag
   let tendoraiSchemaDetected = false;
   for (const match of ldJsonMatches) {
@@ -514,7 +531,7 @@ export function analyseAeoSignals(html, url) {
       /src=["'][^"']*tendorai\.com[^"']*schema/i.test(html);
   }
 
-  return { overallScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads };
+  return { overallScore: finalScore, checks, recommendations, tendoraiSchemaDetected, jsonLdPayloads };
 }
 
 /**

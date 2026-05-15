@@ -456,13 +456,39 @@ async function handleCheckoutComplete(session) {
       subscriptionId: session.subscription
     });
 
-    // Fire Listings Agent on Pro upgrade (fire-and-forget)
+    // Fire agents on Pro upgrade (fire-and-forget)
     if (['managed', 'verified', 'enterprise'].includes(vendor.tier)) {
       import('../services/listingsAgent.js').then(m =>
         m.runListingsForVendor(vendor._id).catch(err =>
           console.error('[ProSignup] Listings trigger failed:', err.message)
         )
       );
+
+      // Generate initial AeoReport so the weekly digest has a score
+      // from day one (otherwise vendor sees "being calculated" forever)
+      import('../services/aeoReportGenerator.js').then(async (m) => {
+        try {
+          const category = (vendor.practiceAreas?.[0] || vendor.services?.[0] || vendor.vendorType || 'other').toLowerCase().replace(/\s+/g, '-');
+          const city = vendor.location?.city;
+          const websiteUrl = vendor.contactInfo?.website;
+          if (!city) {
+            console.log(`[ProSignup] Skipping initial AeoReport for ${vendor.company}: no city`);
+            return;
+          }
+          const reportData = await m.generateFullReport({
+            companyName: vendor.company,
+            category,
+            city,
+            email: vendor.email,
+            websiteUrl,
+          });
+          const { default: AeoReport } = await import('../models/AeoReport.js');
+          await AeoReport.create({ ...reportData, vendorId: vendor._id });
+          console.log(`[ProSignup] Initial AeoReport created for ${vendor.company}`);
+        } catch (err) {
+          console.error(`[ProSignup] Initial AeoReport failed for ${vendor.company}:`, err.message);
+        }
+      });
     }
 
     // Send Pro upgrade confirmation email
