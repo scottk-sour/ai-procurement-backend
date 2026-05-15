@@ -166,8 +166,8 @@ describe('Writer Agent', () => {
 
   // ── Per-vendor cap ─────────────────────────────────────────
   describe('monthly per-vendor cap', () => {
-    it('skips when 4 completed runs exist this month', async () => {
-      AgentRun.countDocuments.mockResolvedValue(4);
+    it('skips when 14 completed runs exist this month', async () => {
+      AgentRun.countDocuments.mockResolvedValue(14);
       const result = await runWriterAgentForVendor(VENDOR_ID);
       expect(result).toEqual({ skipped: true, reason: 'monthly_per_vendor_cap_reached', vendorId: VENDOR_ID.toString() });
     });
