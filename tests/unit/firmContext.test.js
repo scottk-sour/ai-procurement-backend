@@ -195,28 +195,64 @@ describe('getFirmContext — FirmFacts integration', () => {
   });
 });
 
-describe('renderFirmContextBlock — completeness messaging', () => {
-  it('includes data_completeness tag with percentage', () => {
-    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 80 });
-    expect(block).toContain('<data_completeness>');
-    expect(block).toContain('80%');
-    expect(block).toContain('Prefer real numbers');
-  });
+describe('renderFirmContextBlock — adaptive guidance by completeness threshold', () => {
+  const LOW_GUIDANCE = 'This firm has filled in very little of its data. Use [FIRM TO PROVIDE: ...] markers throughout. Only use the basic identity fields (company, city, specialism, vendorType) without markers.';
+  const MID_GUIDANCE = 'This firm has filled in some of its data. Use verified numbers where present in firm_context. Use [FIRM TO PROVIDE: ...] markers liberally for the rest.';
+  const HIGH_GUIDANCE = 'This firm has filled in most of its data. Prefer the verified numbers in firm_context. Only use [FIRM TO PROVIDE: ...] markers for facts not present in this block.';
 
-  it('uses "limited data" wording for low completeness', () => {
-    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 10 });
-    expect(block).toContain('limited data');
-    expect(block).toContain('[FIRM TO PROVIDE: ...] markers liberally');
-  });
-
-  it('uses "some data" wording for medium completeness', () => {
+  it('places the data_completeness tag after the JSON payload, inside <firm_context>', () => {
     const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 50 });
-    expect(block).toContain('some data');
+    const jsonIdx = block.indexOf('"company": "Test"');
+    const completenessIdx = block.indexOf('<data_completeness>');
+    const closingIdx = block.indexOf('</firm_context>');
+    expect(jsonIdx).toBeGreaterThan(0);
+    expect(completenessIdx).toBeGreaterThan(jsonIdx);
+    expect(closingIdx).toBeGreaterThan(completenessIdx);
   });
 
-  it('defaults to 0% when firmFactsCompleteness is undefined', () => {
+  it('0% completeness → low-data guidance ("markers throughout")', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 0 });
+    expect(block).toContain('0% of firm data fields are filled.');
+    expect(block).toContain(LOW_GUIDANCE);
+    expect(block).not.toContain(MID_GUIDANCE);
+    expect(block).not.toContain(HIGH_GUIDANCE);
+  });
+
+  it('22% completeness → low-data guidance ("markers throughout")', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 22 });
+    expect(block).toContain('22% of firm data fields are filled.');
+    expect(block).toContain(LOW_GUIDANCE);
+    expect(block).not.toContain(MID_GUIDANCE);
+    expect(block).not.toContain(HIGH_GUIDANCE);
+  });
+
+  it('50% completeness → mid-data guidance ("markers liberally")', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 50 });
+    expect(block).toContain('50% of firm data fields are filled.');
+    expect(block).toContain(MID_GUIDANCE);
+    expect(block).not.toContain(LOW_GUIDANCE);
+    expect(block).not.toContain(HIGH_GUIDANCE);
+  });
+
+  it('80% completeness → high-data guidance ("prefer verified numbers")', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 80 });
+    expect(block).toContain('80% of firm data fields are filled.');
+    expect(block).toContain(HIGH_GUIDANCE);
+    expect(block).not.toContain(LOW_GUIDANCE);
+    expect(block).not.toContain(MID_GUIDANCE);
+  });
+
+  it('100% completeness → high-data guidance ("prefer verified numbers")', () => {
+    const block = renderFirmContextBlock({ company: 'Test', firmFactsCompleteness: 100 });
+    expect(block).toContain('100% of firm data fields are filled.');
+    expect(block).toContain(HIGH_GUIDANCE);
+    expect(block).not.toContain(LOW_GUIDANCE);
+    expect(block).not.toContain(MID_GUIDANCE);
+  });
+
+  it('defaults to 0% (low-data guidance) when firmFactsCompleteness is undefined', () => {
     const block = renderFirmContextBlock({ company: 'Test' });
-    expect(block).toContain('0%');
-    expect(block).toContain('limited data');
+    expect(block).toContain('0% of firm data fields are filled.');
+    expect(block).toContain(LOW_GUIDANCE);
   });
 });

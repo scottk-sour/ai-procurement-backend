@@ -240,20 +240,17 @@ export async function getFirmContext(vendorId) {
  */
 export function renderFirmContextBlock(firmContext) {
   const completeness = firmContext.firmFactsCompleteness ?? 0;
-  const completenessNote = completeness >= 80
-    ? 'This firm has provided most of its data. Prefer real numbers from the context below. Use [FIRM TO PROVIDE: ...] only for the few remaining gaps.'
+  const guidance = completeness >= 80
+    ? 'This firm has filled in most of its data. Prefer the verified numbers in firm_context. Only use [FIRM TO PROVIDE: ...] markers for facts not present in this block.'
     : completeness >= 40
-      ? 'This firm has provided some data. Use the facts below where available. Use [FIRM TO PROVIDE: ...] markers for anything not present.'
-      : 'This firm has provided limited data so far. Use what is available below. Use [FIRM TO PROVIDE: ...] markers liberally for missing facts.';
+      ? 'This firm has filled in some of its data. Use verified numbers where present in firm_context. Use [FIRM TO PROVIDE: ...] markers liberally for the rest.'
+      : 'This firm has filled in very little of its data. Use [FIRM TO PROVIDE: ...] markers throughout. Only use the basic identity fields (company, city, specialism, vendorType) without markers.';
 
   return `<firm_context>
 The following facts are verified from this firm's record in the TendorAI database.
-Use them directly in the post — DO NOT use [FIRM TO PROVIDE: ...] markers for any field present here.
-
-<data_completeness>${completeness}% of firm data fields are filled. ${completenessNote}</data_completeness>
 
 ${JSON.stringify(firmContext, null, 2)}
-</firm_context>
 
-Use [FIRM TO PROVIDE: ...] markers ONLY for facts not in the firm_context block above.`;
+<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>
+</firm_context>`;
 }
