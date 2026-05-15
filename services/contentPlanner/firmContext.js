@@ -1,10 +1,29 @@
 import Vendor from '../../models/Vendor.js';
+import FirmFacts from '../../models/FirmFacts.js';
+import { isFilled as isFirmFactFilled } from '../../models/FirmFacts.js';
 
 function cleanUrl(value) {
   if (typeof value !== 'string') return value;
   const markdownLinkMatch = value.match(/^\[.*?\]\((.*?)\)$/);
   if (markdownLinkMatch) return markdownLinkMatch[1];
   return value;
+}
+
+/**
+ * Extract all filled values from a FirmFacts group object.
+ * Returns a flat object of { fieldName: value } for fields where
+ * the { value, filledAt, source } wrapper has a non-empty value.
+ */
+function extractFilledFields(group) {
+  if (!group || typeof group !== 'object') return {};
+  const result = {};
+  for (const [key, wrapper] of Object.entries(group)) {
+    if (key === '_id') continue;
+    if (wrapper && typeof wrapper === 'object' && 'value' in wrapper && isFirmFactFilled(wrapper)) {
+      result[key] = wrapper.value;
+    }
+  }
+  return result;
 }
 
 /**
@@ -17,7 +36,10 @@ function cleanUrl(value) {
  * @returns {Promise<object>} firmContext object ready for prompt injection
  */
 export async function getFirmContext(vendorId) {
-  const vendor = await Vendor.findById(vendorId).lean();
+  const [vendor, firmFacts] = await Promise.all([
+    Vendor.findById(vendorId).lean(),
+    FirmFacts.findOne({ vendorId }).lean().catch(() => null),
+  ]);
   if (!vendor) {
     throw new Error(`Vendor ${vendorId} not found`);
   }
@@ -161,6 +183,51 @@ export async function getFirmContext(vendorId) {
 
   if (present(vendor.brands)) ctx.brands = vendor.brands;
 
+  // ─── Merge FirmFacts data (if available) ──────────────────────
+  if (firmFacts) {
+    ctx.firmFactsCompleteness = firmFacts.completionPercentage || 0;
+
+    const firmFactsData = {};
+    const groups = ['identity', 'stage1', 'stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise'];
+    for (const groupName of groups) {
+      const filled = extractFilledFields(firmFacts[groupName]);
+      Object.assign(firmFactsData, filled);
+    }
+
+    // FirmFacts values override Vendor-derived values where both exist
+    if (present(firmFactsData.firmName)) ctx.company = firmFactsData.firmName;
+    if (present(firmFactsData.city)) {
+      if (!ctx.location) ctx.location = {};
+      ctx.location.city = firmFactsData.city;
+    }
+    if (present(firmFactsData.yearEstablished)) {
+      if (!ctx.businessProfile) ctx.businessProfile = {};
+      ctx.businessProfile.yearsInBusiness = new Date().getFullYear() - firmFactsData.yearEstablished;
+    }
+    if (present(firmFactsData.regulatoryNumber)) {
+      if (!ctx.regulatoryNumbers) ctx.regulatoryNumbers = {};
+      const vt = vendor.vendorType;
+      if (vt === 'solicitor') ctx.regulatoryNumbers.sra = firmFactsData.regulatoryNumber;
+      else if (vt === 'accountant') ctx.regulatoryNumbers.icaew = firmFactsData.regulatoryNumber;
+      else if (vt === 'mortgage-advisor') ctx.regulatoryNumbers.fca = firmFactsData.regulatoryNumber;
+      else if (vt === 'estate-agent') ctx.regulatoryNumbers.propertymark = firmFactsData.regulatoryNumber;
+    }
+
+    // Attach all remaining firmFacts fields as a flat block for Claude
+    const excludeKeys = new Set(['firmName', 'city', 'vendorType', 'primarySpecialism', 'yearEstablished', 'regulatoryNumber']);
+    const additionalFacts = {};
+    for (const [k, v] of Object.entries(firmFactsData)) {
+      if (!excludeKeys.has(k) && present(v)) {
+        additionalFacts[k] = v;
+      }
+    }
+    if (Object.keys(additionalFacts).length > 0) {
+      ctx.firmFacts = additionalFacts;
+    }
+  } else {
+    ctx.firmFactsCompleteness = 0;
+  }
+
   return ctx;
 }
 
@@ -172,12 +239,18 @@ export async function getFirmContext(vendorId) {
  * @returns {string} formatted block ready to embed in the prompt
  */
 export function renderFirmContextBlock(firmContext) {
+  const completeness = firmContext.firmFactsCompleteness ?? 0;
+  const guidance = completeness >= 80
+    ? 'This firm has filled in most of its data. Prefer the verified numbers in firm_context. Only use [FIRM TO PROVIDE: ...] markers for facts not present in this block.'
+    : completeness >= 40
+      ? 'This firm has filled in some of its data. Use verified numbers where present in firm_context. Use [FIRM TO PROVIDE: ...] markers liberally for the rest.'
+      : 'This firm has filled in very little of its data. Use [FIRM TO PROVIDE: ...] markers throughout. Only use the basic identity fields (company, city, specialism, vendorType) without markers.';
+
   return `<firm_context>
 The following facts are verified from this firm's record in the TendorAI database.
-Use them directly in the post — DO NOT use [FIRM TO PROVIDE: ...] markers for any field present here.
 
 ${JSON.stringify(firmContext, null, 2)}
-</firm_context>
 
-Use [FIRM TO PROVIDE: ...] markers ONLY for facts not in the firm_context block above.`;
+<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>
+</firm_context>`;
 }
