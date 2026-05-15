@@ -58,6 +58,11 @@ const firmFactsSchema = new mongoose.Schema({
     soleAgencyFeePercent: factField(String),
     achievedVsAskingPercent: factField(String),
     daysListingToSaleAgreed: factField(Number),
+    // Brand identity essentials (rolled into stage2)
+    clientTypes: factField([String]),
+    toneOfVoice: factField(String),
+    brandKeywords: factField([String]),
+    uniqueSellingPoints: factField([String]),
   },
 
   // ─── Group D: Stage 3 Optional (by pillar) ──────────────────
@@ -188,6 +193,16 @@ const firmFactsSchema = new mongoose.Schema({
     newBuildPremiumPercent: factField(Number),
     averageFirstWeekEnquiries: factField(Number),
   },
+
+  // ─── Group E: Brand Identity (stage3 extras) ────────────────
+  brandIdentity: {
+    partners: factField([mongoose.Schema.Types.Mixed]),
+    feeEarnerCount: factField(Number),
+    additionalOffices: factField([mongoose.Schema.Types.Mixed]),
+    awards: factField([String]),
+    memberships: factField([String]),
+    competitors: factField([String]),
+  },
 }, { timestamps: true });
 
 const STAGE1_PATHS = ['stage1.regulatoryNumber', 'stage1.transactionCountLastYear', 'stage1.typicalAllInCost'];
@@ -197,11 +212,13 @@ const STAGE2_PATHS = [
   'stage2.fixedFeeSavingVsHourly', 'stage2.averageAnnualFees', 'stage2.qualificationsHeld',
   'stage2.brokerFee', 'stage2.averageRateSavingPerYear', 'stage2.lenderPanelSize',
   'stage2.soleAgencyFeePercent', 'stage2.achievedVsAskingPercent', 'stage2.daysListingToSaleAgreed',
+  'stage2.clientTypes', 'stage2.toneOfVoice', 'stage2.brandKeywords', 'stage2.uniqueSellingPoints',
 ];
 
 function isFilled(factObj) {
   if (!factObj || factObj.value === null || factObj.value === undefined) return false;
   if (typeof factObj.value === 'string' && factObj.value.trim() === '') return false;
+  if (Array.isArray(factObj.value) && factObj.value.length === 0) return false;
   return true;
 }
 
@@ -221,7 +238,7 @@ firmFactsSchema.pre('save', function () {
   const stage1Filled = STAGE1_PATHS.filter(p => isFilled(getNestedValue(this, p))).length;
   const stage2Filled = STAGE2_PATHS.filter(p => isFilled(getNestedValue(this, p))).length;
 
-  const groups = ['costs', 'process', 'authority', 'mistakes', 'rights', 'expertise'];
+  const groups = ['costs', 'process', 'authority', 'mistakes', 'rights', 'expertise', 'brandIdentity'];
   let stage3Filled = 0;
   let stage3Total = 0;
   for (const g of groups) {
@@ -287,7 +304,7 @@ firmFactsSchema.methods.toFirmContextBlock = function () {
   addIfFilled(ctx, 'transactionCountLastYear', this.stage1?.transactionCountLastYear);
   addIfFilled(ctx, 'typicalAllInCost', this.stage1?.typicalAllInCost);
 
-  for (const group of ['stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise']) {
+  for (const group of ['stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise', 'brandIdentity']) {
     const g = this[group];
     if (!g) continue;
     const obj = g.toObject ? g.toObject() : g;

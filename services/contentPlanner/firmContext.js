@@ -188,7 +188,7 @@ export async function getFirmContext(vendorId) {
     ctx.firmFactsCompleteness = firmFacts.completionPercentage || 0;
 
     const firmFactsData = {};
-    const groups = ['identity', 'stage1', 'stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise'];
+    const groups = ['identity', 'stage1', 'stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise', 'brandIdentity'];
     for (const groupName of groups) {
       const filled = extractFilledFields(firmFacts[groupName]);
       Object.assign(firmFactsData, filled);
@@ -213,16 +213,26 @@ export async function getFirmContext(vendorId) {
       else if (vt === 'estate-agent') ctx.regulatoryNumbers.propertymark = firmFactsData.regulatoryNumber;
     }
 
-    // Attach all remaining firmFacts fields as a flat block for Claude
+    // Separate brand identity fields from operational facts
+    const brandKeys = new Set(['clientTypes', 'toneOfVoice', 'brandKeywords', 'uniqueSellingPoints', 'partners', 'feeEarnerCount', 'additionalOffices', 'awards', 'memberships', 'competitors']);
     const excludeKeys = new Set(['firmName', 'city', 'vendorType', 'primarySpecialism', 'yearEstablished', 'regulatoryNumber']);
+
     const additionalFacts = {};
+    const brandIdentity = {};
     for (const [k, v] of Object.entries(firmFactsData)) {
-      if (!excludeKeys.has(k) && present(v)) {
+      if (excludeKeys.has(k)) continue;
+      if (!present(v)) continue;
+      if (brandKeys.has(k)) {
+        brandIdentity[k] = v;
+      } else {
         additionalFacts[k] = v;
       }
     }
     if (Object.keys(additionalFacts).length > 0) {
       ctx.firmFacts = additionalFacts;
+    }
+    if (Object.keys(brandIdentity).length > 0) {
+      ctx.brandIdentity = brandIdentity;
     }
   } else {
     ctx.firmFactsCompleteness = 0;
@@ -246,11 +256,18 @@ export function renderFirmContextBlock(firmContext) {
       ? 'This firm has filled in some of its data. Use verified numbers where present in firm_context. Use [FIRM TO PROVIDE: ...] markers liberally for the rest.'
       : 'This firm has filled in very little of its data. Use [FIRM TO PROVIDE: ...] markers throughout. Only use the basic identity fields (company, city, specialism, vendorType) without markers.';
 
+  const brand = firmContext.brandIdentity;
+  const brandSection = brand
+    ? `\n<brand_identity>
+Write in this firm's voice. Tone: ${brand.toneOfVoice || 'professional UK English'}.${brand.brandKeywords?.length ? ' Keywords to weave in: ' + brand.brandKeywords.join(', ') + '.' : ''}${brand.uniqueSellingPoints?.length ? ' USPs: ' + brand.uniqueSellingPoints.join('; ') + '.' : ''}${brand.clientTypes?.length ? ' Target clients: ' + brand.clientTypes.join(', ') + '.' : ''}
+</brand_identity>`
+    : '';
+
   return `<firm_context>
 The following facts are verified from this firm's record in the TendorAI database.
 
 ${JSON.stringify(firmContext, null, 2)}
 
-<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>
+<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>${brandSection}
 </firm_context>`;
 }
