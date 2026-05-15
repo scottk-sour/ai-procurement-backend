@@ -192,6 +192,14 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
     }
 
     // Create checkout session
+    // Pro tiers redirect to onboarding form; free/starter land on dashboard.
+    // NOTE: /onboarding/firm-facts does not exist on the frontend yet (Saturday build).
+    // Until it ships, Pro customers hitting this URL will see a 404. No real paying
+    // customers exist currently, so this is acceptable interim state.
+    const isProTier = ['managed', 'verified', 'enterprise'].includes(plan.internalTier);
+    const successPath = isProTier
+      ? '/onboarding/firm-facts?source=stripe&session_id={CHECKOUT_SESSION_ID}'
+      : '/vendor-dashboard?upgrade=success&session_id={CHECKOUT_SESSION_ID}';
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
@@ -202,7 +210,7 @@ router.post('/create-checkout-session', requireStripe, authenticateVendor, async
           quantity: 1,
         },
       ],
-      success_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}${successPath}`,
       cancel_url: `${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard/upgrade?subscription=cancelled`,
       metadata: {
         vendorId: vendor._id.toString(),
