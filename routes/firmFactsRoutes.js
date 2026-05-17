@@ -21,6 +21,7 @@ router.get('/me', async (req, res) => {
 //   1. Flat envelope (frontend): { fieldName: "X", value: Y, source: "self" }
 //   2. Nested paths (legacy/batch): { "group.field": { value: Y, source: "self" }, ... }
 router.put('/me', async (req, res) => {
+  console.log('[firmfacts PUT] received body:', JSON.stringify(req.body));
   try {
     const doc = await FirmFacts.findOrCreateForVendor(req.vendorId);
     const body = req.body;
@@ -71,7 +72,11 @@ router.put('/me', async (req, res) => {
     await doc.save();
     res.json({ success: true, firmFacts: doc, fieldsUpdated, fieldsSkipped });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('[firmfacts PUT] error:', err);
+    console.error('[firmfacts PUT] stack:', err.stack);
+    console.error('[firmfacts PUT] vendorId:', req.vendorId);
+    console.error('[firmfacts PUT] body:', JSON.stringify(req.body));
+    res.status(500).json({ success: false, error: err.message, where: 'firmfacts.put' });
   }
 });
 
