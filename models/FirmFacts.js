@@ -327,5 +327,22 @@ firmFactsSchema.statics.findOrCreateForVendor = async function (vendorId) {
   return doc;
 };
 
-export { STAGE1_PATHS, STAGE2_PATHS, isFilled };
+const FIELD_GROUPS = ['identity', 'stage1', 'stage2', 'costs', 'process', 'authority', 'mistakes', 'rights', 'expertise', 'brandIdentity'];
+
+/**
+ * Resolve a flat field name to its schema group.
+ * e.g. "transactionCountLastYear" → "stage1"
+ *      "toneOfVoice" → "stage2"
+ *      "awards" → "brandIdentity"
+ * Returns null if the field doesn't exist in any group.
+ */
+firmFactsSchema.statics.resolveFieldGroup = function (fieldName) {
+  const schemaPaths = this.schema.paths;
+  for (const group of FIELD_GROUPS) {
+    if (schemaPaths[`${group}.${fieldName}.value`]) return group;
+  }
+  return null;
+};
+
+export { STAGE1_PATHS, STAGE2_PATHS, isFilled, FIELD_GROUPS };
 export default mongoose.model('FirmFacts', firmFactsSchema);

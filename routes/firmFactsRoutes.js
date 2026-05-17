@@ -17,27 +17,59 @@ router.get('/me', async (req, res) => {
 });
 
 // PUT /api/firmfacts/me — partial update (save-as-you-go)
+// Accepts TWO formats:
+//   1. Flat envelope (frontend): { fieldName: "X", value: Y, source: "self" }
+//   2. Nested paths (legacy/batch): { "group.field": { value: Y, source: "self" }, ... }
 router.put('/me', async (req, res) => {
   try {
     const doc = await FirmFacts.findOrCreateForVendor(req.vendorId);
-    const updates = req.body;
+    const body = req.body;
+    const fieldsUpdated = [];
+    const fieldsSkipped = [];
 
-    for (const [path, val] of Object.entries(updates)) {
-      const parts = path.split('.');
-      if (parts.length !== 2) continue;
-      const [group, field] = parts;
-      if (!doc[group] || typeof doc[group] !== 'object') continue;
-      if (!(field in doc[group])) continue;
+    if (body.fieldName && typeof body.fieldName === 'string') {
+      // ─── Format 1: flat envelope { fieldName, value, source } ───
+      const group = FirmFacts.resolveFieldGroup(body.fieldName);
+      if (group && doc[group] && body.fieldName in doc[group]) {
+        doc[group][body.fieldName] = {
+          value: body.value !== undefined ? body.value : null,
+          filledAt: new Date(),
+          source: body.source || 'self',
+        };
+        fieldsUpdated.push(`${group}.${body.fieldName}`);
+      } else {
+        console.warn(`[FirmFacts PUT] Unknown fieldName: "${body.fieldName}" — no matching group found`);
+        fieldsSkipped.push(body.fieldName);
+      }
+    } else {
+      // ─── Format 2: nested paths { "group.field": { value, source }, ... } ───
+      for (const [path, val] of Object.entries(body)) {
+        const parts = path.split('.');
+        if (parts.length !== 2) {
+          fieldsSkipped.push(path);
+          continue;
+        }
+        const [group, field] = parts;
+        if (!doc[group] || typeof doc[group] !== 'object') {
+          fieldsSkipped.push(path);
+          continue;
+        }
+        if (!(field in doc[group])) {
+          fieldsSkipped.push(path);
+          continue;
+        }
 
-      doc[group][field] = {
-        value: val.value !== undefined ? val.value : val,
-        filledAt: new Date(),
-        source: val.source || 'self',
-      };
+        doc[group][field] = {
+          value: val.value !== undefined ? val.value : val,
+          filledAt: new Date(),
+          source: val.source || 'self',
+        };
+        fieldsUpdated.push(path);
+      }
     }
 
     await doc.save();
-    res.json({ success: true, firmFacts: doc });
+    res.json({ success: true, firmFacts: doc, fieldsUpdated, fieldsSkipped });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
