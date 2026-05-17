@@ -270,3 +270,41 @@ If you sell Pro to a Cardiff solicitor on Friday for £299/month, here is what t
 **Files:** services/aiMentionScanner.js (loop scanVendor with all prompts from generatePrompts)  
 **Why:** BUG-002. The 5 templates already exist — generated but only the first used. Using all 5 gets N=5 with minimal code change.  
 **Why fifth:** After 1-4, the platform is functionally sellable. This makes the citation data 5× richer.
+
+---
+
+## 2026-05-17 end of day
+
+Backend PRs merged today:
+- PR #51: Detective scoring + Stripe AeoReport + audit reports
+- PR #52: FirmFacts model + Writer wiring
+- PR #53: Branding unified into FirmFacts model
+- PR #54: Stripe success_url redirect to /onboarding/firm-facts
+- PR #55: Fix PUT handler flat envelope format
+- PR #56: Surface 500 errors in production logs
+- PR #57: Widen source enum (onboarding/onboarding-stage-1/etc)
+- Cap fix commit 40c0dcf merged separately
+
+Frontend PRs merged today:
+- PR #70: Block 1 — Stage 1 onboarding form
+- PR #73: Block 2 — Stage 2 form + dashboard gate + settings repoint
+
+Verification:
+- Block 1 + Block 2 VERIFIED in production MongoDB Atlas
+- Cardiff Property Partners doc (vendorId 699757a97712b4369510e6c8) shows real data writes
+- completionByStage.stage1: 100, stage2: 58
+- Array fields (clientTypes, brandKeywords) correctly stored as arrays
+
+Status:
+- 11 production deploys today, all clean
+- 366+ tests passing (12 pre-existing failures unchanged)
+- Outbound still paused
+- PDFs still need editing for cron drift (Path A)
+- Migration script not yet run on production demo vendors
+
+Outstanding for Saturday/Sunday:
+- Block 3: Stage 3 dashboard widget, Industry Average toggle, polish
+- Run migration script from local terminal
+- Edit customer-facing PDFs to match weekly cadence + new Approval Queue feature
+- End-to-end smoke test Sunday morning (verify Writer cron Mon 06:00 BST uses firmFacts data)
+- Resume cold outbound Monday or Tuesday based on smoke test result
