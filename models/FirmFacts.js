@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const factField = (dataType = mongoose.Schema.Types.Mixed) => ({
   value: { type: dataType, default: null },
   filledAt: { type: Date, default: null },
-  source: { type: String, enum: ['self', 'industry_average', 'estimated', 'verified_register', null], default: null },
+  source: { type: String, enum: ['self', 'industry_average', 'estimated', 'verified_register', 'onboarding', 'onboarding-stage-1', 'onboarding-stage-2', 'onboarding-stage-3', 'settings', 'api', null], default: null },
 });
 
 const firmFactsSchema = new mongoose.Schema({

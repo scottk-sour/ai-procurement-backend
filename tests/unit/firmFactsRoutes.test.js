@@ -180,4 +180,17 @@ describe('PUT /api/firmfacts/me — envelope format fix', () => {
     expect(Array.isArray(res.body.fieldsUpdated)).toBe(true);
     expect(Array.isArray(res.body.fieldsSkipped)).toBe(true);
   });
+
+  it('flat envelope: accepts onboarding-stage-1 as source value', async () => {
+    mockResolveFieldGroup.mockReturnValue('stage1');
+
+    const res = await request(app, 'PUT', '/api/firmfacts/me', {
+      body: { fieldName: 'typicalAllInCost', value: '£850–£1,500', source: 'onboarding-stage-1' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.fieldsUpdated).toContain('stage1.typicalAllInCost');
+    expect(mockDoc.stage1.typicalAllInCost.source).toBe('onboarding-stage-1');
+  });
 });
