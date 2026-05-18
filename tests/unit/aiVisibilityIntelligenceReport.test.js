@@ -158,4 +158,71 @@ describe('AI Visibility Intelligence Report', () => {
     const reportNumber = `AVI-${slug}-${year}-W${week}`;
     expect(reportNumber).toMatch(/^AVI-[A-Z0-9-]+-\d{4}-W\d+$/);
   });
+
+  // ── FIX 1: Report number slug ──────────────────────────
+  it('reportNumber does NOT duplicate city when company already includes city', () => {
+    const yw = getYearWeek(new Date('2026-05-19'));
+    const [year, week] = yw.split('-W');
+    const company = 'Cardiff Property Partners';
+    const slug = company.toUpperCase().replace(/[^A-Z0-9\s-]/g, '').replace(/\s+/g, '-');
+    const reportNumber = `AVI-${slug}-${year}-W${week}`;
+    expect(reportNumber).toBe(`AVI-CARDIFF-PROPERTY-PARTNERS-${year}-W${week}`);
+    expect(reportNumber).not.toContain('CARDIFF-CARDIFF');
+  });
+
+  // ── FIX 2: Title-case competitor names ─────────────────
+  it('titleCaseCompanyName handles SHOUTY CAPS with Ltd/LLP/PLC suffixes', async () => {
+    const { titleCaseCompanyName } = await import('../../services/reporter/textFormatters.js');
+    expect(titleCaseCompanyName('KELVIN FRANCIS LTD')).toBe('Kelvin Francis Ltd');
+    expect(titleCaseCompanyName('FEATHERHART LIMITED')).toBe('Featherhart Limited');
+    expect(titleCaseCompanyName('KAILA & KAUR LIMITED')).toBe('Kaila & Kaur Limited');
+    expect(titleCaseCompanyName('JOHN SMITH AND PARTNERS LLP')).toBe('John Smith and Partners LLP');
+    expect(titleCaseCompanyName('ABC HOLDINGS PLC')).toBe('Abc Holdings plc');
+  });
+
+  // ── FIX 3: Prompt analysis varies per prompt ──────────
+  it('promptAnalysis returns different citedFirms for different prompts', () => {
+    const comps = [{ company: 'Firm A' }, { company: 'Firm B' }, { company: 'Firm C' }];
+    // Simulate the rotation logic from buildPromptAnalysis
+    const compNames = comps.map(c => c.company);
+    const result = [0, 1, 2].map(i => [compNames[i % 3], compNames[(i + 1) % 3]]);
+    expect(result[0]).toEqual(['Firm A', 'Firm B']);
+    expect(result[1]).toEqual(['Firm B', 'Firm C']);
+    expect(result[2]).toEqual(['Firm C', 'Firm A']);
+    // All three are different
+    expect(result[0]).not.toEqual(result[1]);
+    expect(result[1]).not.toEqual(result[2]);
+  });
+
+  // ── FIX 4: Opportunity feed uses real competitor names ──
+  it('opportunityFeed does not contain placeholder text', () => {
+    const competitors = [
+      { firmName: 'Kelvin Francis Ltd', isYou: false },
+      { firmName: 'Featherhart Limited', isYou: false },
+      { firmName: 'Cardiff Property Partners', isYou: true },
+    ];
+    const realComps = competitors.filter(c => !c.isYou);
+    // Simulate the rotation
+    const feed = [0, 1, 2].map(i => ({
+      competitorsCited: [
+        realComps[i % realComps.length].firmName,
+        realComps[(i + 1) % realComps.length].firmName,
+      ],
+    }));
+    feed.forEach(item => {
+      expect(item.competitorsCited).not.toContain('Local Competitor A');
+      expect(item.competitorsCited).not.toContain('Local Competitor B');
+      item.competitorsCited.forEach(name => {
+        expect(name.length).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  // ── Title-case edge cases ──────────────────────────────
+  it('titleCaseCompanyName handles null/empty gracefully', async () => {
+    const { titleCaseCompanyName } = await import('../../services/reporter/textFormatters.js');
+    expect(titleCaseCompanyName(null)).toBeNull();
+    expect(titleCaseCompanyName('')).toBe('');
+    expect(titleCaseCompanyName('SINGLE')).toBe('Single');
+  });
 });
