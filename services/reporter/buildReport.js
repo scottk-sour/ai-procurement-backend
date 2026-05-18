@@ -6,9 +6,15 @@ import * as synth from './syntheticDataEngine.js';
 import { selectCompetitors } from './competitorSelector.js';
 import { auditClaims } from './claimAccuracyAudit.js';
 import { generateBoardSummary } from './boardSummaryPrompt.js';
+import { titleCaseCompanyName } from './textFormatters.js';
 
-function slugifyUpper(slug) {
-  return (slug || 'UNKNOWN').toUpperCase().replace(/[^A-Z0-9-]/g, '-');
+function slugifyUpper(text) {
+  return (text || 'UNKNOWN')
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
 }
 
 function getYearWeek(date) {
@@ -83,7 +89,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   // SECTION 4: Competitor positioning
   const competitorList = [
     ...competitorScores.map(cs => ({
-      firmName: cs.competitor.company,
+      firmName: titleCaseCompanyName(cs.competitor.company),
       visibilityScore: cs.value,
       weeklyChange: cs.weeklyChange,
       trendDirection: cs.trendDirection,
@@ -108,7 +114,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   const revenueExposure = { monthlyMin: opportunityResult.monthlyMin, monthlyMax: opportunityResult.monthlyMax, methodology: opportunityResult.methodology };
 
   // SECTION 6: Prompt analysis
-  const promptAnalysis = buildPromptAnalysis(vendor, competitors);
+  const promptAnalysis = buildPromptAnalysis(vendor, competitors, weekStartDate);
 
   // SECTION 7: Authority graph
   const authorityGraph = buildAuthorityGraph(vendor);
@@ -137,7 +143,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   const projections = { historicalScores: sparkline, projectedScores, projectionMethod: 'linear_regression_8week' };
 
   // SECTION 10: Opportunity feed
-  const opportunityFeed = buildOpportunityFeed(vendor, weekStartDate, flags);
+  const opportunityFeed = buildOpportunityFeed(vendor, weekStartDate, flags, competitorList);
 
   // SECTION 11: Recommended actions
   const recommendedActions = pendingApprovals.map(a => ({
@@ -163,7 +169,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   }
 
   const yw = getYearWeek(weekStartDate);
-  const reportNumber = `AVI-${slugifyUpper(vendor.slug)}-${yw.year}-W${yw.week}`;
+  const reportNumber = `AVI-${slugifyUpper(vendor.company)}-${yw.year}-W${yw.week}`;
 
   return WeeklyReport.create({
     vendorId,
@@ -246,7 +252,14 @@ function estimateCitationsFromScore(score) {
   return Math.max(0, Math.round((score - 20) / 5));
 }
 
-function buildPromptAnalysis(vendor, competitors) {
+const REASONING_TEMPLATES = [
+  'Review presence, structured local content, and consistent directory signals.',
+  'Strong Trustpilot footprint, accurate schema markup, recent content publishing.',
+  'Established directory presence, customer reviews, and clear location signals.',
+  'Authority signals from review platforms and content depth on key topics.',
+];
+
+function buildPromptAnalysis(vendor, competitors, weekStartDate) {
   const city = vendor.location?.city || 'your area';
   const vt = vendor.vendorType || 'solicitor';
   const pools = {
@@ -256,18 +269,39 @@ function buildPromptAnalysis(vendor, competitors) {
     'estate-agent': [`best estate agent ${city}`, `estate agents first-time sellers ${city}`, `online vs high-street estate agent ${city}`],
     'office-equipment': [`photocopier supplier ${city}`, `managed print ${city}`, `office equipment ${city}`],
   };
-  return (pools[vt] || pools.solicitor).map(prompt => ({
-    prompt,
-    enginesCited: ['Anthropic Claude', 'ChatGPT (via OpenAI)', 'Perplexity'],
-    citedFirms: competitors.slice(0, 2).map(c => c.company),
-    citedSources: getCitedSourcesByVertical(vt),
-    youCited: false,
-    reasoning: 'Review presence, structured local content, and consistent directory signals.',
-  }));
+
+  const compNames = competitors.slice(0, 3).map(c => titleCaseCompanyName(c.company));
+  const sourcePool = getSourcePoolByVertical(vt);
+
+  return (pools[vt] || pools.solicitor).map((prompt, i) => {
+    const citedFirms = compNames.length >= 2
+      ? [compNames[i % compNames.length], compNames[(i + 1) % compNames.length]]
+      : compNames.slice(0, 2);
+
+    const seed = synth.seedFromString(`sources-${prompt}-${synth.getYearWeek(weekStartDate)}`);
+    const rand = synth.seededRandom(seed);
+    const shuffled = [...sourcePool].sort(() => rand() - 0.5);
+    const citedSources = shuffled.slice(0, 3);
+
+    return {
+      prompt,
+      enginesCited: ['Anthropic Claude', 'ChatGPT (via OpenAI)', 'Perplexity'],
+      citedFirms,
+      citedSources,
+      youCited: false,
+      reasoning: REASONING_TEMPLATES[i % REASONING_TEMPLATES.length],
+    };
+  });
 }
 
-function getCitedSourcesByVertical(vertical) {
-  return { solicitor: ['Law Society', 'Trustpilot', 'Google Business'], accountant: ['ICAEW', 'Trustpilot', 'Google Business'], 'mortgage-advisor': ['Unbiased', 'VouchedFor', 'FCA Register'], 'estate-agent': ['Rightmove', 'Trustpilot', 'Google Business'], 'office-equipment': ['Yell', 'FreeIndex', 'Google Business'] }[vertical] || ['Trustpilot', 'Yell', 'Google Business'];
+function getSourcePoolByVertical(vertical) {
+  return {
+    solicitor: ['Law Society', 'Trustpilot', 'Google Business', 'SRA', 'Yell'],
+    accountant: ['ICAEW', 'Trustpilot', 'Google Business', 'Xero Directory', 'Yell'],
+    'mortgage-advisor': ['Unbiased', 'VouchedFor', 'FCA Register', 'Trustpilot', 'Google Business'],
+    'estate-agent': ['Rightmove', 'Trustpilot', 'Google Business', 'Zoopla', 'OnTheMarket'],
+    'office-equipment': ['Yell', 'FreeIndex', 'Google Business', 'Trustpilot', 'Cylex'],
+  }[vertical] || ['Trustpilot', 'Yell', 'Google Business', 'FreeIndex'];
 }
 
 function buildAuthorityGraph(vendor) {
@@ -277,7 +311,7 @@ function buildAuthorityGraph(vendor) {
   return { directoriesConnected: connected, directoriesMissing: missing, schemaCoverage: { connected: 0, total: 1 }, reviewPlatformsConnected: [], reviewPlatformsMissing: ['Trustpilot', 'Google Business'], contentFootprintPages: 0, authorityScore: 0 };
 }
 
-function buildOpportunityFeed(vendor, weekStart, flags) {
+function buildOpportunityFeed(vendor, weekStart, flags, competitorList) {
   const city = vendor.location?.city || 'your area';
   const pools = {
     solicitor: [`probate solicitor ${city}`, `no-win-no-fee solicitor ${city}`, `commercial property solicitor ${city}`],
@@ -286,12 +320,19 @@ function buildOpportunityFeed(vendor, weekStart, flags) {
     'estate-agent': [`estate agents for probate sales ${city}`, `estate agents with fixed fees ${city}`, `luxury estate agents ${city}`],
     'office-equipment': [`photocopier lease ${city}`, `managed print service ${city}`, `office printer rental ${city}`],
   };
+  const realCompetitors = (competitorList || []).filter(c => !c.isYou);
   const seed = synth.seedFromString(`opportunity-feed-${vendor._id}-${synth.getYearWeek(weekStart)}`);
   const rand = synth.seededRandom(seed);
   flags.push({ field: 'opportunityFeed', isSynthetic: true, method: 'vertical_query_pool_until_real_search_volume_data', replaceCondition: 'real_query_detection_via_partner_apis' });
-  return (pools[vendor.vendorType] || pools.solicitor).slice(0, 3).map(query => ({
-    detectedQuery: query, competitorsCited: ['Local Competitor A', 'Local Competitor B'], youCited: false,
-    suggestedAction: `Publish content addressing "${query}"`, estimatedImpact: 4 + Math.floor(rand() * 4), relatedApprovalId: null,
+  return (pools[vendor.vendorType] || pools.solicitor).slice(0, 3).map((query, i) => ({
+    detectedQuery: query,
+    competitorsCited: realCompetitors.length >= 2
+      ? [realCompetitors[i % realCompetitors.length].firmName, realCompetitors[(i + 1) % realCompetitors.length].firmName]
+      : realCompetitors.map(c => c.firmName),
+    youCited: false,
+    suggestedAction: `Publish content addressing "${query}"`,
+    estimatedImpact: 4 + Math.floor(rand() * 4),
+    relatedApprovalId: null,
   }));
 }
 
