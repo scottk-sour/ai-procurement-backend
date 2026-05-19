@@ -61,7 +61,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   const competitorScores = competitors.map(c => {
     const prior = priorReports[0]?.competitors?.find(pc => pc.firmName === c.company);
     const result = synth.generateCompetitorScore(c.company, weekStartDate, prior?.visibilityScore);
-    if (result.isSynthetic) flags.push({ field: `competitor.${c.company}.score`, isSynthetic: true, method: result.method, replaceCondition: result.replaceCondition });
+    if (result.isSynthetic) flags.push({ field: `competitor.${titleCaseCompanyName(c.company)}.score`, isSynthetic: true, method: result.method, replaceCondition: result.replaceCondition });
     return { competitor: c, ...result };
   });
 

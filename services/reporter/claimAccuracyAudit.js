@@ -22,7 +22,15 @@ export async function auditClaims(vendor, anthropicClient, openaiClient) {
     });
   }
 
-  return claims.slice(0, 5);
+  const seen = new Set();
+  const deduped = claims.filter(c => {
+    const key = `${c.claim}__${c.sourceEngine}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return deduped.slice(0, 5);
 }
 
 function detectInaccurateClaims(aiResponse, vendor) {
