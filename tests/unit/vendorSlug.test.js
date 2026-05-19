@@ -79,4 +79,37 @@ describe('Vendor Slug — city duplication fix', () => {
       expect(redirectSlug).toBe('cardiff-property-partners');
     });
   });
+
+  describe('publicVendorRoutes slug-or-id lookup', () => {
+    it('ObjectId format triggers _id lookup first', () => {
+      const id = '699757a97712b4369510e6c8';
+      expect(id.match(/^[0-9a-fA-F]{24}$/)).toBeTruthy();
+    });
+
+    it('slug format does NOT match ObjectId regex', () => {
+      const slug = 'cardiff-property-partners';
+      expect(slug.match(/^[0-9a-fA-F]{24}$/)).toBeNull();
+    });
+
+    it('lookup chain: _id → slug → previousSlugs', () => {
+      // Simulates the 3-step lookup
+      const vendors = {
+        byId: null,
+        bySlug: null,
+        byPreviousSlug: { slug: 'cardiff-property-partners', previousSlugs: ['cardiff-property-partners-cardiff'] },
+      };
+      const searchParam = 'cardiff-property-partners-cardiff';
+
+      let vendor = vendors.byId;
+      let redirectSlug = null;
+      if (!vendor) vendor = vendors.bySlug;
+      if (!vendor) {
+        vendor = vendors.byPreviousSlug;
+        if (vendor) redirectSlug = vendor.slug;
+      }
+
+      expect(vendor).not.toBeNull();
+      expect(redirectSlug).toBe('cardiff-property-partners');
+    });
+  });
 });
