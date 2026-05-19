@@ -225,4 +225,32 @@ describe('AI Visibility Intelligence Report', () => {
     expect(titleCaseCompanyName('')).toBe('');
     expect(titleCaseCompanyName('SINGLE')).toBe('Single');
   });
+
+  // ── PART 1: Claim dedup ────────────────────────────────
+  it('duplicate claims with same (claim + sourceEngine) get deduped', () => {
+    const claims = [
+      { claim: 'AI describes the firm as specialising in "commercial"', sourceEngine: 'Anthropic Claude', truth: 'Actual: sales', severity: 'medium' },
+      { claim: 'AI describes the firm as specialising in "commercial"', sourceEngine: 'Anthropic Claude', truth: 'Actual: sales', severity: 'medium' },
+      { claim: 'AI states the firm is "based in London"', sourceEngine: 'ChatGPT (via OpenAI)', truth: 'Based in Cardiff', severity: 'high' },
+    ];
+    const seen = new Set();
+    const deduped = claims.filter(c => {
+      const key = `${c.claim}__${c.sourceEngine}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    expect(deduped).toHaveLength(2);
+    expect(deduped[0].claim).toContain('commercial');
+    expect(deduped[1].claim).toContain('London');
+  });
+
+  // ── PART 2: Title-cased synthetic flags ─────────────────
+  it('syntheticDataFlags field names use title-cased competitor names', async () => {
+    const { titleCaseCompanyName } = await import('../../services/reporter/textFormatters.js');
+    const rawName = 'KAILA & KAUR LIMITED';
+    const field = `competitor.${titleCaseCompanyName(rawName)}.score`;
+    expect(field).toBe('competitor.Kaila & Kaur Limited.score');
+    expect(field).not.toContain('KAILA');
+  });
 });
