@@ -410,19 +410,36 @@ router.get('/vendors/search', async (req, res) => {
 
 /**
  * GET /api/public/vendors/:id
- * Get single vendor profile with badges and tier-based visibility
+ * Get single vendor profile with badges and tier-based visibility.
+ * Accepts ObjectId OR slug. Falls back to previousSlugs for 301 redirect support.
  */
 router.get('/vendors/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const vendor = await Vendor.findOne({
-      _id: id,
+    const activeFilter = {
       $or: [
         { 'account.status': 'active', 'account.verificationStatus': 'verified' },
-        { listingStatus: 'unclaimed' }
-      ]
-    }).lean();
+        { listingStatus: 'unclaimed' },
+      ],
+    };
+
+    // Try ObjectId first, then slug, then previousSlugs
+    let vendor = null;
+    let redirectSlug = null;
+
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      vendor = await Vendor.findOne({ _id: id, ...activeFilter }).lean();
+    }
+
+    if (!vendor) {
+      vendor = await Vendor.findOne({ slug: id, ...activeFilter }).lean();
+    }
+
+    if (!vendor) {
+      vendor = await Vendor.findOne({ previousSlugs: id, ...activeFilter }).lean();
+      if (vendor) redirectSlug = vendor.slug;
+    }
 
     if (!vendor) {
       return res.status(404).json({
@@ -543,7 +560,9 @@ router.get('/vendors/:id', async (req, res) => {
       };
     }
 
-    res.json({ success: true, data: profileData });
+    const response = { success: true, data: profileData };
+    if (redirectSlug) response.redirectSlug = redirectSlug;
+    res.json(response);
 
   } catch (error) {
     console.error('Vendor profile error:', error);
