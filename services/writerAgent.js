@@ -126,10 +126,27 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     return { skipped: true, reason: 'no_topics_in_pillar_library', vendorId: String(vendorId) };
   }
 
-  const agentRun = await findOrCreateRun({ vendorId, agentName: 'writer' });
-  if (agentRun.status === 'completed' || agentRun.status === 'partial') {
-    return { skipped: true, reason: 'already_ran_this_week', vendorId: String(vendorId) };
+  // Per-day throttle: prevent duplicate runs within the same UTC day.
+  // Each Mon/Wed/Fri cron firing is its own slot.
+  // Dry-runs bypass the throttle (manual verification shouldn't be blocked).
+  if (!dryRun) {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+
+    const existingToday = await AgentRun.findOne({
+      vendorId,
+      agentName: 'writer',
+      createdAt: { $gte: todayStart, $lt: todayEnd },
+      status: { $in: ['completed', 'partial'] },
+    });
+    if (existingToday) {
+      return { skipped: true, reason: 'already_ran_today', vendorId: String(vendorId) };
+    }
   }
+
+  const agentRun = await findOrCreateRun({ vendorId, agentName: 'writer' });
 
   await startRun(agentRun._id);
 
