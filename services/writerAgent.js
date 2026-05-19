@@ -146,8 +146,16 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     }
   }
 
-  const agentRun = await findOrCreateRun({ vendorId, agentName: 'writer' });
-
+  // Each Mon/Wed/Fri firing gets its own AgentRun document.
+  // Do NOT use findOrCreateRun here — it normalises to Monday of the week,
+  // so Wed/Fri would corrupt Monday's completed record.
+  const agentRun = new AgentRun({
+    vendorId,
+    agentName: 'writer',
+    weekStarting: AgentRun.normaliseWeekStarting(new Date()),
+    status: 'pending',
+  });
+  await agentRun.save();
   await startRun(agentRun._id);
 
   const verticalLabel = VERTICAL_LABELS[vendor.vendorType] || vendor.vendorType;

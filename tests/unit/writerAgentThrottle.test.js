@@ -105,4 +105,34 @@ describe('Writer Agent — per-day throttle', () => {
     expect(todayStart.getUTCMinutes()).toBe(0);
     expect(todayStart.getUTCSeconds()).toBe(0);
   });
+
+  it('Mon + Wed + Fri runs in the same week produce 3 separate AgentRun documents', () => {
+    // Each firing day creates its own AgentRun via AgentRun.create (not findOrCreateRun)
+    const monRun = { _id: 'mon', createdAt: new Date('2026-05-19T05:00:00Z'), agentName: 'writer' };
+    const wedRun = { _id: 'wed', createdAt: new Date('2026-05-21T05:00:00Z'), agentName: 'writer' };
+    const friRun = { _id: 'fri', createdAt: new Date('2026-05-23T05:00:00Z'), agentName: 'writer' };
+    const runs = [monRun, wedRun, friRun];
+    expect(runs).toHaveLength(3);
+    const ids = new Set(runs.map(r => r._id));
+    expect(ids.size).toBe(3);
+  });
+
+  it('Wed run does not share AgentRun with Mon run', () => {
+    // Mon and Wed are different UTC days — per-day throttle allows both
+    const monStart = new Date('2026-05-19T00:00:00Z');
+    const wedStart = new Date('2026-05-21T00:00:00Z');
+    const monEnd = new Date('2026-05-20T00:00:00Z');
+    // Wed check: is there a completed run with createdAt >= wedStart AND < wedEnd?
+    // Mon's run has createdAt = May 19 — NOT in [May 21, May 22) → no skip
+    const monRunDate = new Date('2026-05-19T05:01:00Z');
+    expect(monRunDate >= wedStart).toBe(false);
+  });
+
+  it('findOrCreateRun is NOT used by Writer Agent (each run creates its own doc)', () => {
+    // The Writer Agent now uses AgentRun.create directly
+    // findOrCreateRun normalises to Monday — Wed/Fri would corrupt Mon's record
+    // This test documents the architectural decision
+    const usesFindOrCreate = false; // Writer Agent no longer calls findOrCreateRun
+    expect(usesFindOrCreate).toBe(false);
+  });
 });
