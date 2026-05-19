@@ -209,15 +209,26 @@ router.get('/vendors/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
 
-    const vendor = await Vendor.findOne({ slug, ...ACTIVE_FILTER })
-      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug claimedAt listingStatus tier account.tier')
+    let vendor = await Vendor.findOne({ slug, ...ACTIVE_FILTER })
+      .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug previousSlugs claimedAt listingStatus tier account.tier')
       .lean();
+
+    let redirectSlug = null;
+    if (!vendor) {
+      // Check previousSlugs for 301 redirect support
+      vendor = await Vendor.findOne({ previousSlugs: slug, ...ACTIVE_FILTER })
+        .select('company vendorType services practiceAreas location contactInfo businessProfile performance sraNumber icaewFirmNumber fcaNumber propertymarkNumber regulatoryBody slug previousSlugs claimedAt listingStatus tier account.tier')
+        .lean();
+      if (vendor) redirectSlug = vendor.slug;
+    }
 
     if (!vendor) {
       return res.status(404).json(wrapResponse({ error: 'Vendor not found' }));
     }
 
-    res.json(wrapResponse({ vendor: formatVendor(vendor) }));
+    const response = { vendor: formatVendor(vendor) };
+    if (redirectSlug) response.redirectSlug = redirectSlug;
+    res.json(wrapResponse(response));
   } catch (err) {
     console.error('Public API vendor error:', err);
     res.status(500).json(wrapResponse({ error: 'Internal server error' }));
