@@ -7,6 +7,7 @@ import { countPlaceholders } from './contentPlanner/validators.js';
 import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval } from './approvalQueue.js';
+import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
 
 const SONNET_INPUT_COST_PER_M = 3.00;
 const SONNET_OUTPUT_COST_PER_M = 15.00;
@@ -151,6 +152,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   }
   const firmContextBlock = renderFirmContextBlock(firmContext);
 
+  const cta = buildCtaForVendor(vendor);
   const userPrompt = buildUserPrompt({
     topic: topicTitle,
     stats: '',
@@ -161,6 +163,8 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     pillarSpec,
     vendorTypeEntities,
     linkedInHookType: next.topic.linkedInHookType || 'opinion',
+    ctaUrl: cta.ctaUrl,
+    ctaText: cta.ctaText,
   });
 
   let response;
@@ -262,6 +266,12 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     };
   }
 
+  // Rule 20 fabrication guard — scan before saving
+  const fabricationFlags = detectPossibleFabrication(parsed.body || '');
+  if (fabricationFlags.length > 0) {
+    console.warn(`[WriterAgent] Draft for ${vendor.company} contains ${fabricationFlags.length} possible fabrication(s)`);
+  }
+
   const approval = await createApproval({
     vendorId,
     agentName: 'writer',
@@ -301,6 +311,9 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       topicSuitabilityFlag,
       agentReportedPlaceholderCount,
       ...(dryRun ? { dryRun: true } : {}),
+      ...(fabricationFlags.length > 0 ? {
+        qualityFlags: [{ type: 'possible_fabrication', detected: fabricationFlags, severity: 'high' }],
+      } : {}),
     },
     source: 'writer-agent-cron',
   });

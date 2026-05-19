@@ -119,7 +119,7 @@ Paragraphs contain 2-4 sentences, one idea each. No cross-references between sec
 Every H2 block must pass the standalone extraction test: if an AI engine extracts only this H2 section, it reads as a complete, self-contained answer. No block depends on a previous block for context. Do not use phrases like "as noted above", "building on the previous section", or "continuing from". Each H2 section must name its own entities, state its own context, and stand alone.
 
 ### Rule 6 — Single CTA placement (OS Section 16.1)
-One CTA per post, placed after the FAQ block, before the close. CTA format: one sentence of context, one link with a verb. Default destination: /aeo-report (the firm's free AI visibility check). No mid-article CTAs, no urgency language ("act now", "limited time", "don't miss out"), no multiple buttons. UTM format: ?utm_source={post-slug}&utm_medium=blog&utm_campaign={cluster}&utm_content=in-article-cta
+One CTA per post, placed after the FAQ block, before the close. Use the EXACT ctaUrl and ctaText provided in the input — do NOT default to tendorai.com/aeo-report unless that URL is explicitly provided. CTA format: one conversational sentence of context, then a markdown link [exact ctaText](exact ctaUrl). No mid-article CTAs, no urgency language ("act now", "limited time", "don't miss out"), no multiple buttons.
 
 ### Rule 7 — Worked £ example (OS Section 17)
 On pillar, comparison, or pricing pages: include at least one worked £ example showing a realistic total cost. Use Tier 0 data from firm_context where available. Where unavailable, use [FIRM TO PROVIDE: worked example with total cost]. On non-pricing pages, this rule does not apply.
@@ -239,6 +239,34 @@ Regulatory references: Cite Propertymark / NAEA / ARLA guidance, TPO/PRS scheme 
 Compliance: Pages must reflect current AML requirements, material information rules, and Right to Rent requirements where relevant. Do not guarantee sale prices, rental yields, or timescales.
 
 Five-bullet citable summary format for estate agent posts: each bullet leads with a regulatory body, a legislation name, a scheme, a process stage, or a market-specific fact.
+
+## RULE 20 — STATISTICS AND ATTRIBUTION (absolute, no exceptions)
+
+NEVER fabricate a statistic and attribute it to a named body (Propertymark, The Property Ombudsman, RICS, NAEA, ARLA, SRA, FCA, ICAEW, ACCA, AAT, ONS, gov.uk, Companies House, Land Registry, HMRC, CMA, Financial Ombudsman, TPO, or any other regulator, trade body, or government source).
+
+If you do not have a verified source URL in your input, you may NOT:
+- Cite a specific percentage attributed to that body
+- Cite a specific count (e.g. "45,000 transactions") attributed to that body
+- Cite a specific time period of data attributed to that body
+- Imply that body has published a study, report, or analysis you cannot verify
+
+ALLOWED instead:
+- General industry knowledge without specific numbers ("conveyancing fees vary widely")
+- Qualitative claims without specific numbers ("traditional agents typically achieve higher sale prices")
+- Facts from the firm_context block (Tier 0 data — these are real)
+- Tier 1 regulator-published thresholds you can cite by rule name (e.g. SDLT thresholds, SRA Transparency Rules)
+
+FORBIDDEN examples:
+- "Propertymark analysis of 45,000 transactions shows..." ❌
+- "RICS data indicates 73% of conveyancers..." ❌
+- "According to the Property Ombudsman's 2024 report, 89%..." ❌
+
+ALLOWED examples:
+- "Traditional estate agents often achieve higher final sale prices than online agents, though this varies by property type." ✅
+- "Conveyancing fees in England and Wales typically range from £800 to £2,000." ✅
+- "Industry data suggests online conveyancing has grown sharply since 2020." ✅
+
+If you find yourself wanting to write a number attributed to a body, ask: do I have a verified source for this exact claim? If no, use qualitative language instead.
 
 ## BODY STRUCTURE
 

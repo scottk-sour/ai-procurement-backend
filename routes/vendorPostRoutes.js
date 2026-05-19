@@ -33,6 +33,7 @@ export function buildUserPrompt(ctx) {
   const {
     topic, stats, primaryData, verticalLabel, vendorCity,
     vendorName, pillarSpec, vendorTypeEntities, linkedInHookType,
+    ctaUrl, ctaText,
   } = ctx;
 
   const lines = [];
@@ -78,6 +79,12 @@ export function buildUserPrompt(ctx) {
 
   lines.push('');
   lines.push(`LinkedIn hook type for the LinkedIn variant: ${linkedInHookType || 'opinion'}.`);
+
+  if (ctaUrl && ctaText) {
+    lines.push('');
+    lines.push(`CTA for this post: link text = "${ctaText}", link URL = ${ctaUrl}`);
+    lines.push('Use this EXACT URL and text for the closing call-to-action. Do not substitute with any other URL.');
+  }
 
   lines.push('');
   lines.push('Return only the JSON described in the system prompt. No preamble, no markdown fence, no commentary.');
