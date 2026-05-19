@@ -337,82 +337,116 @@ export function startScheduledReports() {
     generateVendorReports('starter');
   });
 
-  // Pro weekly digest: every Monday at 08:00 UTC (09:00 BST)
-  // Replaced the old generateVendorReports('pro') AEO re-generation cron.
-  // Sends a structured digest email with score delta, agent activity, and citations.
+  // Pro weekly report: every Monday at 08:00 UTC (09:00 BST)
+  // Generates the 12-section AI Visibility Intelligence Report (PR #58).
+  // Replaces the old weekly digest (PR #44) which is retained as deprecated fallback.
   cron.schedule('0 8 * * 1', async () => {
-    logger.info('[ScheduledReports] Triggering weekly Pro digest emails...');
+    logger.info('[Reporter] Triggering weekly AI Visibility Intelligence Reports...');
     try {
-      const { buildWeeklyProDigestForAllVendors } = await import('../services/weeklyProDigest.js');
-      const { weeklyProDigestTemplate, weeklyProDigestSubject } = await import('../services/emailTemplates.js');
+      const { buildAIVisibilityIntelligenceReport } = await import('../services/reporter/buildReport.js');
+      const { buildWeeklyEmailHTML, buildWeeklyEmailSubject } = await import('../services/reporter/emailBuilder.js');
       const { default: WeeklyReport } = await import('../models/WeeklyReport.js');
+      const { default: Vendor } = await import('../models/Vendor.js');
 
-      const results = await buildWeeklyProDigestForAllVendors();
-      let sent = 0;
-      let skipped = 0;
+      const DEMO_VENDOR_IDS = new Set([
+        '699757a97712b4369510e6c8', // Cardiff Property Partners
+      ]);
+
+      function getMondayOfThisWeek() {
+        const now = new Date();
+        const day = now.getUTCDay();
+        const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), diff));
+        monday.setUTCHours(0, 0, 0, 0);
+        return monday;
+      }
+
+      const weekStart = getMondayOfThisWeek();
+
+      const vendors = await Vendor.find({
+        $or: [
+          { tier: { $in: PRO_TIER_VALUES } },
+          { 'account.tier': { $in: PRO_ACCOUNT_TIERS } },
+        ],
+      }).select('_id company email location tier').lean();
+
+      logger.info(`[Reporter] Found ${vendors.length} Pro vendor(s)`);
+
+      let generated = 0;
+      let emailed = 0;
+      let skippedExisting = 0;
+      let skippedDemo = 0;
       let failed = 0;
-      let snapshots = 0;
 
-      for (const { vendorId, email, digest, error } of results) {
-        if (error || !digest) {
-          logger.error(`[WeeklyDigest] Build failed for vendor ${vendorId}: ${error}`);
-          failed++;
-          continue;
-        }
-
+      for (const vendor of vendors) {
+        const vid = String(vendor._id);
         try {
-          await WeeklyReport.findOrCreate(vendorId, digest.weekStarting, digest);
-          snapshots++;
-        } catch (snapErr) {
-          logger.error(`[WeeklyDigest] Snapshot write failed for ${vendorId}: ${snapErr.message}`);
-        }
+          // Idempotency: skip if report already exists for this vendor + week
+          const existing = await WeeklyReport.findOne({ vendorId: vendor._id, weekStartDate: weekStart });
+          if (existing) {
+            logger.info(`[Reporter] ${vendor.company}: report already exists for this week — skipped`);
+            skippedExisting++;
+            continue;
+          }
 
-        if (!email || email.includes('@placeholder.tendorai.com')) {
-          logger.info(`[WeeklyDigest] Skipping vendor ${vendorId}: no valid email`);
-          skipped++;
-          continue;
-        }
+          const report = await buildAIVisibilityIntelligenceReport(vendor._id, weekStart);
+          generated++;
+          logger.info(`[Reporter] ✅ ${vendor.company} (${vid}) — report ${report.reportNumber} generated`);
 
-        try {
-          const html = weeklyProDigestTemplate(digest);
-          const subject = weeklyProDigestSubject(digest);
-          await sendEmail({
-            to: email,
-            subject,
-            html,
-            text: `Hi ${digest.vendor.firstName || 'there'}, your weekly TendorAI report is ready. Score: ${digest.score.current ?? 'calculating'}. View: https://www.tendorai.com/vendor-dashboard`,
-          });
-
+          // Write AgentRun record
           try {
             await AgentRun.create({
-              vendorId,
+              vendorId: vendor._id,
               agentName: 'reporter',
-              weekStarting: digest.weekStarting,
+              weekStarting: weekStart,
               status: 'completed',
               startedAt: new Date(),
               completedAt: new Date(),
               durationMs: 0,
-              summary: `Weekly digest email sent to ${email}. Score: ${digest.score.current ?? 'N/A'}.`,
-              artifacts: {
-                digestSent: true,
-                score: digest.score.current,
-                weekStarting: digest.weekStarting,
-              },
+              summary: `AI Visibility Intelligence Report ${report.reportNumber} generated.`,
+              artifacts: { reportId: report._id.toString(), reportNumber: report.reportNumber, score: report.scoreHeader?.currentScore },
             });
           } catch (runErr) {
-            logger.error(`[WeeklyDigest] AgentRun write failed for ${vendorId}: ${runErr.message}`);
+            logger.error(`[Reporter] AgentRun write failed for ${vendor.company}: ${runErr.message}`);
           }
 
-          sent++;
-        } catch (emailErr) {
-          logger.error(`[WeeklyDigest] Email send failed for ${vendorId}: ${emailErr.message}`);
+          // Email — skip demo vendors and placeholder emails
+          const isDemo = DEMO_VENDOR_IDS.has(vid);
+          const hasValidEmail = vendor.email && !vendor.email.includes('@placeholder.tendorai.com');
+
+          if (isDemo) {
+            logger.info(`[Reporter] ${vendor.company}: demo vendor — email skipped`);
+            skippedDemo++;
+            continue;
+          }
+
+          if (!hasValidEmail) {
+            logger.info(`[Reporter] ${vendor.company}: no valid email — skipped`);
+            continue;
+          }
+
+          try {
+            const html = buildWeeklyEmailHTML(vendor, report);
+            const subject = buildWeeklyEmailSubject(report);
+            await sendEmail({ to: vendor.email, subject, html,
+              text: `Your AI Visibility Intelligence Report is ready. View: ${process.env.FRONTEND_URL || 'https://www.tendorai.com'}/vendor-dashboard/reports/${report._id}`,
+            });
+
+            await WeeklyReport.findByIdAndUpdate(report._id, { status: 'sent', sentAt: new Date() });
+            emailed++;
+            logger.info(`[Reporter] ✉️  ${vendor.company}: email sent to ${vendor.email}`);
+          } catch (emailErr) {
+            logger.error(`[Reporter] ${vendor.company}: email send failed: ${emailErr.message}`);
+          }
+        } catch (err) {
           failed++;
+          logger.error(`[Reporter] ❌ ${vendor.company} (${vid}): ${err.message}`);
         }
       }
 
-      logger.info(`[WeeklyDigest] Complete: ${sent} sent, ${skipped} skipped, ${failed} failed, ${snapshots} snapshots written`);
+      logger.info(`[Reporter] Complete: ${generated} generated, ${emailed} emailed, ${skippedExisting} already existed, ${skippedDemo} demo skipped, ${failed} failed`);
     } catch (err) {
-      logger.error('[WeeklyDigest] Cron run failed:', err.message);
+      logger.error('[Reporter] Cron run failed:', err.message);
     }
   });
 
@@ -426,7 +460,7 @@ export function startScheduledReports() {
   logger.info('  - AI mentions (weekly): every Sunday at 03:00 UTC');
   logger.info('  - Writer Agent (3x weekly): Mon/Wed/Fri at 05:00 UTC');
   logger.info('  - Starter reports (monthly): 1st of every month at 06:00 UTC');
-  logger.info('  - Pro weekly digest (weekly): every Monday at 08:00 UTC');
+  logger.info('  - Pro AI Visibility Report (weekly): every Monday at 08:00 UTC');
   logger.info('  - Past_due downgrade (daily): every day at 09:00 UTC');
 
   // Writer Agent cron — runs Mon/Wed/Fri 05:00 UTC
