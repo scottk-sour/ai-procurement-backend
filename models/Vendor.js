@@ -392,7 +392,9 @@ const vendorSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
     index: true
-  }
+  },
+
+  isDemoAccount: { type: Boolean, default: false, index: true },
 
 }, {
   timestamps: true,

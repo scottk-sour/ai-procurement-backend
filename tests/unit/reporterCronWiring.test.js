@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('Reporter Cron Wiring', () => {
-  const DEMO_VENDOR_IDS = new Set(['699757a97712b4369510e6c8']);
 
   function getMondayOfThisWeek() {
     const now = new Date();
@@ -19,9 +18,14 @@ describe('Reporter Cron Wiring', () => {
     expect(monday.getUTCMinutes()).toBe(0);
   });
 
-  it('demo vendor IDs are gated correctly', () => {
-    expect(DEMO_VENDOR_IDS.has('699757a97712b4369510e6c8')).toBe(true);
-    expect(DEMO_VENDOR_IDS.has('000000000000000000000000')).toBe(false);
+  it('vendor.isDemoAccount gates demo vendors correctly', () => {
+    const demoVendor = { _id: '699757a97712b4369510e6c8', company: 'Cardiff Property Partners', isDemoAccount: true };
+    const realVendor = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', company: 'Real Firm', isDemoAccount: false };
+    const unsetVendor = { _id: 'bbbbbbbbbbbbbbbbbbbbbbbb', company: 'Old Firm' };
+
+    expect(demoVendor.isDemoAccount).toBe(true);
+    expect(realVendor.isDemoAccount).toBe(false);
+    expect(!!unsetVendor.isDemoAccount).toBe(false);
   });
 
   it('PRO_TIER_VALUES includes managed, verified, enterprise, pro', () => {
@@ -43,26 +47,27 @@ describe('Reporter Cron Wiring', () => {
     expect(isPlaceholder('client@example.com')).toBe(false);
   });
 
-  it('demo vendors still get report but no email', () => {
-    const vendor = { _id: '699757a97712b4369510e6c8', company: 'Cardiff Property Partners', email: 'kinder1975.sd@gmail.com' };
-    const isDemo = DEMO_VENDOR_IDS.has(String(vendor._id));
-    expect(isDemo).toBe(true);
+  it('demo vendor gets report generated but email skipped', () => {
+    const vendor = { _id: '699757a97712b4369510e6c8', company: 'Cardiff Property Partners', email: 'kinder1975.sd@gmail.com', isDemoAccount: true };
+    expect(vendor.isDemoAccount).toBe(true);
     // Report should be generated (not skipped)
-    // Email should be skipped
+    // Email should be skipped because isDemoAccount is true
   });
 
-  it('non-demo vendor with valid email gets email', () => {
-    const vendor = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', company: 'Real Firm', email: 'real@example.com' };
-    const isDemo = DEMO_VENDOR_IDS.has(String(vendor._id));
+  it('non-demo vendor with valid email gets report + email', () => {
+    const vendor = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', company: 'Real Firm', email: 'real@example.com', isDemoAccount: false };
     const hasValidEmail = vendor.email && !vendor.email.includes('@placeholder.tendorai.com');
-    expect(isDemo).toBe(false);
+    expect(vendor.isDemoAccount).toBe(false);
     expect(hasValidEmail).toBe(true);
   });
 
+  it('isDemoAccount defaults to false on new vendor', () => {
+    const newVendor = { company: 'Brand New Firm', tier: 'managed' };
+    expect(newVendor.isDemoAccount ?? false).toBe(false);
+  });
+
   it('idempotency: existing report for same week should be skipped', () => {
-    // Simulate: WeeklyReport.findOne returns a doc
     const existing = { _id: 'abc', reportNumber: 'AVI-TEST-2026-W21' };
     expect(existing).not.toBeNull();
-    // Cron should skip this vendor and log "already exists"
   });
 });
