@@ -396,6 +396,8 @@ const vendorSchema = new mongoose.Schema({
 
   isDemoAccount: { type: Boolean, default: false, index: true },
 
+  previousSlugs: { type: [String], default: [], index: true },
+
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -441,10 +443,13 @@ vendorSchema.pre('save', function(next) {
       .replace(/-+/g, '-')
       .trim();
     if (this.location?.city) {
-      this.slug += '-' + this.location.city
+      const citySlug = this.location.city
         .toLowerCase()
         .replace(/[^a-z0-9\s-]/g, '')
         .replace(/\s+/g, '-');
+      if (citySlug && !this.slug.includes(citySlug)) {
+        this.slug += '-' + citySlug;
+      }
     }
   }
   next();
