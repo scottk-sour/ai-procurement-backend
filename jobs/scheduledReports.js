@@ -348,10 +348,6 @@ export function startScheduledReports() {
       const { default: WeeklyReport } = await import('../models/WeeklyReport.js');
       const { default: Vendor } = await import('../models/Vendor.js');
 
-      const DEMO_VENDOR_IDS = new Set([
-        '699757a97712b4369510e6c8', // Cardiff Property Partners
-      ]);
-
       function getMondayOfThisWeek() {
         const now = new Date();
         const day = now.getUTCDay();
@@ -368,7 +364,7 @@ export function startScheduledReports() {
           { tier: { $in: PRO_TIER_VALUES } },
           { 'account.tier': { $in: PRO_ACCOUNT_TIERS } },
         ],
-      }).select('_id company email location tier').lean();
+      }).select('_id company email location tier isDemoAccount').lean();
 
       logger.info(`[Reporter] Found ${vendors.length} Pro vendor(s)`);
 
@@ -411,10 +407,9 @@ export function startScheduledReports() {
           }
 
           // Email — skip demo vendors and placeholder emails
-          const isDemo = DEMO_VENDOR_IDS.has(vid);
           const hasValidEmail = vendor.email && !vendor.email.includes('@placeholder.tendorai.com');
 
-          if (isDemo) {
+          if (vendor.isDemoAccount) {
             logger.info(`[Reporter] ${vendor.company}: demo vendor — email skipped`);
             skippedDemo++;
             continue;
