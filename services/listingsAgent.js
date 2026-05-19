@@ -66,7 +66,7 @@ export async function runListingsForVendor(vendorId, opts = {}) {
   for (const dir of V1_DIRECTORIES) {
     const existing = await DirectoryListing.findOne({ vendorId, directory: dir });
 
-    if (existing && ['live', 'submitted', 'pending_verification'].includes(existing.status)) {
+    if (existing && ['live', 'submitted', 'pending_verification', 'queued'].includes(existing.status)) {
       stats.alreadyListed++;
       continue;
     }
