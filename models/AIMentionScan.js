@@ -9,11 +9,16 @@ const aiMentionScanSchema = new mongoose.Schema({
   },
   scanDate: { type: Date, default: Date.now },
   prompt: { type: String, required: true },
-  mentioned: { type: Boolean, required: true },
+  mentioned: { type: Boolean, default: null },
   position: {
     type: String,
     enum: ['first', 'top3', 'mentioned', 'not_mentioned'],
-    required: true,
+    default: 'not_mentioned',
+  },
+  status: {
+    type: String,
+    enum: ['ok', 'error', 'timeout'],
+    default: 'ok',
   },
   aiModel: { type: String, default: 'claude-haiku' },
   platform: { type: String, enum: ['chatgpt', 'perplexity', 'claude', 'gemini', 'grok', 'metaai'], default: null },
@@ -31,5 +36,6 @@ aiMentionScanSchema.index({ vendorId: 1, scanDate: -1 });
 aiMentionScanSchema.index({ scanDate: -1 });
 aiMentionScanSchema.index({ vendorId: 1, mentioned: 1, scanDate: -1 });
 aiMentionScanSchema.index({ vendorId: 1, platform: 1, mentioned: 1, scanDate: -1 });
+aiMentionScanSchema.index({ vendorId: 1, status: 1, scanDate: -1 });
 
 export default mongoose.model('AIMentionScan', aiMentionScanSchema);

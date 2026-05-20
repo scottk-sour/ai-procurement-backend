@@ -227,26 +227,32 @@ async function scanVendor(vendor, scanDate, source = 'weekly_scan') {
 
   for (const result of platformResults) {
     const platformKey = PLATFORM_KEY_MAP[result.platform] || result.platform;
-    const mentioned = result.mentioned === true;
-    if (mentioned) mentionCount++;
+    const isError = result.status === 'error' || result.status === 'timeout';
+    const mentioned = isError ? null : result.mentioned === true;
+    if (mentioned === true) mentionCount++;
 
     mentionDocs.push({
       vendorId: vendor._id,
       scanDate,
       prompt: representativePrompt,
       mentioned,
-      position: positionToLabel(result.position, mentioned),
+      position: isError ? 'not_mentioned' : positionToLabel(result.position, mentioned),
       aiModel: result.platform,
       platform: platformKey,
-      competitorsMentioned: result.competitors || [],
+      competitorsMentioned: isError ? [] : (result.competitors || []),
       category: vendor.services?.[0] || vendorType,
       location: city,
-      responseSnippet: (result.rawResponse || result.snippet || '').substring(0, 500),
+      responseSnippet: isError
+        ? (result.error || 'Unknown error').substring(0, 500)
+        : (result.rawResponse || result.snippet || '').substring(0, 500),
       source,
+      status: result.status === 'timeout' ? 'timeout' : isError ? 'error' : 'ok',
     });
   }
 
-  console.log(`  ${vendor.company}: ${mentionCount} mentions across ${mentionDocs.length} platform queries`);
+  const errorCount = mentionDocs.filter(d => d.status !== 'ok').length;
+  const okCount = mentionDocs.length - errorCount;
+  console.log(`  ${vendor.company}: ${mentionCount} mentions across ${okCount} successful queries (${errorCount} errors)`);
   return mentionDocs;
 }
 
@@ -276,7 +282,7 @@ export async function runSingleVendorScan(vendorId) {
   // Mark first scan as complete
   await Vendor.findByIdAndUpdate(vendorId, { $set: { firstScanTriggered: true } });
 
-  const mentions = mentionDocs.filter(d => d.mentioned).length;
+  const mentions = mentionDocs.filter(d => d.mentioned === true).length;
   console.log(`[SingleScan] Complete for ${vendor.company}: ${mentionDocs.length} records, ${mentions} mentions`);
 
   return {
@@ -428,8 +434,10 @@ export async function runWeeklyMentionScan() {
   let totalMentions = 0;
   let platformErrors = 0;
   let alertsSent = 0;
+  let consecutiveVendorFailures = 0;
+  const CIRCUIT_BREAKER_THRESHOLD = 5;
   const vendorsScanned = new Set();
-  const vendorsNotified = new Set(); // Track which vendors got a mention email this cycle
+  const vendorsNotified = new Set();
 
   // Pro tier values for notification email eligibility
   const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
@@ -437,6 +445,12 @@ export async function runWeeklyMentionScan() {
   for (let i = 0; i < vendors.length; i++) {
     const vendor = vendors[i];
     const vendorStartTime = new Date();
+
+    if (consecutiveVendorFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+      console.error(`\n⚠️  Circuit breaker tripped: ${consecutiveVendorFailures} consecutive vendor failures. Aborting remaining ${vendors.length - i} vendors.`);
+      break;
+    }
+
     console.log(`\n[${i + 1}/${vendors.length}] Scanning ${vendor.company}...`);
 
     try {
@@ -445,9 +459,17 @@ export async function runWeeklyMentionScan() {
       if (mentionDocs.length > 0) {
         await AIMentionScan.insertMany(mentionDocs, { ordered: false });
         totalRecords += mentionDocs.length;
-        const mentions = mentionDocs.filter(d => d.mentioned);
+        const mentions = mentionDocs.filter(d => d.mentioned === true);
         totalMentions += mentions.length;
-        platformErrors += mentionDocs.filter(d => d.responseSnippet?.startsWith('API error')).length;
+        const vendorErrors = mentionDocs.filter(d => d.status !== 'ok').length;
+        platformErrors += vendorErrors;
+
+        // If ALL platforms failed for this vendor, count as a consecutive failure
+        if (vendorErrors === mentionDocs.length) {
+          consecutiveVendorFailures++;
+        } else {
+          consecutiveVendorFailures = 0;
+        }
 
         // Send email alerts for Pro vendors mentioned by any platform
         const vendorTier = (vendor.tier || '').toLowerCase();
@@ -459,12 +481,13 @@ export async function runWeeklyMentionScan() {
           vendorsNotified.add(vendorKey);
           // Send one alert for the first platform that mentioned them
           const firstMention = mentions[0];
+          const okDocs = mentionDocs.filter(d => d.status === 'ok');
           await sendMentionAlert(
             vendor,
             firstMention.platform,
             firstMention.prompt,
             mentions.length,
-            mentionDocs.length
+            okDocs.length || mentionDocs.length
           );
           alertsSent++;
         }
@@ -477,9 +500,9 @@ export async function runWeeklyMentionScan() {
 
       vendorsScanned.add(vendor._id.toString());
 
-      const completedPlatforms = mentionDocs.filter(d => !d.responseSnippet?.startsWith('API error')).length;
-      const mentionCount = mentionDocs.filter(d => d.mentioned).length;
-      const topPlatforms = mentionDocs.filter(d => d.mentioned).map(d => d.platform).filter(Boolean);
+      const completedPlatforms = mentionDocs.filter(d => d.status === 'ok').length;
+      const mentionCount = mentionDocs.filter(d => d.mentioned === true).length;
+      const topPlatforms = mentionDocs.filter(d => d.mentioned === true).map(d => d.platform).filter(Boolean);
       try {
         await AgentRun.create({
           vendorId: vendor._id,
@@ -498,6 +521,7 @@ export async function runWeeklyMentionScan() {
     } catch (err) {
       console.error(`  Failed to scan ${vendor.company}:`, err.message);
       platformErrors++;
+      consecutiveVendorFailures++;
 
       try {
         await AgentRun.create({

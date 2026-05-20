@@ -38,16 +38,18 @@ export async function runDetectiveForVendor(vendorId) {
     });
   }
 
+  const okScans = scans.filter(s => s.status !== 'error' && s.status !== 'timeout');
   const platforms = {};
-  for (const s of scans) {
+  for (const s of okScans) {
     if (s.platform && !platforms[s.platform]) platforms[s.platform] = false;
-    if (s.platform && s.mentioned) platforms[s.platform] = true;
+    if (s.platform && s.mentioned === true) platforms[s.platform] = true;
   }
   const uniquePlatforms = Object.keys(platforms).length;
   const platformsCited = Object.values(platforms).filter(v => v).length;
-  const mentioned = scans.filter(s => s.mentioned).length;
-  const notMentioned = scans.filter(s => !s.mentioned).length;
-  const mentionSummary = { mentioned, notMentioned, platforms, totalScans: scans.length, platformsCited, uniquePlatforms };
+  const mentioned = okScans.filter(s => s.mentioned === true).length;
+  const notMentioned = okScans.filter(s => s.mentioned === false).length;
+  const errorCount = scans.length - okScans.length;
+  const mentionSummary = { mentioned, notMentioned, errorCount, platforms, totalScans: scans.length, platformsCited, uniquePlatforms };
 
   const competitorCounts = {};
   const competitorPlatforms = {};
