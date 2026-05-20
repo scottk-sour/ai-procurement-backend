@@ -238,6 +238,23 @@ export async function getFirmContext(vendorId) {
     ctx.firmFactsCompleteness = 0;
   }
 
+  // ─── Merge firmData (keyed vendor-provided values) ────────────
+  if (vendor.firmData && typeof vendor.firmData === 'object') {
+    const entries = vendor.firmData instanceof Map
+      ? [...vendor.firmData.entries()]
+      : Object.entries(vendor.firmData);
+    const filledData = {};
+    for (const [key, wrapper] of entries) {
+      const val = wrapper?.value || wrapper;
+      if (val && typeof val === 'string' && val.trim()) {
+        filledData[key] = val;
+      }
+    }
+    if (Object.keys(filledData).length > 0) {
+      ctx.firmData = filledData;
+    }
+  }
+
   return ctx;
 }
 

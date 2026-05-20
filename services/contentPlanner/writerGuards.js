@@ -61,4 +61,11 @@ export function detectPossibleFabrication(draftText) {
   return flagged;
 }
 
+export function countAllPlaceholderFormats(text) {
+  if (!text || typeof text !== 'string') return 0;
+  const keyed = (text.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]/g) || []).length;
+  const legacy = (text.match(/\[FIRM TO PROVIDE[: ][^\]]*\]/gi) || []).length;
+  return keyed + legacy;
+}
+
 export { REGULATORY_BODIES, DATA_VERBS };

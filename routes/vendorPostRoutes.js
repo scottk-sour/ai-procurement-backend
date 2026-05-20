@@ -33,7 +33,7 @@ export function buildUserPrompt(ctx) {
   const {
     topic, stats, primaryData, verticalLabel, vendorCity,
     vendorName, pillarSpec, vendorTypeEntities, linkedInHookType,
-    ctaUrl, ctaText,
+    ctaUrl, ctaText, allowedFirmDataKeys,
   } = ctx;
 
   const lines = [];
@@ -84,6 +84,14 @@ export function buildUserPrompt(ctx) {
     lines.push('');
     lines.push(`CTA for this post: link text = "${ctaText}", link URL = ${ctaUrl}`);
     lines.push('Use this EXACT URL and text for the closing call-to-action. Do not substitute with any other URL.');
+  }
+
+  if (allowedFirmDataKeys && Object.keys(allowedFirmDataKeys).length > 0) {
+    lines.push('');
+    lines.push('Allowed [FIRM_DATA] placeholder keys for this draft (use ONLY these keys):');
+    for (const [key, label] of Object.entries(allowedFirmDataKeys)) {
+      lines.push(`  ${key} — "${label}"`);
+    }
   }
 
   lines.push('');
