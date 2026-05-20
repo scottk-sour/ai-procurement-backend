@@ -398,6 +398,17 @@ const vendorSchema = new mongoose.Schema({
 
   previousSlugs: { type: [String], default: [], index: true },
 
+  firmData: {
+    type: Map,
+    of: new mongoose.Schema({
+      value: { type: String, default: '' },
+      label: { type: String, default: '' },
+      updatedAt: { type: Date },
+      updatedBy: { type: String, default: '' },
+    }, { _id: false }),
+    default: () => new Map(),
+  },
+
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

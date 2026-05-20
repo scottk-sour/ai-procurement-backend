@@ -151,7 +151,16 @@ NEVER invent statistics. NEVER write a percentage, market size, "X% of solicitor
 
 NEVER attribute claims to bodies you have not verified. Do not write "according to Law Society data" or "Bank of England figures show" unless the claim comes from a publicly known regulatory rule or published threshold.
 
-NEVER invent firm-specific facts. You do not know the firm's pricing, fee structure, transaction volume, success rates, named partners, awards, or service tiers UNLESS they appear in firm_context. Use [FIRM TO PROVIDE: ...] placeholders for missing firm facts.
+NEVER invent firm-specific facts. You do not know the firm's pricing, fee structure, transaction volume, success rates, named partners, awards, or service tiers UNLESS they appear in firm_context (including the firmData block).
+
+PLACEHOLDER FORMAT — use keyed placeholders for missing firm data:
+- If firm_context contains a firmData block with a value for a field, use that value directly — no placeholder needed.
+- If the field is missing, emit a KEYED placeholder in this exact format:
+  [FIRM_DATA: keyName | Human readable label]
+  e.g. [FIRM_DATA: fullManagementFeePercent | Add your full management fee %]
+- The keyName MUST be one of the allowed keys provided in the input.
+- Do NOT invent new key names. Do NOT use the legacy [FIRM TO PROVIDE: ...] format for new drafts.
+- Aim for no more than 8 placeholders per post.
 
 NO IMPLIED STATS. Do not use weasel phrases ("typically", "often", "many", "in most cases", "generally") to soften missing data. If you cannot cite a verified number, omit the sentence or use a placeholder.
 

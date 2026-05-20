@@ -8,6 +8,7 @@ import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval } from './approvalQueue.js';
 import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
+import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
 
 const SONNET_INPUT_COST_PER_M = 3.00;
 const SONNET_OUTPUT_COST_PER_M = 15.00;
@@ -190,6 +191,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     linkedInHookType: next.topic.linkedInHookType || 'opinion',
     ctaUrl: cta.ctaUrl,
     ctaText: cta.ctaText,
+    allowedFirmDataKeys: FIRM_DATA_KEYS,
   });
 
   let response;
