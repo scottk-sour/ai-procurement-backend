@@ -22,8 +22,7 @@ STRICT RULES — read carefully:
 3. Do not say "check reviews", "search online", "ask friends", "visit a directory" or any variation of this
 4. Do not name directories, comparison sites, or professional bodies (Law Society, ICAEW, etc.)
 5. Do not hedge or give generic advice — if you know businesses in this area, name them
-6. If ${companyName} is a business you would recommend, include them in your list
-7. Format your response as a numbered list: business name first, then one sentence about why
+6. Format your response as a numbered list: business name first, then one sentence about why
 
 If you genuinely do not know any specific businesses in ${city} that provide ${categoryLabel} services, respond with exactly this and nothing else:
 NO_BUSINESSES_FOUND
