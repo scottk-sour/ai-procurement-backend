@@ -17,8 +17,8 @@ export async function createApproval({ vendorId, agentName, itemType, title, dra
 export async function approveItem(approvalId, adminUserId, reason) {
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
-  if (item.status !== 'pending') {
-    throw new Error(`Cannot approve item with status "${item.status}" — must be "pending"`);
+  if (!['pending', 'firm_completed'].includes(item.status)) {
+    throw new Error(`Cannot approve item with status "${item.status}" — must be "pending" or "firm_completed"`);
   }
 
   item.status = 'approved';
