@@ -32,7 +32,7 @@ const approvalQueueSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['pending', 'approved', 'rejected', 'executed', 'failed'],
+    enum: ['pending', 'firm_completed', 'approved', 'rejected', 'executed', 'failed'],
     default: 'pending',
     index: true,
   },
@@ -49,6 +49,8 @@ const approvalQueueSchema = new mongoose.Schema({
   executionError: { type: String },
   liveUrl: { type: String, default: null },
   source: { type: String },
+  firmApprovedAt: { type: Date },
+  firmApprovedBy: { type: String },
 });
 
 approvalQueueSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
