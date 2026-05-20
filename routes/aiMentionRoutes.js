@@ -66,9 +66,9 @@ router.get('/summary', vendorAuth, async (req, res) => {
 
     // Paid tier gets full data
     if (paid) {
-      // Mention rate (last 30 days)
+      // Mention rate (last 30 days) — exclude error/timeout records from denominator
       const [totalPrompts, mentionedPrompts] = await Promise.all([
-        AIMentionScan.countDocuments({ vendorId, scanDate: { $gte: thirtyDaysAgo } }),
+        AIMentionScan.countDocuments({ vendorId, scanDate: { $gte: thirtyDaysAgo }, $or: [{ status: 'ok' }, { status: { $exists: false } }] }),
         AIMentionScan.countDocuments({
           vendorId,
           mentioned: true,

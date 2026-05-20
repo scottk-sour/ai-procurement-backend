@@ -73,19 +73,20 @@ async function buildCitationsSection(vendorId, weekStarting, ending) {
       scanDate: { $gte: weekStarting, $lte: ending },
     }).lean();
 
+    const okScans = scans.filter(s => s.status !== 'error' && s.status !== 'timeout');
     const platforms = ['chatgpt', 'perplexity', 'claude', 'gemini', 'grok', 'metaai'];
     const byPlatform = {};
     for (const p of platforms) {
       const key = p === 'metaai' ? 'meta_ai' : p;
-      const platformScans = scans.filter(s => s.platform === p);
-      const mentioned = platformScans.filter(s => s.mentioned).length;
+      const platformScans = okScans.filter(s => s.platform === p);
+      const mentioned = platformScans.filter(s => s.mentioned === true).length;
       byPlatform[key] = { mentioned, target: platformScans.length, change: 0 };
     }
 
-    const total = scans.filter(s => s.mentioned).length;
+    const total = okScans.filter(s => s.mentioned === true).length;
 
-    const captured = scans
-      .filter(s => s.mentioned)
+    const captured = okScans
+      .filter(s => s.mentioned === true)
       .map(s => ({
         platform: s.platform === 'metaai' ? 'meta_ai' : s.platform,
         query: s.prompt || '',
