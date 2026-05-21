@@ -343,7 +343,7 @@ export function startScheduledReports() {
   cron.schedule('0 8 * * 1', async () => {
     logger.info('[Reporter] Triggering weekly AI Visibility Intelligence Reports...');
     try {
-      const { buildAIVisibilityIntelligenceReport } = await import('../services/reporter/buildReport.js');
+      const { buildAIVisibilityIntelligenceReport, vendorHasRealScans } = await import('../services/reporter/buildReport.js');
       const { buildWeeklyEmailHTML, buildWeeklyEmailSubject } = await import('../services/reporter/emailBuilder.js');
       const { default: WeeklyReport } = await import('../models/WeeklyReport.js');
       const { default: Vendor } = await import('../models/Vendor.js');
@@ -382,6 +382,36 @@ export function startScheduledReports() {
           if (existing) {
             logger.info(`[Reporter] ${vendor.company}: report already exists for this week — skipped`);
             skippedExisting++;
+            continue;
+          }
+
+          // Gate: skip vendors with no real scan data yet
+          const { hasRealScans } = await vendorHasRealScans(vendor._id);
+          if (!hasRealScans) {
+            const hasValidEmail = vendor.email && !vendor.email.includes('@placeholder.tendorai.com');
+            if (hasValidEmail && !vendor.isDemoAccount) {
+              try {
+                await sendEmail({
+                  to: vendor.email,
+                  subject: 'Your first AI visibility scan is coming',
+                  html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a">
+                    <h2 style="color:#0a0a0a">Hi ${vendor.company},</h2>
+                    <p>Your TendorAI account is active but we haven't completed your first AI visibility scan yet.</p>
+                    <p>Your first scan runs this Sunday — it checks whether AI assistants like ChatGPT, Claude, and Perplexity recommend your firm when asked about ${vendor.vendorType || 'professional services'} in ${vendor.location?.city || 'your area'}.</p>
+                    <p><strong>Your first full report will arrive next Monday</strong> with real measured results.</p>
+                    <p>In the meantime, complete your profile to give AI assistants the best chance of finding you:</p>
+                    <p><a href="https://www.tendorai.com/vendor-dashboard/settings" style="background:#1a1a1a;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:600">Complete Your Profile</a></p>
+                    <p style="font-size:13px;color:#888;margin-top:32px">— TendorAI</p>
+                  </div>`,
+                  text: `Hi ${vendor.company}, your first AI visibility scan runs this Sunday. Your first full report arrives next Monday. Complete your profile: https://www.tendorai.com/vendor-dashboard/settings`,
+                });
+                logger.info(`[Reporter] ${vendor.company}: no scan data yet — holding email sent`);
+              } catch (emailErr) {
+                logger.error(`[Reporter] ${vendor.company}: holding email failed: ${emailErr.message}`);
+              }
+            } else {
+              logger.info(`[Reporter] ${vendor.company}: no scan data yet — skipped (${vendor.isDemoAccount ? 'demo' : 'no valid email'})`);
+            }
             continue;
           }
 

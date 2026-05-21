@@ -56,12 +56,12 @@ describe('Yell adapter', () => {
     expect(result.error).toBeNull();
   });
 
-  it('returns found:false when no candidates match', async () => {
+  it('returns found:null when no candidates match (never asserts absence)', async () => {
     fetchWithTimeout.mockResolvedValue({ ok: true, text: async () => makeEmptyHtml() });
     const result = await checkPresence(CANONICAL);
     expect(result.directory).toBe('yell');
-    expect(result.found).toBe(false);
-    expect(result.error).toBeNull();
+    expect(result.found).toBeNull();
+    expect(result.error).toBeTruthy();
   });
 
   it('returns found:null on HTTP error', async () => {
@@ -97,10 +97,10 @@ describe('FreeIndex adapter', () => {
     expect(result.error).toBeTruthy();
   });
 
-  it('returns found:false on empty results page', async () => {
+  it('returns found:null on empty results page (never asserts absence)', async () => {
     fetchWithTimeout.mockResolvedValue({ ok: true, text: async () => '<html><body>No results</body></html>' });
     const result = await checkPresence(CANONICAL);
-    expect(result.found).toBe(false);
+    expect(result.found).toBeNull();
   });
 });
 

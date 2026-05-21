@@ -72,7 +72,7 @@ export async function checkPresence(canonicalNap) {
       if (conf > bestConf) { best = c; bestConf = conf; }
     }
 
-    if (!best) return { directory: dir, found: false, confidence: 0, listingUrl: null, scraped: null, error: null };
+    if (!best) return { directory: dir, found: null, confidence: 0, listingUrl: null, scraped: null, error: 'no matching candidate in parsed results' };
     if (bestConf < 0.7) return { directory: dir, found: null, confidence: bestConf, listingUrl: best.url, scraped: best, error: null };
 
     return {
