@@ -4,6 +4,8 @@ import AgentRun from '../../models/AgentRun.js';
 import ApprovalQueue from '../../models/ApprovalQueue.js';
 import AIMentionScan from '../../models/AIMentionScan.js';
 import { titleCaseCompanyName } from './textFormatters.js';
+import { filterRealCompetitors } from './filterRealCompetitors.js';
+import { isSameFirm } from '../platformQuery/nameMatch.js';
 
 function slugifyUpper(text) {
   return (text || 'UNKNOWN')
@@ -75,10 +77,10 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   const shareOfVoice = buildShareOfVoice(weekScans);
 
   // SECTION 3: Who AI recommended instead — from real competitorsMentioned data
-  const { competitors: realCompetitors, competitorHeadline } = buildRealCompetitors(weekScans, vendor);
+  const { competitors: realCompetitors, competitorHeadline } = await buildRealCompetitors(weekScans, vendor);
 
   // SECTION 4: Prompt analysis — from real scan prompts and results
-  const promptAnalysis = buildRealPromptAnalysis(weekScans, vendor);
+  const promptAnalysis = await buildRealPromptAnalysis(weekScans, vendor);
 
   // SECTION 5: Recommended actions — real pending approvals
   const recommendedActions = pendingApprovals.map(a => ({
@@ -161,48 +163,51 @@ function buildShareOfVoice(weekScans) {
 
 /**
  * Build the "Who AI recommended instead" section from real scan data.
- * Aggregates competitorsMentioned across all scans for this week.
+ * Aggregates competitorsMentioned, filters against our firm directory to
+ * drop parser noise, and returns only verified real firms.
  */
-function buildRealCompetitors(weekScans, vendor) {
-  const competitorCounts = {};
-  const competitorPlatforms = {};
+async function buildRealCompetitors(weekScans, vendor) {
+  const rawCounts = {};
+  const rawPlatforms = {};
 
   for (const scan of weekScans) {
     for (const name of (scan.competitorsMentioned || [])) {
-      competitorCounts[name] = (competitorCounts[name] || 0) + 1;
-      if (!competitorPlatforms[name]) competitorPlatforms[name] = new Set();
-      if (scan.platform) competitorPlatforms[name].add(scan.platform);
+      rawCounts[name] = (rawCounts[name] || 0) + 1;
+      if (!rawPlatforms[name]) rawPlatforms[name] = new Set();
+      if (scan.platform) rawPlatforms[name].add(scan.platform);
     }
   }
 
-  const sorted = Object.entries(competitorCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
+  const allRawNames = Object.keys(rawCounts);
+  const realFirms = await filterRealCompetitors(allRawNames, { category: vendor.vendorType });
 
-  const totalPrompts = weekScans.length;
   const yourMentions = weekScans.filter(s => s.mentioned === true).length;
 
-  const competitors = sorted.map(([name, citationCount]) => ({
-    firmName: titleCaseCompanyName(name),
-    citationCount,
-    platforms: [...(competitorPlatforms[name] || [])],
-    isYou: false,
-  }));
+  const competitors = [];
+  for (const firm of realFirms) {
+    if (isSameFirm(firm.name, vendor.company)) continue;
+    const citationCount = rawCounts[firm.raw] || 0;
+    const platforms = [...(rawPlatforms[firm.raw] || [])];
+    competitors.push({ firmName: firm.name, citationCount, platforms, isYou: false });
+  }
 
-  competitors.push({
+  competitors.sort((a, b) => b.citationCount - a.citationCount);
+  const topCompetitors = competitors.slice(0, 5);
+
+  topCompetitors.push({
     firmName: vendor.company,
     citationCount: yourMentions,
     platforms: [...new Set(weekScans.filter(s => s.mentioned === true).map(s => s.platform).filter(Boolean))],
     isYou: true,
   });
 
-  competitors.sort((a, b) => b.citationCount - a.citationCount);
+  topCompetitors.sort((a, b) => b.citationCount - a.citationCount);
 
   let competitorHeadline;
-  const topNonYou = competitors.find(c => !c.isYou);
+  const topNonYou = topCompetitors.find(c => !c.isYou);
   if (!topNonYou) {
     competitorHeadline = weekScans.length > 0
-      ? `No competitor firms were named in AI responses for ${vendor.vendorType} queries in ${vendor.location?.city || 'your area'} this week.`
+      ? `AI did not name specific competitor firms for ${vendor.vendorType} queries in ${vendor.location?.city || 'your area'} this week.`
       : `No scan data available this week.`;
   } else if (topNonYou.citationCount > yourMentions) {
     competitorHeadline = `${topNonYou.firmName} was cited ${topNonYou.citationCount} time${topNonYou.citationCount === 1 ? '' : 's'} across ${topNonYou.platforms.length} platform${topNonYou.platforms.length === 1 ? '' : 's'} this week. ${vendor.company} was cited ${yourMentions} time${yourMentions === 1 ? '' : 's'}.`;
@@ -210,14 +215,15 @@ function buildRealCompetitors(weekScans, vendor) {
     competitorHeadline = `${vendor.company} was cited ${yourMentions} time${yourMentions === 1 ? '' : 's'} this week — ahead of all tracked competitors.`;
   }
 
-  return { competitors, competitorHeadline };
+  return { competitors: topCompetitors, competitorHeadline };
 }
 
 /**
  * Build prompt analysis from REAL scan data.
  * Groups scans by prompt and shows which firms were actually cited.
+ * Competitor names are filtered against the firm directory.
  */
-function buildRealPromptAnalysis(weekScans, vendor) {
+async function buildRealPromptAnalysis(weekScans, vendor) {
   const byPrompt = {};
   for (const scan of weekScans) {
     const prompt = scan.prompt || 'Unknown prompt';
@@ -233,12 +239,18 @@ function buildRealPromptAnalysis(weekScans, vendor) {
     }
   }
 
-  return Object.entries(byPrompt).map(([prompt, data]) => ({
-    prompt,
-    youCited: data.mentioned,
-    platformsCited: [...new Set(data.platforms)],
-    competitorsCited: data.competitorsCited.slice(0, 5).map(titleCaseCompanyName),
-  }));
+  const entries = Object.entries(byPrompt);
+  const results = [];
+  for (const [prompt, data] of entries) {
+    const filtered = await filterRealCompetitors(data.competitorsCited, { category: vendor.vendorType });
+    results.push({
+      prompt,
+      youCited: data.mentioned,
+      platformsCited: [...new Set(data.platforms)],
+      competitorsCited: filtered.slice(0, 5).map(f => f.name),
+    });
+  }
+  return results;
 }
 
 function estimateActionImpact(approval) {

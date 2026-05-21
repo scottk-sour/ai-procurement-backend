@@ -19,7 +19,15 @@ vi.mock('../../models/WeeklyReport.js', () => ({
   },
 }));
 vi.mock('../../models/Vendor.js', () => ({
-  default: { findById: (...args) => mockVendorFindById(...args) },
+  default: {
+    findById: (...args) => mockVendorFindById(...args),
+    find: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue([]) }) }),
+  },
+}));
+vi.mock('../../services/reporter/filterRealCompetitors.js', () => ({
+  filterRealCompetitors: vi.fn(async (rawNames) =>
+    rawNames.map(name => ({ name, raw: name }))
+  ),
 }));
 vi.mock('../../models/AgentRun.js', () => ({
   default: { find: (...args) => mockAgentRunFind(...args) },
