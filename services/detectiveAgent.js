@@ -138,25 +138,48 @@ export async function runDetectiveForVendor(vendorId) {
     }
   }
 
-  // Directory gap findings
+  // Directory presence + NAP findings from Listings audit
   try {
     const { default: DirectoryListing } = await import('../models/DirectoryListing.js');
     const listings = await DirectoryListing.find({ vendorId }).lean();
-    const listedDirectories = new Set(listings.filter(l => l.status === 'live').map(l => l.directory));
+    const presentDirectories = new Set(
+      listings.filter(l => l.status === 'found' || l.status === 'live').map(l => l.directory),
+    );
     const importantDirectories = [
-      { key: 'bing_places', name: 'Bing Places', severity: 'high' },
       { key: 'yell', name: 'Yell.com', severity: 'medium' },
       { key: 'freeindex', name: 'FreeIndex', severity: 'medium' },
-      { key: 'trustpilot', name: 'Trustpilot', severity: 'medium' },
+      { key: 'cylex', name: 'Cylex', severity: 'low' },
+      { key: 'thomson_local', name: 'Thomson Local', severity: 'low' },
     ];
     for (const dir of importantDirectories) {
       if (findings.length >= 5) break;
-      if (!listedDirectories.has(dir.key)) {
+      const listing = listings.find(l => l.directory === dir.key);
+      if (listing?.status === 'not_found') {
+        findings.push({
+          category: 'directory_presence', severity: dir.severity,
+          evidence: `Not found on ${dir.name} — adding a listing increases the sources AI assistants can cite.`,
+          recommendation: `Create a listing on ${dir.name}.`,
+          downstreamAgent: 'listings',
+        });
+      } else if (!listing || (!presentDirectories.has(dir.key) && listing.status !== 'undetermined')) {
         findings.push({
           category: 'directory_gap', severity: dir.severity,
-          evidence: `Not yet listed on ${dir.name}`,
-          recommendation: `Get listed on ${dir.name} — ${dir.severity === 'high' ? 'feeds AI search results' : 'increases citation footprint'}`,
+          evidence: `No directory audit data for ${dir.name} yet`,
+          recommendation: `Get listed on ${dir.name} — increases citation footprint.`,
           downstreamAgent: 'listings',
+        });
+      }
+    }
+    // Surface NAP issues from audit
+    for (const listing of listings) {
+      if (findings.length >= 5) break;
+      if (listing.napPhoneStatus === 'phone_mismatch') {
+        const label = importantDirectories.find(d => d.key === listing.directory)?.name || listing.directory;
+        findings.push({
+          category: 'nap_inconsistency', severity: 'medium',
+          evidence: `Phone number on ${label} doesn't match your confirmed number.`,
+          recommendation: `Update your phone on ${label} to ensure consistency.`,
+          downstreamAgent: null,
         });
       }
     }

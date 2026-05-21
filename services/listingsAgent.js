@@ -1,19 +1,33 @@
 import Vendor from '../models/Vendor.js';
 import AgentRun from '../models/AgentRun.js';
 import DirectoryListing from '../models/DirectoryListing.js';
-import { createApproval } from './approvalQueue.js';
-import { submitToBingPlaces } from './directoryAdapters/bingPlaces.js';
+import { getCanonicalNap } from './listings/canonicalNap.js';
+import { compareNap } from './listings/napConsistency.js';
+import { checkPresence as checkYell } from './listings/directoryAdapters/yell.js';
+import { checkPresence as checkFreeindex } from './listings/directoryAdapters/freeindex.js';
+import { checkPresence as checkCylex } from './listings/directoryAdapters/cylex.js';
+import { checkPresence as checkThomsonLocal } from './listings/directoryAdapters/thomsonLocal.js';
 
 const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
 
-const V1_DIRECTORIES = ['bing_places', 'yell', 'freeindex', 'trustpilot'];
-const CONCIERGE_DIRECTORIES = new Set(['yell', 'freeindex', 'trustpilot']);
+const AUDIT_DIRECTORIES = [
+  { key: 'yell', label: 'Yell.com', check: checkYell },
+  { key: 'freeindex', label: 'FreeIndex', check: checkFreeindex },
+  { key: 'cylex', label: 'Cylex', check: checkCylex },
+  { key: 'thomson_local', label: 'Thomson Local', check: checkThomsonLocal },
+];
 
 const REGULATORY_MAP = {
   solicitor: { directory: 'law_society', field: 'sraNumber' },
   accountant: { directory: 'icaew', field: 'icaewFirmNumber' },
   'mortgage-advisor': { directory: 'fca_register', field: 'fcaNumber' },
   'estate-agent': { directory: 'propertymark', field: 'propertymarkNumber' },
+};
+
+const DIRECTORY_LABELS = {
+  yell: 'Yell.com', freeindex: 'FreeIndex', cylex: 'Cylex',
+  thomson_local: 'Thomson Local', law_society: 'Law Society',
+  icaew: 'ICAEW', fca_register: 'FCA Register', propertymark: 'Propertymark',
 };
 
 function hasPlaceholderData(vendor) {
@@ -46,106 +60,168 @@ export async function runListingsForVendor(vendorId, opts = {}) {
       vendorId, agentName: 'listings', weekStarting: weekStart,
       status: 'failed', startedAt, completedAt: new Date(),
       durationMs: Date.now() - startedAt.getTime(),
-      summary: `Vendor has ${placeholder} — needs real contact info before directory submission`,
+      summary: `Vendor has ${placeholder} — needs real contact info before directory audit`,
       failureReason: 'placeholder_data',
     });
   }
 
-  if (!vendor.company || !vendor.location?.city || (!vendor.contactInfo?.phone && !vendor.contactInfo?.website)) {
+  if (!vendor.company || !vendor.location?.city) {
     return AgentRun.create({
       vendorId, agentName: 'listings', weekStarting: weekStart,
       status: 'failed', startedAt, completedAt: new Date(),
       durationMs: Date.now() - startedAt.getTime(),
-      summary: 'Missing required fields: company + city + (phone or website)',
+      summary: 'Missing required fields: company + city',
       failureReason: 'missing_required_fields',
     });
   }
 
-  const stats = { queued: 0, automated: 0, concierge: 0, alreadyListed: 0, skipped: 0 };
+  const canonicalNap = getCanonicalNap(vendor);
+  const stats = { checked: 0, found: 0, notFound: 0, undetermined: 0, napIssues: 0 };
+  const findings = [];
 
-  for (const dir of V1_DIRECTORIES) {
-    const existing = await DirectoryListing.findOne({ vendorId, directory: dir });
-
-    if (existing && ['live', 'submitted', 'pending_verification', 'queued'].includes(existing.status)) {
-      stats.alreadyListed++;
-      continue;
+  for (const dir of AUDIT_DIRECTORIES) {
+    stats.checked++;
+    let result;
+    try {
+      result = await dir.check(canonicalNap);
+    } catch (err) {
+      console.error(`[Listings] ${dir.key} adapter threw for ${vendor.company}:`, err.message);
+      result = { directory: dir.key, found: null, confidence: 0, listingUrl: null, scraped: null, error: err.message };
     }
-    if (existing && existing.status === 'failed' && existing.retryCount >= 3) {
-      stats.skipped++;
-      continue;
+
+    let status = 'undetermined';
+    if (result.found === true) { status = 'found'; stats.found++; }
+    else if (result.found === false) { status = 'not_found'; stats.notFound++; }
+    else { stats.undetermined++; }
+
+    let napResult = null;
+    if (result.found === true && result.scraped) {
+      napResult = compareNap(canonicalNap, result.scraped);
+      if (napResult.phone === 'phone_mismatch' || napResult.postcode === 'mismatch') {
+        stats.napIssues++;
+      }
     }
 
-    if (dir === 'bing_places' && !opts.skipBing) {
-      const result = await submitToBingPlaces(vendor);
-      await DirectoryListing.findOneAndUpdate(
-        { vendorId, directory: dir },
-        {
-          vendorId, directory: dir,
-          status: result.success ? 'submitted' : 'failed',
-          submissionMethod: 'api',
-          submittedAt: result.success ? new Date() : undefined,
-          listingUrl: result.listingUrl || undefined,
-          errorReason: result.error || undefined,
-          $inc: result.success ? {} : { retryCount: 1 },
-        },
-        { upsert: true, new: true },
-      );
-      stats.automated++;
-    } else if (CONCIERGE_DIRECTORIES.has(dir)) {
-      const listing = await DirectoryListing.findOneAndUpdate(
-        { vendorId, directory: dir },
-        { vendorId, directory: dir, status: 'queued', submissionMethod: 'concierge' },
-        { upsert: true, new: true },
-      );
-
-      await createApproval({
-        vendorId, agentName: 'listings', itemType: 'directory_submission',
-        title: `Submit ${vendor.company} to ${dir.replace(/_/g, ' ')}`,
-        draftPayload: {
-          directoryName: dir,
-          listingId: listing._id,
-          vendor: { company: vendor.company, city: vendor.location?.city, website: vendor.contactInfo?.website, phone: vendor.contactInfo?.phone },
-        },
-        metadata: { listingId: listing._id },
-        source: 'listings-agent',
-      });
-      stats.concierge++;
-    }
-  }
-
-  const reg = REGULATORY_MAP[vendor.vendorType];
-  if (reg) {
-    const hasNumber = !!vendor[reg.field];
     await DirectoryListing.findOneAndUpdate(
-      { vendorId, directory: reg.directory },
+      { vendorId, directory: dir.key },
       {
-        vendorId, directory: reg.directory,
-        status: hasNumber ? 'live' : 'queued',
-        submissionMethod: 'auto_regulatory',
-        verifiedAt: hasNumber ? new Date() : undefined,
-        errorReason: hasNumber ? undefined : `no ${reg.field}`,
+        vendorId, directory: dir.key,
+        status,
+        auditMode: true,
+        presenceConfidence: result.confidence || 0,
+        listingUrl: result.listingUrl || undefined,
+        scrapedName: result.scraped?.name || undefined,
+        scrapedPhone: result.scraped?.phone || undefined,
+        scrapedPostcode: result.scraped?.postcode || undefined,
+        napNameStatus: napResult?.name || null,
+        napPhoneStatus: napResult?.phone || null,
+        napPostcodeStatus: napResult?.postcode || null,
+        errorReason: result.error || undefined,
+        lastCheckedAt: new Date(),
       },
       { upsert: true, new: true },
     );
-    if (hasNumber) stats.alreadyListed++;
+
+    if (status === 'not_found') {
+      findings.push({
+        category: 'directory_presence',
+        severity: 'medium',
+        evidence: `Not found on ${dir.label} — adding a listing increases the sources AI assistants can cite.`,
+        recommendation: `Create a listing on ${dir.label} for ${vendor.company}.`,
+        downstreamAgent: 'listings',
+      });
+    } else if (status === 'undetermined' && result.error) {
+      findings.push({
+        category: 'directory_presence',
+        severity: 'low',
+        evidence: `Couldn't automatically check ${dir.label} — worth a manual look.`,
+        recommendation: `Search for ${vendor.company} on ${dir.label} manually.`,
+        downstreamAgent: null,
+      });
+    }
+
+    if (napResult?.phone === 'phone_mismatch') {
+      findings.push({
+        category: 'nap_inconsistency',
+        severity: 'medium',
+        evidence: `Phone on ${dir.label} (${result.scraped?.phone || '?'}) differs from your confirmed number (${canonicalNap.phone}) — inconsistent contact details reduce trust signals.`,
+        recommendation: `Update your phone number on ${dir.label} to match your confirmed number.`,
+        downstreamAgent: null,
+      });
+    }
+
+    if (napResult?.postcode === 'mismatch') {
+      findings.push({
+        category: 'nap_inconsistency',
+        severity: 'medium',
+        evidence: `Postcode on ${dir.label} (${result.scraped?.postcode || '?'}) differs from ${canonicalNap.postcode}.`,
+        recommendation: `Update your postcode on ${dir.label}.`,
+        downstreamAgent: null,
+      });
+    }
   }
 
+  // Name variation across multiple directories
+  const nameVariations = [];
+  for (const dir of AUDIT_DIRECTORIES) {
+    const listing = await DirectoryListing.findOne({ vendorId, directory: dir.key, auditMode: true }).lean();
+    if (listing?.napNameStatus === 'name_variation') {
+      nameVariations.push(dir.label);
+    }
+  }
+  if (nameVariations.length >= 2) {
+    findings.push({
+      category: 'nap_inconsistency',
+      severity: 'low',
+      evidence: `Your firm name appears differently across ${nameVariations.length} directories (${nameVariations.join(', ')}) — consistent naming strengthens recognition.`,
+      recommendation: 'Update your business name to be consistent across all directories.',
+      downstreamAgent: null,
+    });
+  }
+
+  // Regulatory presence
+  const reg = REGULATORY_MAP[vendor.vendorType];
+  if (reg) {
+    const hasNumber = !!vendor[reg.field];
+    if (hasNumber) {
+      stats.checked++;
+      stats.found++;
+      await DirectoryListing.findOneAndUpdate(
+        { vendorId, directory: reg.directory },
+        {
+          vendorId, directory: reg.directory,
+          status: 'found',
+          auditMode: true,
+          presenceConfidence: 1.0,
+          lastCheckedAt: new Date(),
+        },
+        { upsert: true, new: true },
+      );
+    }
+  }
+
+  const hasUndetermined = stats.undetermined > 0;
   const parts = [];
-  if (stats.automated) parts.push(`${stats.automated} automated (Bing)`);
-  if (stats.concierge) parts.push(`${stats.concierge} concierge queued`);
-  if (stats.alreadyListed) parts.push(`${stats.alreadyListed} already listed`);
-  if (stats.skipped) parts.push(`${stats.skipped} skipped (max retries)`);
-  const summary = parts.length ? `${parts.join(', ')}.` : 'No actions taken.';
+  if (stats.found) parts.push(`${stats.found} found`);
+  if (stats.notFound) parts.push(`${stats.notFound} not found`);
+  if (stats.undetermined) parts.push(`${stats.undetermined} undetermined`);
+  if (stats.napIssues) parts.push(`${stats.napIssues} NAP issues`);
+  const summary = parts.length
+    ? `Checked ${stats.checked} directories: ${parts.join(', ')}.`
+    : 'No directories checked.';
 
   const run = await AgentRun.create({
     vendorId, agentName: 'listings', weekStarting: weekStart,
-    status: (stats.automated + stats.concierge > 0) ? 'completed' : 'partial',
+    status: hasUndetermined ? 'partial' : 'completed',
     startedAt, completedAt: new Date(),
     durationMs: Date.now() - startedAt.getTime(),
     summary,
     artifacts: {
       ...stats,
-      gapsIdentified: 0, gaps: [], competitorsAbove: [],
+      findings,
+      gapsIdentified: findings.length,
+      gaps: findings.slice(0, 3).map(f => f.recommendation),
+      competitorsAbove: [],
     },
   });
 
@@ -158,9 +234,9 @@ export async function runWeeklyListingsCheck() {
 
   const vendors = await Vendor.find({
     tier: { $in: [...PRO_TIERS] },
-  }).select('_id company tier').lean();
+  }).select('_id company tier vendorType sraNumber icaewFirmNumber fcaNumber propertymarkNumber location contactInfo email firmData').lean();
 
-  console.log(`[Listings] Starting weekly check for ${vendors.length} vendors`);
+  console.log(`[Listings] Starting weekly directory audit for ${vendors.length} vendors`);
 
   for (const vendor of vendors) {
     try {
@@ -176,15 +252,15 @@ export async function runWeeklyListingsCheck() {
   }
 
   const durationMs = Date.now() - startTime;
-  console.log(`[Listings] Complete in ${durationMs}ms:`, stats);
+  console.log(`[Listings] Audit complete in ${durationMs}ms:`, stats);
 
   try {
     const { sendEmail } = await import('./emailService.js');
     await sendEmail({
       to: process.env.ADMIN_EMAIL || 'scott.davies@tendorai.com',
-      subject: `Listings Agent weekly: ${stats.completed} completed, ${stats.partial} partial, ${stats.failed} failed`,
-      text: `Listings Agent weekly check completed in ${durationMs}ms\nVendors: ${vendors.length}\nCompleted: ${stats.completed}\nPartial: ${stats.partial}\nFailed: ${stats.failed}`,
-      html: `<pre>Listings Agent weekly check completed in ${durationMs}ms\nVendors: ${vendors.length}\nCompleted: ${stats.completed}\nPartial: ${stats.partial}\nFailed: ${stats.failed}</pre>`,
+      subject: `Listings Audit weekly: ${stats.completed} completed, ${stats.partial} partial, ${stats.failed} failed`,
+      text: `Listings directory audit completed in ${durationMs}ms\nVendors: ${vendors.length}\nCompleted: ${stats.completed}\nPartial: ${stats.partial}\nFailed: ${stats.failed}`,
+      html: `<pre>Listings directory audit completed in ${durationMs}ms\nVendors: ${vendors.length}\nCompleted: ${stats.completed}\nPartial: ${stats.partial}\nFailed: ${stats.failed}</pre>`,
     });
   } catch (err) {
     console.error(`[Listings] Admin email failed:`, err.message);

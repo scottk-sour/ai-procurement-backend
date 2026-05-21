@@ -10,7 +10,8 @@ const directoryListingSchema = new mongoose.Schema({
   },
   status: {
     type: String, required: true,
-    enum: ['queued', 'submitted', 'pending_verification', 'live', 'failed', 'removed'],
+    enum: ['queued', 'submitted', 'pending_verification', 'live', 'failed', 'removed',
+           'found', 'not_found', 'undetermined'],
     default: 'queued',
   },
   listingUrl: { type: String },
@@ -19,6 +20,17 @@ const directoryListingSchema = new mongoose.Schema({
   retryCount: { type: Number, default: 0 },
   errorReason: { type: String },
   submissionMethod: { type: String, enum: ['api', 'manual', 'concierge', 'auto_regulatory'] },
+
+  // Audit fields (presence + NAP consistency)
+  auditMode: { type: Boolean, default: false },
+  presenceConfidence: { type: Number },
+  scrapedName: { type: String },
+  scrapedPhone: { type: String },
+  scrapedPostcode: { type: String },
+  napNameStatus: { type: String, enum: ['match', 'name_variation', null], default: null },
+  napPhoneStatus: { type: String, enum: ['match', 'phone_mismatch', 'unverifiable', null], default: null },
+  napPostcodeStatus: { type: String, enum: ['match', 'mismatch', 'unverifiable', null], default: null },
+  lastCheckedAt: { type: Date },
 }, { timestamps: true });
 
 directoryListingSchema.index({ vendorId: 1, directory: 1 }, { unique: true });
