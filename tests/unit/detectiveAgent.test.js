@@ -153,4 +153,34 @@ describe('Detective Agent', () => {
 
     expect(result.summary).toContain('Cited by all 2 platforms');
   });
+
+  it('surfaces directory audit findings as plain strings in gaps', async () => {
+    Vendor.findById.mockReturnValue({ lean: vi.fn().mockResolvedValue(VENDOR_PRO) });
+    AIMentionScan.find.mockReturnValue({ lean: vi.fn().mockResolvedValue([
+      { vendorId: VENDOR_PRO._id, platform: 'chatgpt', mentioned: true, competitorsMentioned: [] },
+      { vendorId: VENDOR_PRO._id, platform: 'perplexity', mentioned: true, competitorsMentioned: [] },
+    ]) });
+    DirectoryListing.find.mockReturnValue({ lean: vi.fn().mockResolvedValue([
+      { directory: 'yell', status: 'not_found', auditMode: true },
+      { directory: 'freeindex', status: 'found', auditMode: true, napPhoneStatus: 'phone_mismatch' },
+      { directory: 'cylex', status: 'undetermined', auditMode: true },
+      { directory: 'thomson_local', status: 'found', auditMode: true, napPhoneStatus: 'match' },
+    ]) });
+
+    const result = await runDetectiveForVendor(VENDOR_PRO._id);
+
+    const yellGap = result.artifacts.gaps.find(g => g.includes('Yell'));
+    expect(yellGap).toBeDefined();
+    expect(yellGap).toContain('Not found on Yell');
+    expect(yellGap).toContain('adding a listing');
+
+    const phoneGap = result.artifacts.gaps.find(g => g.includes('FreeIndex') && g.includes('Phone'));
+    expect(phoneGap).toBeDefined();
+    expect(phoneGap).toContain('differs from your confirmed number');
+
+    const undeterminedGap = result.artifacts.gaps.find(g => g.includes('Cylex'));
+    expect(undeterminedGap).toBeUndefined();
+
+    expect(result.artifacts.gapsIdentified).toBeGreaterThanOrEqual(2);
+  });
 });

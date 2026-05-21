@@ -138,26 +138,72 @@ export async function runDetectiveForVendor(vendorId) {
     }
   }
 
-  // Directory gap findings
+  // Directory presence + NAP findings from Listings audit
+  const directoryGapStrings = [];
   try {
     const { default: DirectoryListing } = await import('../models/DirectoryListing.js');
     const listings = await DirectoryListing.find({ vendorId }).lean();
-    const listedDirectories = new Set(listings.filter(l => l.status === 'live').map(l => l.directory));
+    const presentDirectories = new Set(
+      listings.filter(l => l.status === 'found' || l.status === 'live').map(l => l.directory),
+    );
     const importantDirectories = [
-      { key: 'bing_places', name: 'Bing Places', severity: 'high' },
       { key: 'yell', name: 'Yell.com', severity: 'medium' },
       { key: 'freeindex', name: 'FreeIndex', severity: 'medium' },
-      { key: 'trustpilot', name: 'Trustpilot', severity: 'medium' },
+      { key: 'cylex', name: 'Cylex', severity: 'low' },
+      { key: 'thomson_local', name: 'Thomson Local', severity: 'low' },
     ];
     for (const dir of importantDirectories) {
-      if (findings.length >= 5) break;
-      if (!listedDirectories.has(dir.key)) {
-        findings.push({
-          category: 'directory_gap', severity: dir.severity,
-          evidence: `Not yet listed on ${dir.name}`,
-          recommendation: `Get listed on ${dir.name} — ${dir.severity === 'high' ? 'feeds AI search results' : 'increases citation footprint'}`,
-          downstreamAgent: 'listings',
-        });
+      const listing = listings.find(l => l.directory === dir.key);
+      if (listing?.status === 'not_found') {
+        const gap = `Not found on ${dir.name} — adding a listing increases the sources AI assistants can cite`;
+        directoryGapStrings.push(gap);
+        if (findings.length < 5) {
+          findings.push({
+            category: 'directory_presence', severity: dir.severity,
+            evidence: gap,
+            recommendation: `Create a listing on ${dir.name}.`,
+            downstreamAgent: 'listings',
+          });
+        }
+      } else if (!listing || (!presentDirectories.has(dir.key) && listing.status !== 'undetermined')) {
+        if (findings.length < 5) {
+          findings.push({
+            category: 'directory_gap', severity: dir.severity,
+            evidence: `No directory audit data for ${dir.name} yet`,
+            recommendation: `Get listed on ${dir.name} — increases citation footprint.`,
+            downstreamAgent: 'listings',
+          });
+        }
+      }
+      // undetermined (null) → no string emitted, stays honest
+    }
+    // Surface NAP issues from audit
+    for (const listing of listings) {
+      if (listing.napPhoneStatus === 'phone_mismatch') {
+        const label = importantDirectories.find(d => d.key === listing.directory)?.name || listing.directory;
+        const gap = `Phone on ${label} differs from your confirmed number — inconsistent contact details weaken trust signals`;
+        directoryGapStrings.push(gap);
+        if (findings.length < 5) {
+          findings.push({
+            category: 'nap_inconsistency', severity: 'medium',
+            evidence: gap,
+            recommendation: `Update your phone on ${label} to ensure consistency.`,
+            downstreamAgent: null,
+          });
+        }
+      }
+      if (listing.napPostcodeStatus === 'mismatch') {
+        const label = importantDirectories.find(d => d.key === listing.directory)?.name || listing.directory;
+        const gap = `Postcode on ${label} differs from yours — inconsistent address details weaken trust signals`;
+        directoryGapStrings.push(gap);
+        if (findings.length < 5) {
+          findings.push({
+            category: 'nap_inconsistency', severity: 'medium',
+            evidence: gap,
+            recommendation: `Update your postcode on ${label}.`,
+            downstreamAgent: null,
+          });
+        }
       }
     }
   } catch (err) {
@@ -198,7 +244,13 @@ export async function runDetectiveForVendor(vendorId) {
       findings, mentionSummary, topCompetitors,
       scoreContext: { currentScore: scoreData?.score || null },
       gapsIdentified: findings.length,
-      gaps: findings.slice(0, 3).map(f => f.recommendation),
+      gaps: [
+        ...findings
+          .filter(f => f.category !== 'directory_presence' && f.category !== 'nap_inconsistency' && f.category !== 'directory_gap')
+          .slice(0, 3)
+          .map(f => f.recommendation),
+        ...directoryGapStrings,
+      ],
       competitorsAbove: topCompetitors.slice(0, 3).map(c => c.name),
     },
   });

@@ -33,6 +33,13 @@ export const FIRM_DATA_KEYS = {
   averageRateSaving: 'Average rate saving vs lender direct (e.g. £3,400/year)',
   lenderPanelSize: 'Number of lenders on your panel (e.g. 90)',
 
+  // ─── Canonical NAP (directory consistency) ────────────────
+  canonical_trading_name: 'Your trading name as it appears on signage/website',
+  canonical_phone: 'Main business phone number',
+  canonical_address: 'Full business address (first line)',
+  canonical_postcode: 'Business postcode',
+  canonical_website: 'Main business website URL',
+
   // ─── Cross-vertical ──────────────────────────────────────
   teamSize: 'Number of fee earners / staff (e.g. 12)',
   yearsEstablished: 'Year the firm was established (e.g. 2005)',

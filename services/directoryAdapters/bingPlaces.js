@@ -1,3 +1,4 @@
+// DEAD: bingplaces.com has no public submission API. Not used by the audit. Scheduled for removal.
 import logger from '../logger.js';
 
 export async function submitToBingPlaces(vendor) {
