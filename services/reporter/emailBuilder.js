@@ -24,7 +24,7 @@ export function buildWeeklyEmailHTML(vendor, report) {
   }
 
   if (pendingCount > 0) {
-    bulletPoints.push(`<strong>${pendingCount}</strong> high-impact fix${pendingCount === 1 ? '' : 'es'} prepared and pending your approval`);
+    bulletPoints.push(`<strong>${pendingCount}</strong> high-impact fix${pendingCount === 1 ? '' : 'es'} prepared and pending your approval — <a href="https://www.tendorai.com/vendor-dashboard/approvals" style="color:#1a1a1a;font-weight:600">Review &amp; approve &rarr;</a>`);
   }
 
   const bulletsHtml = bulletPoints.map(b => `<li>${b}</li>`).join('\n      ');
