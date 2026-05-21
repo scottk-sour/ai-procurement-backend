@@ -531,6 +531,12 @@ async function handleCheckoutComplete(session) {
                     <strong>Your first AI Visibility Report</strong> arrives Monday morning &mdash; see which platforms recommend you across ChatGPT, Perplexity, Claude, Gemini, Grok, and Meta AI.
                   </td>
                 </tr>
+                <tr>
+                  <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; vertical-align: top;">4.</td>
+                  <td style="padding: 12px 0; color: #374151;">
+                    <strong>Your content is being written for you.</strong> Each week we draft AI-optimised content for your firm. You review and approve it before anything publishes &mdash; nothing goes live in your name without your sign-off. Some drafts ask you to fill in a few firm-specific details (like your fees or timescales) before you can approve them. <a href="https://www.tendorai.com/vendor-dashboard/approvals" style="color: #7c3aed;">View your drafts &rarr;</a>
+                  </td>
+                </tr>
               </table>
               <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="color: #374151; margin: 0; font-size: 14px;">
@@ -543,7 +549,7 @@ async function handleCheckoutComplete(session) {
               </p>
             </div>
           `,
-          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. 90-day promise — review and refund if your score isn't moving in the right direction. Questions? hello@tendorai.com`,
+          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. Step 4: We draft AI-optimised content for you each week — review and approve before it publishes. Nothing goes live without your sign-off. View drafts: https://www.tendorai.com/vendor-dashboard/approvals. 90-day promise — review and refund if your score isn't moving in the right direction. Questions? hello@tendorai.com`,
           from: 'TendorAI <hello@tendorai.com>',
         });
         logger.info('Pro upgrade email sent', { vendorId: vendor._id, email: vendor.email });
