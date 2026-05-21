@@ -23,6 +23,11 @@ vi.mock('../../models/AeoReport.js', () => ({ default: { findOne: vi.fn() } }));
 vi.mock('../../models/VendorProduct.js', () => ({ default: { find: vi.fn() } }));
 vi.mock('../../models/Review.js', () => ({ default: { aggregate: vi.fn() } }));
 vi.mock('../../models/DirectoryListing.js', () => ({ default: { find: vi.fn() } }));
+vi.mock('../../services/reporter/filterRealCompetitors.js', () => ({
+  filterRealCompetitors: vi.fn(async (rawNames) =>
+    rawNames.filter(n => !['Back', 'I recommend', 'Practice resources'].includes(n)).map(name => ({ name, raw: name }))
+  ),
+}));
 vi.mock('../../utils/visibilityScore.js', () => ({
   calculateVisibilityScore: vi.fn(() => ({ score: 45, tips: [{ message: 'Add products', impact: 'high', category: 'products', action: 'Go to Products' }] })),
 }));

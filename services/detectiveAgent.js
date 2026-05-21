@@ -3,6 +3,7 @@ import AgentRun from '../models/AgentRun.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import AeoReport from '../models/AeoReport.js';
 import VendorProduct from '../models/VendorProduct.js';
+import { filterRealCompetitors } from './reporter/filterRealCompetitors.js';
 import Review from '../models/Review.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 
@@ -51,21 +52,23 @@ export async function runDetectiveForVendor(vendorId) {
   const errorCount = scans.length - okScans.length;
   const mentionSummary = { mentioned, notMentioned, errorCount, platforms, totalScans: scans.length, platformsCited, uniquePlatforms };
 
-  const competitorCounts = {};
-  const competitorPlatforms = {};
+  const rawCompCounts = {};
+  const rawCompPlatforms = {};
   for (const s of scans) {
     for (const c of (s.competitorsMentioned || [])) {
-      competitorCounts[c] = (competitorCounts[c] || 0) + 1;
-      if (!competitorPlatforms[c]) competitorPlatforms[c] = new Set();
-      if (s.platform) competitorPlatforms[c].add(s.platform);
+      rawCompCounts[c] = (rawCompCounts[c] || 0) + 1;
+      if (!rawCompPlatforms[c]) rawCompPlatforms[c] = new Set();
+      if (s.platform) rawCompPlatforms[c].add(s.platform);
     }
   }
-  const topCompetitors = Object.entries(competitorCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, citationCount]) => ({
-      name, citationCount, platforms: [...(competitorPlatforms[name] || [])],
-    }));
+  const realFirms = await filterRealCompetitors(Object.keys(rawCompCounts), { category: vendor.vendorType });
+  const topCompetitors = realFirms
+    .map(f => ({
+      name: f.name, citationCount: rawCompCounts[f.raw] || 0,
+      platforms: [...(rawCompPlatforms[f.raw] || [])],
+    }))
+    .sort((a, b) => b.citationCount - a.citationCount)
+    .slice(0, 5);
 
   let scoreData = null;
   try {
