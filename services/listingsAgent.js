@@ -79,104 +79,108 @@ export async function runListingsForVendor(vendorId, opts = {}) {
   const stats = { checked: 0, found: 0, notFound: 0, undetermined: 0, napIssues: 0 };
   const findings = [];
 
-  for (const dir of AUDIT_DIRECTORIES) {
-    stats.checked++;
-    let result;
-    try {
-      result = await dir.check(canonicalNap);
-    } catch (err) {
-      console.error(`[Listings] ${dir.key} adapter threw for ${vendor.company}:`, err.message);
-      result = { directory: dir.key, found: null, confidence: 0, listingUrl: null, scraped: null, error: err.message };
-    }
+  const scrapeEnabled = process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED === 'true';
 
-    let status = 'undetermined';
-    if (result.found === true) { status = 'found'; stats.found++; }
-    else if (result.found === false) { status = 'not_found'; stats.notFound++; }
-    else { stats.undetermined++; }
+  if (scrapeEnabled) {
+    for (const dir of AUDIT_DIRECTORIES) {
+      stats.checked++;
+      let result;
+      try {
+        result = await dir.check(canonicalNap);
+      } catch (err) {
+        console.error(`[Listings] ${dir.key} adapter threw for ${vendor.company}:`, err.message);
+        result = { directory: dir.key, found: null, confidence: 0, listingUrl: null, scraped: null, error: err.message };
+      }
 
-    let napResult = null;
-    if (result.found === true && result.scraped) {
-      napResult = compareNap(canonicalNap, result.scraped);
-      if (napResult.phone === 'phone_mismatch' || napResult.postcode === 'mismatch') {
-        stats.napIssues++;
+      let status = 'undetermined';
+      if (result.found === true) { status = 'found'; stats.found++; }
+      else if (result.found === false) { status = 'not_found'; stats.notFound++; }
+      else { stats.undetermined++; }
+
+      let napResult = null;
+      if (result.found === true && result.scraped) {
+        napResult = compareNap(canonicalNap, result.scraped);
+        if (napResult.phone === 'phone_mismatch' || napResult.postcode === 'mismatch') {
+          stats.napIssues++;
+        }
+      }
+
+      await DirectoryListing.findOneAndUpdate(
+        { vendorId, directory: dir.key },
+        {
+          vendorId, directory: dir.key,
+          status,
+          auditMode: true,
+          presenceConfidence: result.confidence || 0,
+          listingUrl: result.listingUrl || undefined,
+          scrapedName: result.scraped?.name || undefined,
+          scrapedPhone: result.scraped?.phone || undefined,
+          scrapedPostcode: result.scraped?.postcode || undefined,
+          napNameStatus: napResult?.name || null,
+          napPhoneStatus: napResult?.phone || null,
+          napPostcodeStatus: napResult?.postcode || null,
+          errorReason: result.error || undefined,
+          lastCheckedAt: new Date(),
+        },
+        { upsert: true, new: true },
+      );
+
+      if (status === 'not_found') {
+        findings.push({
+          category: 'directory_presence',
+          severity: 'medium',
+          evidence: `Not found on ${dir.label} — adding a listing increases the sources AI assistants can cite.`,
+          recommendation: `Create a listing on ${dir.label} for ${vendor.company}.`,
+          downstreamAgent: 'listings',
+        });
+      } else if (status === 'undetermined' && result.error) {
+        findings.push({
+          category: 'directory_presence',
+          severity: 'low',
+          evidence: `Couldn't automatically check ${dir.label} — worth a manual look.`,
+          recommendation: `Search for ${vendor.company} on ${dir.label} manually.`,
+          downstreamAgent: null,
+        });
+      }
+
+      if (napResult?.phone === 'phone_mismatch') {
+        findings.push({
+          category: 'nap_inconsistency',
+          severity: 'medium',
+          evidence: `Phone on ${dir.label} (${result.scraped?.phone || '?'}) differs from your confirmed number (${canonicalNap.phone}) — inconsistent contact details reduce trust signals.`,
+          recommendation: `Update your phone number on ${dir.label} to match your confirmed number.`,
+          downstreamAgent: null,
+        });
+      }
+
+      if (napResult?.postcode === 'mismatch') {
+        findings.push({
+          category: 'nap_inconsistency',
+          severity: 'medium',
+          evidence: `Postcode on ${dir.label} (${result.scraped?.postcode || '?'}) differs from ${canonicalNap.postcode}.`,
+          recommendation: `Update your postcode on ${dir.label}.`,
+          downstreamAgent: null,
+        });
       }
     }
 
-    await DirectoryListing.findOneAndUpdate(
-      { vendorId, directory: dir.key },
-      {
-        vendorId, directory: dir.key,
-        status,
-        auditMode: true,
-        presenceConfidence: result.confidence || 0,
-        listingUrl: result.listingUrl || undefined,
-        scrapedName: result.scraped?.name || undefined,
-        scrapedPhone: result.scraped?.phone || undefined,
-        scrapedPostcode: result.scraped?.postcode || undefined,
-        napNameStatus: napResult?.name || null,
-        napPhoneStatus: napResult?.phone || null,
-        napPostcodeStatus: napResult?.postcode || null,
-        errorReason: result.error || undefined,
-        lastCheckedAt: new Date(),
-      },
-      { upsert: true, new: true },
-    );
-
-    if (status === 'not_found') {
+    // Name variation across multiple directories
+    const nameVariations = [];
+    for (const dir of AUDIT_DIRECTORIES) {
+      const listing = await DirectoryListing.findOne({ vendorId, directory: dir.key, auditMode: true }).lean();
+      if (listing?.napNameStatus === 'name_variation') {
+        nameVariations.push(dir.label);
+      }
+    }
+    if (nameVariations.length >= 2) {
       findings.push({
-        category: 'directory_presence',
-        severity: 'medium',
-        evidence: `Not found on ${dir.label} — adding a listing increases the sources AI assistants can cite.`,
-        recommendation: `Create a listing on ${dir.label} for ${vendor.company}.`,
-        downstreamAgent: 'listings',
-      });
-    } else if (status === 'undetermined' && result.error) {
-      findings.push({
-        category: 'directory_presence',
+        category: 'nap_inconsistency',
         severity: 'low',
-        evidence: `Couldn't automatically check ${dir.label} — worth a manual look.`,
-        recommendation: `Search for ${vendor.company} on ${dir.label} manually.`,
+        evidence: `Your firm name appears differently across ${nameVariations.length} directories (${nameVariations.join(', ')}) — consistent naming strengthens recognition.`,
+        recommendation: 'Update your business name to be consistent across all directories.',
         downstreamAgent: null,
       });
     }
-
-    if (napResult?.phone === 'phone_mismatch') {
-      findings.push({
-        category: 'nap_inconsistency',
-        severity: 'medium',
-        evidence: `Phone on ${dir.label} (${result.scraped?.phone || '?'}) differs from your confirmed number (${canonicalNap.phone}) — inconsistent contact details reduce trust signals.`,
-        recommendation: `Update your phone number on ${dir.label} to match your confirmed number.`,
-        downstreamAgent: null,
-      });
-    }
-
-    if (napResult?.postcode === 'mismatch') {
-      findings.push({
-        category: 'nap_inconsistency',
-        severity: 'medium',
-        evidence: `Postcode on ${dir.label} (${result.scraped?.postcode || '?'}) differs from ${canonicalNap.postcode}.`,
-        recommendation: `Update your postcode on ${dir.label}.`,
-        downstreamAgent: null,
-      });
-    }
-  }
-
-  // Name variation across multiple directories
-  const nameVariations = [];
-  for (const dir of AUDIT_DIRECTORIES) {
-    const listing = await DirectoryListing.findOne({ vendorId, directory: dir.key, auditMode: true }).lean();
-    if (listing?.napNameStatus === 'name_variation') {
-      nameVariations.push(dir.label);
-    }
-  }
-  if (nameVariations.length >= 2) {
-    findings.push({
-      category: 'nap_inconsistency',
-      severity: 'low',
-      evidence: `Your firm name appears differently across ${nameVariations.length} directories (${nameVariations.join(', ')}) — consistent naming strengthens recognition.`,
-      recommendation: 'Update your business name to be consistent across all directories.',
-      downstreamAgent: null,
-    });
   }
 
   // Regulatory presence

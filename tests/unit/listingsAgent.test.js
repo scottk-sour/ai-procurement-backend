@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 
 const VENDOR_PRO = {
@@ -59,11 +59,20 @@ const { default: Vendor } = await import('../../models/Vendor.js');
 const { runListingsForVendor } = await import('../../services/listingsAgent.js');
 
 describe('Listings Agent', () => {
+  let savedEnv;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    savedEnv = process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
+    delete process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
     mockAgentRunCreate.mockImplementation(async (data) => ({ _id: new mongoose.Types.ObjectId(), ...data }));
     mockFindOneAndUpdate.mockImplementation(async (q, u) => ({ _id: new mongoose.Types.ObjectId(), ...u }));
     mockFindOne.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
+    else process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED = savedEnv;
   });
 
   it('fails for non-Pro vendor', async () => {

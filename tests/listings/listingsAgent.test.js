@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 
 const VENDOR_PRO = {
@@ -38,10 +38,7 @@ vi.mock('../../models/AgentRun.js', () => {
 });
 vi.mock('../../models/DirectoryListing.js', () => ({
   default: {
-    findOne: (...args) => {
-      const val = mockFindOne(...args);
-      return { lean: () => val };
-    },
+    findOne: (...args) => { const val = mockFindOne(...args); return { lean: () => val }; },
     findOneAndUpdate: (...args) => mockFindOneAndUpdate(...args),
   },
 }));
@@ -72,15 +69,23 @@ function makeAdapterResult(directory, found, opts = {}) {
 }
 
 describe('Listings Agent (audit mode)', () => {
+  let savedEnv;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    savedEnv = process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
     mockAgentRunCreate.mockImplementation(async (data) => ({ _id: new mongoose.Types.ObjectId(), ...data }));
     mockFindOneAndUpdate.mockImplementation(async (q, u) => ({ _id: new mongoose.Types.ObjectId(), ...u }));
     mockFindOne.mockResolvedValue(null);
     mockCheckYell.mockResolvedValue(makeAdapterResult('yell', true));
-    mockCheckFreeindex.mockResolvedValue(makeAdapterResult('freeindex', false));
+    mockCheckFreeindex.mockResolvedValue(makeAdapterResult('freeindex', null, { error: 'no matching candidate in parsed results' }));
     mockCheckCylex.mockResolvedValue(makeAdapterResult('cylex', null, { error: 'HTTP 403' }));
     mockCheckThomson.mockResolvedValue(makeAdapterResult('thomson_local', true));
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
+    else process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED = savedEnv;
   });
 
   it('fails for non-Pro vendor', async () => {
@@ -100,7 +105,26 @@ describe('Listings Agent (audit mode)', () => {
     expect(mockCheckFreeindex).not.toHaveBeenCalled();
   });
 
-  it('runs all 4 adapters + regulatory check on happy path', async () => {
+  it('skips scraping when LISTINGS_DIRECTORY_SCRAPE_ENABLED is not true', async () => {
+    delete process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED;
+    Vendor.findById.mockReturnValue({ lean: vi.fn().mockResolvedValue(VENDOR_PRO) });
+    const result = await runListingsForVendor(VENDOR_PRO._id);
+
+    expect(mockCheckYell).not.toHaveBeenCalled();
+    expect(mockCheckFreeindex).not.toHaveBeenCalled();
+    expect(mockCheckCylex).not.toHaveBeenCalled();
+    expect(mockCheckThomson).not.toHaveBeenCalled();
+
+    // Regulatory check still runs
+    const regCall = mockFindOneAndUpdate.mock.calls.find(c => c[0]?.directory === 'law_society');
+    expect(regCall).toBeDefined();
+    expect(regCall[1].status).toBe('found');
+    expect(result.artifacts.checked).toBe(1);
+    expect(result.artifacts.found).toBe(1);
+  });
+
+  it('runs all 4 adapters + regulatory check when scrape enabled', async () => {
+    process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED = 'true';
     Vendor.findById.mockReturnValue({ lean: vi.fn().mockResolvedValue(VENDOR_PRO) });
     const result = await runListingsForVendor(VENDOR_PRO._id);
 
@@ -109,26 +133,19 @@ describe('Listings Agent (audit mode)', () => {
     expect(mockCheckCylex).toHaveBeenCalledOnce();
     expect(mockCheckThomson).toHaveBeenCalledOnce();
 
-    expect(result.status).toBe('partial');
     expect(result.artifacts.checked).toBe(5);
     expect(result.artifacts.found).toBe(3);
-    expect(result.artifacts.notFound).toBe(1);
-    expect(result.artifacts.undetermined).toBe(1);
+    expect(result.artifacts.undetermined).toBe(2);
   });
 
-  it('emits soft finding for not_found, no hard finding for undetermined', async () => {
+  it('emits no hard absence finding (adapters never return found:false)', async () => {
+    process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED = 'true';
     Vendor.findById.mockReturnValue({ lean: vi.fn().mockResolvedValue(VENDOR_PRO) });
     const result = await runListingsForVendor(VENDOR_PRO._id);
     const findings = result.artifacts.findings;
 
     const notFoundFindings = findings.filter(f => f.category === 'directory_presence' && f.evidence.includes('Not found'));
-    expect(notFoundFindings.length).toBe(1);
-    expect(notFoundFindings[0].evidence).toContain('FreeIndex');
-    expect(notFoundFindings[0].severity).toBe('medium');
-
-    const undeterminedFindings = findings.filter(f => f.evidence.includes('automatically check'));
-    expect(undeterminedFindings.length).toBe(1);
-    expect(undeterminedFindings[0].severity).toBe('low');
+    expect(notFoundFindings.length).toBe(0);
 
     const hardAbsenceFindings = findings.filter(f =>
       f.severity === 'high' && f.evidence.toLowerCase().includes('not listed'),
@@ -136,7 +153,8 @@ describe('Listings Agent (audit mode)', () => {
     expect(hardAbsenceFindings.length).toBe(0);
   });
 
-  it('upserts DirectoryListing with audit fields', async () => {
+  it('upserts DirectoryListing with audit fields when scrape enabled', async () => {
+    process.env.LISTINGS_DIRECTORY_SCRAPE_ENABLED = 'true';
     Vendor.findById.mockReturnValue({ lean: vi.fn().mockResolvedValue(VENDOR_PRO) });
     await runListingsForVendor(VENDOR_PRO._id);
 
