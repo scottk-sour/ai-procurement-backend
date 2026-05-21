@@ -2,10 +2,7 @@ import WeeklyReport from '../../models/WeeklyReport.js';
 import Vendor from '../../models/Vendor.js';
 import AgentRun from '../../models/AgentRun.js';
 import ApprovalQueue from '../../models/ApprovalQueue.js';
-import * as synth from './syntheticDataEngine.js';
-import { selectCompetitors } from './competitorSelector.js';
-import { auditClaims } from './claimAccuracyAudit.js';
-import { generateBoardSummary } from './boardSummaryPrompt.js';
+import AIMentionScan from '../../models/AIMentionScan.js';
 import { titleCaseCompanyName } from './textFormatters.js';
 
 function slugifyUpper(text) {
@@ -31,121 +28,59 @@ function endOfWeek(date) {
   return d;
 }
 
+/**
+ * Check whether a vendor has had at least one real AI mention scan.
+ * Returns { hasRealScans, scanCount }.
+ */
+export async function vendorHasRealScans(vendorId) {
+  const count = await AIMentionScan.countDocuments({
+    vendorId,
+    $or: [{ status: 'ok' }, { status: { $exists: false } }],
+  });
+  return { hasRealScans: count > 0, scanCount: count };
+}
+
 export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDate) {
   const vendor = await Vendor.findById(vendorId).lean();
   if (!vendor) throw new Error(`Vendor ${vendorId} not found`);
 
   const weekEnd = endOfWeek(weekStartDate);
-  const flags = [];
 
-  const [reconRuns, completedActions, pendingApprovals, priorReports] = await Promise.all([
+  const [reconRuns, pendingApprovals, priorReports] = await Promise.all([
     AgentRun.find({ vendorId, agentName: 'reconnaissance', weekStarting: { $gte: weekStartDate, $lte: weekEnd }, status: { $in: ['completed', 'partial'] } }).lean(),
-    ApprovalQueue.find({ vendorId, updatedAt: { $gte: weekStartDate, $lte: weekEnd }, status: 'approved' }).lean(),
     getDedupedPendingApprovals(vendorId),
     WeeklyReport.find({ vendorId, weekStartDate: { $lt: weekStartDate } }).sort({ weekStartDate: -1 }).limit(8).lean(),
   ]);
 
-  const competitors = await selectCompetitors(vendor, 3);
+  // Real scan data for this week
+  const weekScans = await AIMentionScan.find({
+    vendorId,
+    scanDate: { $gte: weekStartDate, $lte: weekEnd },
+    $or: [{ status: 'ok' }, { status: { $exists: false } }],
+  }).lean();
 
-  // SECTION 1: Score header
+  // SECTION 1: Score header — built from real recon data only
   const previousScore = priorReports[0]?.scoreHeader?.currentScore ?? null;
-  const currentScore = computeVisibilityScore(reconRuns, vendor);
+  const currentScore = computeVisibilityScore(reconRuns);
   const sparkline = buildSparkline(priorReports, currentScore);
-
-  const benchmarkResult = synth.generateIndustryBenchmark(
-    vendor.vendorType, vendor.location?.city, weekStartDate,
-    await countVendorsInSegment(vendor)
-  );
-  if (benchmarkResult.isSynthetic) flags.push({ field: 'industryBenchmark', isSynthetic: true, method: benchmarkResult.method, replaceCondition: benchmarkResult.replaceCondition });
-
-  const competitorScores = competitors.map(c => {
-    const prior = priorReports[0]?.competitors?.find(pc => pc.firmName === c.company);
-    const result = synth.generateCompetitorScore(c.company, weekStartDate, prior?.visibilityScore);
-    if (result.isSynthetic) flags.push({ field: `competitor.${titleCaseCompanyName(c.company)}.score`, isSynthetic: true, method: result.method, replaceCondition: result.replaceCondition });
-    return { competitor: c, ...result };
-  });
-
-  const competitorsAhead = competitorScores.filter(cs => cs.value > currentScore).length;
-
-  const opportunityResult = synth.generateOpportunityLoss(
-    vendor.vendorType, Math.max(0, 100 - currentScore), vendor.location?.city, weekStartDate
-  );
-  flags.push({ field: 'revenueExposure', isSynthetic: true, method: opportunityResult.method, replaceCondition: opportunityResult.replaceCondition });
 
   const scoreHeader = {
     currentScore,
     previousScore,
     weeklyChange: previousScore != null ? currentScore - previousScore : 0,
-    rankInCity: competitorsAhead + 1,
-    totalFirmsInCity: competitorScores.length + 1,
-    competitorsAhead,
-    monthlyOpportunityLoss: { min: opportunityResult.monthlyMin, max: opportunityResult.monthlyMax },
     trendSparkline: sparkline,
   };
 
-  // SECTION 3: Share of voice
-  const shareOfVoice = buildShareOfVoice(vendor, reconRuns, competitorScores);
+  // SECTION 2: Share of voice — from real scan data
+  const shareOfVoice = buildShareOfVoice(weekScans);
 
-  // SECTION 4: Competitor positioning
-  const competitorList = [
-    ...competitorScores.map(cs => ({
-      firmName: titleCaseCompanyName(cs.competitor.company),
-      visibilityScore: cs.value,
-      weeklyChange: cs.weeklyChange,
-      trendDirection: cs.trendDirection,
-      isYou: false,
-      citationCount: estimateCitationsFromScore(cs.value),
-      notableMention: cs.value >= 30 ? `Cited in AI responses for ${vendor.vendorType} queries in ${vendor.location?.city}` : null,
-    })),
-    {
-      firmName: vendor.company,
-      visibilityScore: currentScore,
-      weeklyChange: scoreHeader.weeklyChange,
-      trendDirection: scoreHeader.weeklyChange > 0 ? 'up' : scoreHeader.weeklyChange < 0 ? 'down' : 'flat',
-      isYou: true,
-      citationCount: countRealMentions(reconRuns),
-      notableMention: null,
-    },
-  ].sort((a, b) => b.visibilityScore - a.visibilityScore);
+  // SECTION 3: Who AI recommended instead — from real competitorsMentioned data
+  const { competitors: realCompetitors, competitorHeadline } = buildRealCompetitors(weekScans, vendor);
 
-  const competitorHeadline = buildCompetitorHeadline(competitorList, vendor);
+  // SECTION 4: Prompt analysis — from real scan prompts and results
+  const promptAnalysis = buildRealPromptAnalysis(weekScans, vendor);
 
-  // SECTION 5: Revenue exposure
-  const revenueExposure = { monthlyMin: opportunityResult.monthlyMin, monthlyMax: opportunityResult.monthlyMax, methodology: opportunityResult.methodology };
-
-  // SECTION 6: Prompt analysis
-  const promptAnalysis = buildPromptAnalysis(vendor, competitors, weekStartDate);
-
-  // SECTION 7: Authority graph
-  const authorityGraph = buildAuthorityGraph(vendor);
-
-  // SECTION 8: Perception + claim accuracy
-  let inaccurateClaims = [];
-  try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    inaccurateClaims = await auditClaims(vendor, anthropicClient, null);
-  } catch (e) {
-    console.error('[Reporter] Claim audit failed:', e.message);
-  }
-  const perceptionSynth = synth.generatePerception(vendor, weekStartDate);
-  flags.push({ field: 'perception.associations', isSynthetic: true, method: perceptionSynth.method, replaceCondition: perceptionSynth.replaceCondition });
-
-  const perceptionAnalysis = {
-    positiveAssociations: perceptionSynth.positiveAssociations,
-    missingAssociations: perceptionSynth.missingAssociations,
-    competitorAssociations: perceptionSynth.competitorAssociations,
-    inaccurateClaimsDetected: inaccurateClaims,
-  };
-
-  // SECTION 9: Projections
-  const projectedScores = linearProject(sparkline, 4);
-  const projections = { historicalScores: sparkline, projectedScores, projectionMethod: 'linear_regression_8week' };
-
-  // SECTION 10: Opportunity feed
-  const opportunityFeed = buildOpportunityFeed(vendor, weekStartDate, flags, competitorList);
-
-  // SECTION 11: Recommended actions
+  // SECTION 5: Recommended actions — real pending approvals
   const recommendedActions = pendingApprovals.map(a => ({
     title: a.title || a.itemType,
     description: a.draftPayload?.description || '',
@@ -154,18 +89,21 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
     approvalId: a._id,
   })).sort((a, b) => b.estimatedImpact - a.estimatedImpact);
 
-  // SECTION 12: What's next
+  // SECTION 6: What's next
   const whatsNext = buildWhatsNext(weekEnd);
 
-  // SECTION 2: Board summary (generated last)
+  // Board summary — plain factual, no LLM call for fabricated narrative
+  const mentionedPlatforms = [...new Set(weekScans.filter(s => s.mentioned === true).map(s => s.platform).filter(Boolean))];
+  const totalPrompts = weekScans.length;
+  const totalMentions = weekScans.filter(s => s.mentioned === true).length;
+
   let boardSummary;
-  try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    boardSummary = await generateBoardSummary(anthropicClient, { vendor, scoreHeader, competitorList, revenueExposure, recommendedActions });
-  } catch (e) {
-    console.error('[Reporter] Board summary failed:', e.message);
-    boardSummary = `Your firm's AI market position report for this week is ready. TendorAI has prepared ${recommendedActions.length} fixes in your approval queue.`;
+  if (totalPrompts === 0) {
+    boardSummary = `No AI visibility scans completed this week. Your first scan data will appear in next week's report.`;
+  } else if (totalMentions === 0) {
+    boardSummary = `AI assistants did not mention ${vendor.company} for any of the ${totalPrompts} prompts tested this week. ${recommendedActions.length > 0 ? `${recommendedActions.length} fix${recommendedActions.length === 1 ? '' : 'es'} prepared and pending your approval.` : 'Building your visibility profile — recommendations coming soon.'}`;
+  } else {
+    boardSummary = `${vendor.company} was mentioned in ${totalMentions} of ${totalPrompts} AI responses this week${mentionedPlatforms.length > 0 ? ` (${mentionedPlatforms.join(', ')})` : ''}. Score: ${currentScore}/100.${recommendedActions.length > 0 ? ` ${recommendedActions.length} fix${recommendedActions.length === 1 ? '' : 'es'} pending your approval.` : ''}`;
   }
 
   const yw = getYearWeek(weekStartDate);
@@ -179,160 +117,127 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
     scoreHeader,
     boardSummary,
     shareOfVoice,
-    competitors: competitorList,
+    competitors: realCompetitors,
     competitorHeadline,
-    revenueExposure,
     promptAnalysis,
-    authorityGraph,
-    perceptionAnalysis,
-    projections,
-    opportunityFeed,
     recommendedActions,
     whatsNext,
-    syntheticDataFlags: flags,
+    syntheticDataFlags: [],
   });
 }
 
-function computeVisibilityScore(reconRuns, vendor) {
-  const mentions = countRealMentions(reconRuns);
+function computeVisibilityScore(reconRuns) {
+  const mentions = reconRuns.reduce((sum, r) => sum + (r.artifacts?.mentionsFound || 0), 0);
   return Math.min(100, mentions * 8 + 12);
 }
 
-function countRealMentions(reconRuns) {
-  return reconRuns.reduce((sum, r) => sum + (r.artifacts?.mentionsFound || r.artifacts?.platformsQueried || 0), 0);
-}
-
 function buildSparkline(priorReports, currentScore) {
-  const historical = priorReports.map(r => r.scoreHeader?.currentScore ?? 0).reverse();
-  while (historical.length < 7) historical.unshift(Math.max(0, currentScore - 4));
+  const historical = priorReports.map(r => r.scoreHeader?.currentScore ?? null).reverse();
   return [...historical.slice(-7), currentScore];
 }
 
-export function linearProject(historical, weeksAhead) {
-  const n = historical.length;
-  if (n < 2) return Array(weeksAhead).fill(historical[n - 1] || 0);
-  const sumX = (n * (n - 1)) / 2;
-  const sumY = historical.reduce((a, b) => a + b, 0);
-  const sumXY = historical.reduce((acc, y, x) => acc + x * y, 0);
-  const sumX2 = historical.reduce((acc, _, x) => acc + x * x, 0);
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-  return Array.from({ length: weeksAhead }, (_, i) =>
-    Math.max(0, Math.min(100, Math.round(intercept + slope * (n + i))))
-  );
-}
+function buildShareOfVoice(weekScans) {
+  const platforms = [
+    { key: 'claude', label: 'Anthropic Claude' },
+    { key: 'chatgpt', label: 'ChatGPT (via OpenAI)' },
+    { key: 'perplexity', label: 'Perplexity' },
+    { key: 'gemini', label: 'Google Gemini' },
+    { key: 'grok', label: 'xAI Grok' },
+    { key: 'metaai', label: 'Meta AI' },
+  ];
 
-function buildShareOfVoice(vendor, reconRuns, competitorScores) {
-  const yourMentions = countRealMentions(reconRuns);
-  const competitorAvg = competitorScores.reduce((sum, cs) => sum + cs.value, 0) / Math.max(1, competitorScores.length);
-
-  return [
-    { platform: 'Anthropic Claude', platformStatus: 'live' },
-    { platform: 'ChatGPT (via OpenAI)', platformStatus: 'live' },
-    { platform: 'Perplexity', platformStatus: 'live' },
-    { platform: 'Google Gemini', platformStatus: 'coming_q3_2026' },
-    { platform: 'xAI Grok', platformStatus: 'coming_q3_2026' },
-    { platform: 'DeepSeek', platformStatus: 'coming_q4_2026' },
-  ].map(p => {
-    if (p.platformStatus !== 'live') return { ...p, yourSharePercent: null, competitorAvgPercent: null, gap: null };
-    const yourShare = Math.min(15, yourMentions * 2);
-    const compShare = Math.round(competitorAvg / 4);
-    return { ...p, yourSharePercent: yourShare, competitorAvgPercent: compShare, gap: compShare - yourShare };
-  });
-}
-
-function buildCompetitorHeadline(list, vendor) {
-  const you = list.find(c => c.isYou);
-  const ahead = list.filter(c => !c.isYou && c.visibilityScore > you.visibilityScore);
-  if (ahead.length === 0) return `${vendor.company} leads its tracked ${vendor.location?.city} competitors this week.`;
-  return `${ahead[0].firmName} appeared in ${ahead[0].citationCount} AI-generated recommendations for ${vendor.vendorType} queries in ${vendor.location?.city} this week. ${vendor.company} appeared in ${you.citationCount}.`;
-}
-
-function estimateCitationsFromScore(score) {
-  return Math.max(0, Math.round((score - 20) / 5));
-}
-
-const REASONING_TEMPLATES = [
-  'Review presence, structured local content, and consistent directory signals.',
-  'Strong Trustpilot footprint, accurate schema markup, recent content publishing.',
-  'Established directory presence, customer reviews, and clear location signals.',
-  'Authority signals from review platforms and content depth on key topics.',
-];
-
-function buildPromptAnalysis(vendor, competitors, weekStartDate) {
-  const city = vendor.location?.city || 'your area';
-  const vt = vendor.vendorType || 'solicitor';
-  const pools = {
-    solicitor: [`best solicitor ${city}`, `conveyancing solicitor ${city}`, `family law solicitor ${city}`],
-    accountant: [`best accountant ${city}`, `tax adviser small business ${city}`, `cloud accounting ${city}`],
-    'mortgage-advisor': [`mortgage adviser ${city}`, `first-time buyer mortgage ${city}`, `self-employed mortgage ${city}`],
-    'estate-agent': [`best estate agent ${city}`, `estate agents first-time sellers ${city}`, `online vs high-street estate agent ${city}`],
-    'office-equipment': [`photocopier supplier ${city}`, `managed print ${city}`, `office equipment ${city}`],
-  };
-
-  const compNames = competitors.slice(0, 3).map(c => titleCaseCompanyName(c.company));
-  const sourcePool = getSourcePoolByVertical(vt);
-
-  return (pools[vt] || pools.solicitor).map((prompt, i) => {
-    const citedFirms = compNames.length >= 2
-      ? [compNames[i % compNames.length], compNames[(i + 1) % compNames.length]]
-      : compNames.slice(0, 2);
-
-    const seed = synth.seedFromString(`sources-${prompt}-${synth.getYearWeek(weekStartDate)}`);
-    const rand = synth.seededRandom(seed);
-    const shuffled = [...sourcePool].sort(() => rand() - 0.5);
-    const citedSources = shuffled.slice(0, 3);
-
+  return platforms.map(p => {
+    const platformScans = weekScans.filter(s => s.platform === p.key);
+    const mentioned = platformScans.filter(s => s.mentioned === true).length;
+    const total = platformScans.length;
     return {
-      prompt,
-      enginesCited: ['Anthropic Claude', 'ChatGPT (via OpenAI)', 'Perplexity'],
-      citedFirms,
-      citedSources,
-      youCited: false,
-      reasoning: REASONING_TEMPLATES[i % REASONING_TEMPLATES.length],
+      platform: p.label,
+      scanned: total,
+      mentioned,
+      mentionRate: total > 0 ? Math.round((mentioned / total) * 100) : null,
     };
   });
 }
 
-function getSourcePoolByVertical(vertical) {
-  return {
-    solicitor: ['Law Society', 'Trustpilot', 'Google Business', 'SRA', 'Yell'],
-    accountant: ['ICAEW', 'Trustpilot', 'Google Business', 'Xero Directory', 'Yell'],
-    'mortgage-advisor': ['Unbiased', 'VouchedFor', 'FCA Register', 'Trustpilot', 'Google Business'],
-    'estate-agent': ['Rightmove', 'Trustpilot', 'Google Business', 'Zoopla', 'OnTheMarket'],
-    'office-equipment': ['Yell', 'FreeIndex', 'Google Business', 'Trustpilot', 'Cylex'],
-  }[vertical] || ['Trustpilot', 'Yell', 'Google Business', 'FreeIndex'];
+/**
+ * Build the "Who AI recommended instead" section from real scan data.
+ * Aggregates competitorsMentioned across all scans for this week.
+ */
+function buildRealCompetitors(weekScans, vendor) {
+  const competitorCounts = {};
+  const competitorPlatforms = {};
+
+  for (const scan of weekScans) {
+    for (const name of (scan.competitorsMentioned || [])) {
+      competitorCounts[name] = (competitorCounts[name] || 0) + 1;
+      if (!competitorPlatforms[name]) competitorPlatforms[name] = new Set();
+      if (scan.platform) competitorPlatforms[name].add(scan.platform);
+    }
+  }
+
+  const sorted = Object.entries(competitorCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  const totalPrompts = weekScans.length;
+  const yourMentions = weekScans.filter(s => s.mentioned === true).length;
+
+  const competitors = sorted.map(([name, citationCount]) => ({
+    firmName: titleCaseCompanyName(name),
+    citationCount,
+    platforms: [...(competitorPlatforms[name] || [])],
+    isYou: false,
+  }));
+
+  competitors.push({
+    firmName: vendor.company,
+    citationCount: yourMentions,
+    platforms: [...new Set(weekScans.filter(s => s.mentioned === true).map(s => s.platform).filter(Boolean))],
+    isYou: true,
+  });
+
+  competitors.sort((a, b) => b.citationCount - a.citationCount);
+
+  let competitorHeadline;
+  const topNonYou = competitors.find(c => !c.isYou);
+  if (!topNonYou) {
+    competitorHeadline = weekScans.length > 0
+      ? `No competitor firms were named in AI responses for ${vendor.vendorType} queries in ${vendor.location?.city || 'your area'} this week.`
+      : `No scan data available this week.`;
+  } else if (topNonYou.citationCount > yourMentions) {
+    competitorHeadline = `${topNonYou.firmName} was cited ${topNonYou.citationCount} time${topNonYou.citationCount === 1 ? '' : 's'} across ${topNonYou.platforms.length} platform${topNonYou.platforms.length === 1 ? '' : 's'} this week. ${vendor.company} was cited ${yourMentions} time${yourMentions === 1 ? '' : 's'}.`;
+  } else {
+    competitorHeadline = `${vendor.company} was cited ${yourMentions} time${yourMentions === 1 ? '' : 's'} this week — ahead of all tracked competitors.`;
+  }
+
+  return { competitors, competitorHeadline };
 }
 
-function buildAuthorityGraph(vendor) {
-  const required = { solicitor: ['Law Society', 'SRA', 'Trustpilot', 'Yell', 'FreeIndex'], accountant: ['ICAEW', 'Trustpilot', 'Yell', 'FreeIndex'], 'mortgage-advisor': ['FCA Register', 'Unbiased', 'VouchedFor', 'Trustpilot'], 'estate-agent': ['Propertymark', 'Rightmove', 'Trustpilot', 'Yell'], 'office-equipment': ['Yell', 'FreeIndex', 'Trustpilot'] }[vendor.vendorType] || ['Trustpilot', 'Yell'];
-  const connected = [];
-  const missing = required;
-  return { directoriesConnected: connected, directoriesMissing: missing, schemaCoverage: { connected: 0, total: 1 }, reviewPlatformsConnected: [], reviewPlatformsMissing: ['Trustpilot', 'Google Business'], contentFootprintPages: 0, authorityScore: 0 };
-}
+/**
+ * Build prompt analysis from REAL scan data.
+ * Groups scans by prompt and shows which firms were actually cited.
+ */
+function buildRealPromptAnalysis(weekScans, vendor) {
+  const byPrompt = {};
+  for (const scan of weekScans) {
+    const prompt = scan.prompt || 'Unknown prompt';
+    if (!byPrompt[prompt]) byPrompt[prompt] = { mentioned: false, platforms: [], competitorsCited: [] };
+    if (scan.mentioned === true) {
+      byPrompt[prompt].mentioned = true;
+      if (scan.platform) byPrompt[prompt].platforms.push(scan.platform);
+    }
+    for (const c of (scan.competitorsMentioned || [])) {
+      if (!byPrompt[prompt].competitorsCited.includes(c)) {
+        byPrompt[prompt].competitorsCited.push(c);
+      }
+    }
+  }
 
-function buildOpportunityFeed(vendor, weekStart, flags, competitorList) {
-  const city = vendor.location?.city || 'your area';
-  const pools = {
-    solicitor: [`probate solicitor ${city}`, `no-win-no-fee solicitor ${city}`, `commercial property solicitor ${city}`],
-    accountant: [`accountant for limited company ${city}`, `self-assessment help ${city}`, `VAT registration accountant ${city}`],
-    'mortgage-advisor': [`help-to-buy adviser ${city}`, `remortgage adviser ${city}`, `BTL mortgage adviser ${city}`],
-    'estate-agent': [`estate agents for probate sales ${city}`, `estate agents with fixed fees ${city}`, `luxury estate agents ${city}`],
-    'office-equipment': [`photocopier lease ${city}`, `managed print service ${city}`, `office printer rental ${city}`],
-  };
-  const realCompetitors = (competitorList || []).filter(c => !c.isYou);
-  const seed = synth.seedFromString(`opportunity-feed-${vendor._id}-${synth.getYearWeek(weekStart)}`);
-  const rand = synth.seededRandom(seed);
-  flags.push({ field: 'opportunityFeed', isSynthetic: true, method: 'vertical_query_pool_until_real_search_volume_data', replaceCondition: 'real_query_detection_via_partner_apis' });
-  return (pools[vendor.vendorType] || pools.solicitor).slice(0, 3).map((query, i) => ({
-    detectedQuery: query,
-    competitorsCited: realCompetitors.length >= 2
-      ? [realCompetitors[i % realCompetitors.length].firmName, realCompetitors[(i + 1) % realCompetitors.length].firmName]
-      : realCompetitors.map(c => c.firmName),
-    youCited: false,
-    suggestedAction: `Publish content addressing "${query}"`,
-    estimatedImpact: 4 + Math.floor(rand() * 4),
-    relatedApprovalId: null,
+  return Object.entries(byPrompt).map(([prompt, data]) => ({
+    prompt,
+    youCited: data.mentioned,
+    platformsCited: [...new Set(data.platforms)],
+    competitorsCited: data.competitorsCited.slice(0, 5).map(titleCaseCompanyName),
   }));
 }
 
@@ -345,8 +250,8 @@ function buildWhatsNext(weekEnd) {
     const date = new Date(weekEnd); date.setDate(date.getDate() + i + 1);
     return {
       dayLabel: `${d} ${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`,
-      eventLabel: i === 0 ? 'Daily AI visibility scan' : i === 2 ? 'New content draft expected' : i === 3 ? 'Detective gap analysis' : i === 4 ? 'Content draft + directory submissions' : 'Daily AI visibility scan',
-      vendorImpact: i === 2 || i === 4 ? 'Will appear in your approval queue' : i === 3 ? 'New fixes may be added to your queue' : 'Tracks score changes across 3 engines',
+      eventLabel: i === 0 ? 'AI visibility scan' : i === 2 ? 'Content draft expected' : i === 3 ? 'Detective gap analysis' : i === 4 ? 'Content draft + directory audit' : 'AI visibility scan',
+      vendorImpact: i === 2 || i === 4 ? 'Will appear in your approval queue' : i === 3 ? 'New fixes may be added to your queue' : 'Tracks score changes across live engines',
     };
   });
 }
@@ -362,6 +267,16 @@ async function getDedupedPendingApprovals(vendorId) {
   });
 }
 
-async function countVendorsInSegment(vendor) {
-  return Vendor.countDocuments({ vendorType: vendor.vendorType, 'location.city': vendor.location?.city });
+export function linearProject(historical, weeksAhead) {
+  const n = historical.length;
+  if (n < 2) return Array(weeksAhead).fill(historical[n - 1] || 0);
+  const sumX = (n * (n - 1)) / 2;
+  const sumY = historical.reduce((a, b) => a + b, 0);
+  const sumXY = historical.reduce((acc, y, x) => acc + x * y, 0);
+  const sumX2 = historical.reduce((acc, _, x) => acc + x * x, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  return Array.from({ length: weeksAhead }, (_, i) =>
+    Math.max(0, Math.min(100, Math.round(intercept + slope * (n + i))))
+  );
 }

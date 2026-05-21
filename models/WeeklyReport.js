@@ -142,7 +142,6 @@ weeklyReportSchema.statics.findOrCreate = async function (vendorId, weekStartDat
 
 weeklyReportSchema.methods.toClientJSON = function () {
   const obj = this.toObject();
-  delete obj.syntheticDataFlags;
   return {
     ...obj,
     id: obj._id.toString(),
