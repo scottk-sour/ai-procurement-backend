@@ -1,17 +1,61 @@
 import Vendor from '../../models/Vendor.js';
 import { normalizeCompanyName } from '../platformQuery/nameMatch.js';
 
-const categoryCache = new Map();
+const CATEGORY_TO_VENDOR_TYPE = {
+  'solicitor': 'solicitor',
+  'solicitors': 'solicitor',
+  'commercial law': 'solicitor',
+  'commercial property': 'solicitor',
+  'consumer law': 'solicitor',
+  'conveyancing': 'solicitor',
+  'criminal law': 'solicitor',
+  'dispute resolution': 'solicitor',
+  'employment law': 'solicitor',
+  'family law': 'solicitor',
+  'housing & landlord': 'solicitor',
+  'human rights': 'solicitor',
+  'ip & technology': 'solicitor',
+  'immigration': 'solicitor',
+  'litigation': 'solicitor',
+  'mental health': 'solicitor',
+  'personal injury': 'solicitor',
+  'planning & environment': 'solicitor',
+  'residential conveyancing': 'solicitor',
+  'social welfare': 'solicitor',
+  'wills & probate': 'solicitor',
+  'accountants': 'accountant',
+  'accountant': 'accountant',
+  'estate agents': 'estate-agent',
+  'estate-agent': 'estate-agent',
+  'mortgage advisors': 'mortgage-advisor',
+  'mortgage-advisor': 'mortgage-advisor',
+  'financial services': 'financial-advisor',
+  'financial-advisor': 'financial-advisor',
+  'insurance-broker': 'insurance-broker',
+  'it': 'office-equipment',
+  'photocopiers': 'office-equipment',
+  'telecoms': 'office-equipment',
+  'software': 'office-equipment',
+  'security': 'office-equipment',
+  'office-equipment': 'office-equipment',
+};
 
-/**
- * Load normalised firm names for a vendor category.
- * Returns { normSet: Set<string>, normToDisplay: Map<string, string> }.
- * Cached per category for the lifetime of the process.
- */
-async function loadCategoryPool(category) {
-  if (categoryCache.has(category)) return categoryCache.get(category);
+export function resolveVendorType(category) {
+  if (!category) return null;
+  const key = category.trim().toLowerCase();
+  const resolved = CATEGORY_TO_VENDOR_TYPE[key];
+  if (!resolved) {
+    console.warn(`[filterRealCompetitors] unmapped category: "${category}" — competitor filter will return empty`);
+  }
+  return resolved || null;
+}
 
-  const filter = category ? { vendorType: category } : {};
+const vendorTypeCache = new Map();
+
+async function loadVendorTypePool(vendorType) {
+  if (vendorTypeCache.has(vendorType)) return vendorTypeCache.get(vendorType);
+
+  const filter = vendorType ? { vendorType } : {};
   const vendors = await Vendor.find(filter).select('company').lean();
 
   const normSet = new Set();
@@ -27,7 +71,7 @@ async function loadCategoryPool(category) {
   }
 
   const pool = { normSet, normToDisplay };
-  categoryCache.set(category, pool);
+  vendorTypeCache.set(vendorType, pool);
   return pool;
 }
 
@@ -35,20 +79,19 @@ async function loadCategoryPool(category) {
  * Given an array of raw competitor name strings parsed from AI responses,
  * return only those that correspond to a REAL firm in our directory.
  *
- * Uses normalizeCompanyName + a normalized-name Set lookup against the
- * Vendor collection for the relevant category. Noise (nav labels, advice
- * phrases, AI preamble) matches nothing and is dropped.
- *
- * Includes substring-either-direction matching (same logic as isSameFirm)
- * to handle suffix variations: "Smith & Jones" matches "Smith & Jones LLP".
+ * The `category` option accepts EITHER a vendorType enum value (e.g.
+ * "solicitor") OR a scan-record category (e.g. "Conveyancing", "Accountants").
+ * It is resolved to a vendorType via CATEGORY_TO_VENDOR_TYPE before loading
+ * the firm pool. All practice-areas within a vertical share one cached pool.
  *
  * Returns names in the SAME ORDER they were given (preserves AI ranking).
- * Each result: { name: string (display casing from directory), raw: string (original from AI) }.
+ * Each result: { name: string (display casing from directory), raw: string }.
  */
 export async function filterRealCompetitors(rawNames, { category } = {}) {
   if (!rawNames || rawNames.length === 0) return [];
 
-  const { normSet, normToDisplay } = await loadCategoryPool(category || null);
+  const vendorType = resolveVendorType(category);
+  const { normSet, normToDisplay } = await loadVendorTypePool(vendorType);
 
   const results = [];
   const seen = new Set();
@@ -79,9 +122,6 @@ export async function filterRealCompetitors(rawNames, { category } = {}) {
   return results;
 }
 
-/**
- * Clear the cached category pools (useful for testing).
- */
 export function clearCategoryCache() {
-  categoryCache.clear();
+  vendorTypeCache.clear();
 }
