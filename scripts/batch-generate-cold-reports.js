@@ -24,8 +24,8 @@ import { sendEmail } from '../services/emailService.js';
 // ================================================================
 const CONFIG = {
   vendorType: 'solicitor',
-  cityRegex: /cardiff/i,
-  limit: 100,
+  cityRegex: /birmingham/i,
+  limit: 10,
   emailOverride: 'kinder1975.sd@gmail.com',
   pauseMs: 5000,
 };
