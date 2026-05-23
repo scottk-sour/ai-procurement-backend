@@ -83,7 +83,7 @@ async function main() {
 
   const reports = await AeoReport.find({
     score: { $ne: null },
-    email: { $exists: true, $ne: '', $not: /placeholder\.tendorai\.com/ },
+    email: { $exists: true, $ne: '', $not: /tendorai\.com$/ },
     vendorId: { $ne: null },
   })
     .sort({ score: 1 })
