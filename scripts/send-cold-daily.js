@@ -118,7 +118,7 @@ async function main() {
     const report = batch[i];
     const vendor = vendorMap.get(report.vendorId.toString());
 
-    const firmName = vendor?.company || report.companyName || 'Unknown';
+    const _rawFirm = vendor?.company || report.companyName || 'Unknown'; const firmName = _rawFirm.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     const city = vendor?.location?.city || report.city || 'your area';
     const practiceArea = vendor?.practiceAreas?.[0]?.toLowerCase() || report.category || 'legal services';
     const score = report.score;
@@ -177,5 +177,6 @@ async function main() {
 }
 
 main().catch(err => { console.error('FATAL:', err); mongoose.disconnect().catch(() => {}); process.exit(1); });
+
 
 
