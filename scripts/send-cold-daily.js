@@ -52,7 +52,7 @@ I run TendorAI, a UK platform that audits how ChatGPT, Claude, Perplexity, Gemin
 ${f.firmName} scored ${f.score} out of 100. Full report (no signup needed):
 https://www.tendorai.com/aeo-report/results/${f.reportId}
 
-For context, the median score across the 36 Cardiff firms we tested was 40/100. The firms ChatGPT does name in ${f.city} when asked for a ${f.practiceArea} solicitor sit at 60+. The gap is fixable — it's a structured-signals problem, not a service problem.
+For context, the median score across the UK solicitor firms we tested was around 40/100. The firms ChatGPT does name in ${f.city} when asked for a ${f.practiceArea} solicitor sit at 60+. The gap is fixable — it's a structured-signals problem, not a service problem.
 
 ${f.firmName} already has a basic profile on TendorAI from the SRA register. It's unclaimed, which means AI can only see your firm name and SRA number — not your specialisms, fee earners, or accreditations.
 
@@ -124,7 +124,7 @@ async function main() {
     const score = report.score;
     const reportId = report._id.toString();
     const realEmail = vendor?.email || report.email;
-    const firstName = vendor?.name && !vendor.name.match(/^(admin|reception|info|office)/i) ? vendor.name.split(/\s+/)[0] : null;
+    const _fw = vendor?.name ? vendor.name.trim().split(/\s+/)[0] : ''; const firstName = vendor?.name && !vendor.name.match(/^(admin|reception|info|office)/i) && !firmName.toLowerCase().includes(_fw.toLowerCase()) ? _fw : null;
 
     const recipient = DRY_RUN ? DRY_RUN_RECIPIENT : realEmail;
     const subject = DRY_RUN
@@ -177,3 +177,5 @@ async function main() {
 }
 
 main().catch(err => { console.error('FATAL:', err); mongoose.disconnect().catch(() => {}); process.exit(1); });
+
+
