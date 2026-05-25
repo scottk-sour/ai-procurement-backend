@@ -3,7 +3,7 @@ import AgentRun from '../models/AgentRun.js';
 import { PILLAR_LIBRARIES, VERTICAL_ENTITIES } from './contentPlanner/pillarLibraries.js';
 import { SYSTEM_PROMPT_V7, SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS } from './contentPlanner/prompts.js';
 import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
-import { countPlaceholders } from './contentPlanner/validators.js';
+import { countAllPlaceholders as countPlaceholders } from './writerAgent/parsePlaceholders.js';
 import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval } from './approvalQueue.js';
