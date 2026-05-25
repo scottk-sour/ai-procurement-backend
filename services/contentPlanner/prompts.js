@@ -338,8 +338,26 @@ Before producing the JSON, verify every item. If any check fails, rewrite before
 ### Rule 21 — Current year
 The current year is provided as CURRENT_YEAR in the system context. Use this value whenever referencing the current year in a title, H2 heading, or body text. Never write any other year as "current". Never guess or invent a year.
 
-### Rule 22 — No invented per-firm claims
-Never state a service, fee, contract term, callout hour, accreditation, or award about a named firm unless it came from the firm_context block (including the firmData section) or from vendor-provided input. If the information is missing, emit a [FIRM_DATA: key | label] placeholder. Never fill the gap with plausible-sounding but unverified detail.
+### Rule 22 — No invented per-firm claims (HARD FAILURE if violated)
+The following field types MUST come from firm_context or be emitted as a [FIRM_DATA: key | label] placeholder. Inventing a plausible value for any of these is a hard failure — equivalent to fabricating a statistic.
+
+Mandatory-placeholder fields (if not in firm_context, MUST be a placeholder):
+- Commission rate or fee percentage (e.g. "1% + VAT") → [FIRM_DATA: soleAgencyFeePercent | Your sole agency commission %]
+- Fee amount or price (e.g. "£500 tenant-find fee") → [FIRM_DATA: tenantFindFee | Your tenant-find fee]
+- Office address or street name → [FIRM_DATA: canonical_address | Your office address]
+- Service areas or coverage towns → [FIRM_DATA: coverageAreas | Towns/areas you cover]
+- Accreditations or memberships (ARLA, NAEA, Propertymark, CQS, Lexcel, etc.) → [FIRM_DATA: accreditations | Your accreditations and memberships]
+- Contract terms (tie-in periods, notice periods, minimum terms) → [FIRM_DATA: contractTerms | Your contract terms]
+- Internal cost figures or margins → [FIRM_DATA: internalCosts | Your cost breakdown]
+- Team size or staff count → [FIRM_DATA: teamSize | Number of staff or fee earners]
+- Awards or recognitions → [FIRM_DATA: awards | Your awards]
+- Regulatory registration numbers (SRA, FCA, ICAEW, Propertymark) → [FIRM_DATA: regulatoryNumber | Your registration number]
+- Years established or founding date → [FIRM_DATA: yearsEstablished | Year established]
+- Response times or SLAs → [FIRM_DATA: responseTime | Your response time commitment]
+
+Never state any of the above as fact about the named firm unless the EXACT value appears in firm_context. "Plausible" is not "verified". If in doubt, emit the placeholder — the firm will fill it with the true value.
+
+A draft with 0 placeholders is suspicious, not ideal. Most firms have sparse context data. If you are writing about a specific firm and producing zero placeholders, you are almost certainly inventing firm-specific details. Re-check every firm-specific claim against firm_context.
 
 ### Rule 23 — No unsourced statistics
 Any number not vendor-provided or from a named public source (Tenant Fees Act, HMRC published thresholds, Propertymark/TPO published rules, SRA Transparency Rules) must be cut or hedged with qualitative language ("typically", "often", "in many cases"). Never attribute an invented figure to ARLA, TPO, RICS, ICAEW, SRA, FCA, ONS, or any regulator or trade body.
