@@ -2,7 +2,7 @@
  * Pre-publish validator for Writer Agent content drafts.
  *
  * Hard-block conditions reject the draft entirely (admin sees failure):
- *   - Unresolved [FIRM TO PROVIDE: ...] markers
+ *   - Unresolved [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] markers
  *   - US English spellings (forbidden by system prompt)
  *   - Banned AI phrases ("in today's fast-paced", "let's dive in", etc.)
  *
@@ -12,7 +12,7 @@
  * Pure functions — no DB access, no side effects.
  */
 
-const PLACEHOLDER_PATTERN = /\[FIRM TO PROVIDE[: ]/i;
+const PLACEHOLDER_PATTERN = /\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]/i;
 
 const BANNED_PHRASES = [
   /\bin today'?s fast-paced\b/i,
@@ -62,12 +62,14 @@ const STAT_PATTERN = /(?:\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*%|£\s?\d{1,3}(?:,\d{3}
 const PROXIMITY_WINDOW = 250;
 
 /**
- * Count [FIRM TO PROVIDE: ...] markers in a text string.
+ * Count placeholder markers in a text string.
+ * Matches both [FIRM_DATA: key | label] and legacy [FIRM TO PROVIDE: ...].
  */
 export function countPlaceholders(text) {
   if (typeof text !== 'string') return 0;
-  const matches = text.match(/\[FIRM TO PROVIDE[: ]/gi);
-  return matches ? matches.length : 0;
+  const keyed = text.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]/gi) || [];
+  const legacy = text.match(/\[FIRM TO PROVIDE[: ]/gi) || [];
+  return keyed.length + legacy.length;
 }
 
 /**
@@ -123,7 +125,7 @@ export function validateContentDraft(payload) {
 
   if (PLACEHOLDER_PATTERN.test(allText)) {
     const count = countPlaceholders(allText);
-    errors.push(`${count} unresolved [FIRM TO PROVIDE: ...] marker(s) found — must be filled before publish`);
+    errors.push(`${count} unresolved placeholder(s) found — must be filled before publish`);
   }
 
   for (const pattern of BANNED_PHRASES) {

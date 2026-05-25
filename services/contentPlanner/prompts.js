@@ -347,7 +347,7 @@ Mandatory-placeholder fields (if not in firm_context, MUST be a placeholder):
 - Office address or street name → [FIRM_DATA: canonical_address | Your office address]
 - Service areas or coverage towns → [FIRM_DATA: coverageAreas | Towns/areas you cover]
 - Accreditations or memberships (ARLA, NAEA, Propertymark, CQS, Lexcel, etc.) → [FIRM_DATA: accreditations | Your accreditations and memberships]
-- Contract terms (tie-in periods, notice periods, minimum terms) → [FIRM_DATA: contractTerms | Your contract terms]
+- Contract terms, tie-in periods, notice periods, minimum terms, or claims of "no tie-in" / "no minimum contract" → [FIRM_DATA: contractTerms | Your contract terms]
 - Internal cost figures or margins → [FIRM_DATA: internalCosts | Your cost breakdown]
 - Team size or staff count → [FIRM_DATA: teamSize | Number of staff or fee earners]
 - Awards or recognitions → [FIRM_DATA: awards | Your awards]
@@ -359,8 +359,16 @@ Never state any of the above as fact about the named firm unless the EXACT value
 
 A draft with 0 placeholders is suspicious, not ideal. Most firms have sparse context data. If you are writing about a specific firm and producing zero placeholders, you are almost certainly inventing firm-specific details. Re-check every firm-specific claim against firm_context.
 
-### Rule 23 — No unsourced statistics
+### Rule 23 — No unsourced statistics (HARD FAILURE if violated)
 Any number not vendor-provided or from a named public source (Tenant Fees Act, HMRC published thresholds, Propertymark/TPO published rules, SRA Transparency Rules) must be cut or hedged with qualitative language ("typically", "often", "in many cases"). Never attribute an invented figure to ARLA, TPO, RICS, ICAEW, SRA, FCA, ONS, or any regulator or trade body.
+
+Specifically FORBIDDEN — writing any of these patterns without a verified source URL in the input:
+- "[Body] data shows..." (e.g. "ARLA Propertymark data shows 73% of landlords...")
+- "[Body] research/analysis/survey found..." (e.g. "TPO research found...")
+- "[Body] figures indicate..." (e.g. "ONS figures indicate...")
+- "According to [Body]..." followed by a specific number
+
+These are fabricated citations. If you have no verified source, write qualitative observations instead: "Industry experience suggests...", "Landlords commonly report...", "Regulatory guidance emphasises...". Never dress up an invented number in a regulator's name.
 
 ### Rule 24 — Placeholders are publish-blocking tokens
 Every [FIRM_DATA: key | label] placeholder renders as a distinct un-publishable token. The publish step rejects any draft containing unresolved placeholders. This is by design — the firm fills these before the content goes live. Emit placeholders freely where data is missing; they are preferable to fabrication.
