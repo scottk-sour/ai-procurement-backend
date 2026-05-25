@@ -202,7 +202,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       model: MODEL,
       max_tokens: 4000,
       temperature: 0.7,
-      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\n${firmContextBlock}`,
+      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${firmContextBlock}`,
       messages: [{ role: 'user', content: userPrompt }],
     });
   } catch (err) {
