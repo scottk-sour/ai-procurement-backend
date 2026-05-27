@@ -45,21 +45,18 @@ function buildBody(f) {
   const greeting = f.firstName ? `Hi ${f.firstName}` : `Hi ${f.firmName} team`;
   return `${greeting},
 
-Quick note about how AI assistants are recommending ${f.practiceArea} solicitors in ${f.city}.
+We recently tested how AI assistants — ChatGPT, Claude, Gemini, Perplexity and Copilot — recommend ${f.practiceArea} solicitors in ${f.city}.
 
-I run TendorAI, a UK platform that audits how ChatGPT, Claude, Perplexity, Gemini and Copilot recommend SRA-regulated firms. Last week we tested ${f.firmName} and the wider ${f.city} solicitor market.
-
-${f.firmName} scored ${f.score} out of 100. Full report (no signup needed):
+${f.firmName} scored ${f.score}/100 in our AI visibility audit:
 https://www.tendorai.com/aeo-report/results/${f.reportId}
 
-For context, the median score across the 36 Cardiff firms we tested was 40/100. The firms ChatGPT does name in ${f.city} when asked for a ${f.practiceArea} solicitor sit at 60+. The gap is fixable — it's a structured-signals problem, not a service problem.
+Firms that appear most consistently in AI-generated practice-area recommendations typically score 60+. The gap is usually a structured-signals issue rather than a service one — AI systems can identify the firm exists, but cannot confidently associate it with specific expertise areas.
 
-${f.firmName} already has a basic profile on TendorAI from the SRA register. It's unclaimed, which means AI can only see your firm name and SRA number — not your specialisms, fee earners, or accreditations.
+${f.firmName} already has an unclaimed profile on TendorAI generated from public SRA data. Claiming it is free, takes around two minutes, and allows the firm to add structured information around services, accreditations and expertise currently missing from public machine-readable sources.
 
-Claiming is free and takes 2 minutes:
 https://www.tendorai.com/vendor-signup
 
-Happy to answer any questions, or send across the methodology if useful.
+If useful, I'm also happy to explain the scoring methodology or walk through the key visibility gaps identified in the report.
 
 Best regards,
 Scott Davies
@@ -83,7 +80,7 @@ async function main() {
 
   const reports = await AeoReport.find({
     score: { $ne: null },
-    email: { $exists: true, $ne: '', $not: /placeholder\.tendorai\.com/ },
+    email: { $exists: true, $ne: '', $not: /tendorai\.com$/i },
     vendorId: { $ne: null },
   })
     .sort({ score: 1 })
@@ -124,7 +121,16 @@ async function main() {
     const score = report.score;
     const reportId = report._id.toString();
     const realEmail = vendor?.email || report.email;
-    const firstName = vendor?.name && !vendor.name.match(/^(admin|reception|info|office)/i) ? vendor.name.split(/\s+/)[0] : null;
+    const nameLooksLikeFirm =
+      vendor?.name &&
+      (vendor.name.trim().toLowerCase() === firmName.trim().toLowerCase() ||
+        firmName.toLowerCase().includes(vendor.name.trim().toLowerCase().split(/\s+/)[0]));
+    const firstName =
+      vendor?.name &&
+      !nameLooksLikeFirm &&
+      !vendor.name.match(/^(admin|reception|info|office)/i)
+        ? vendor.name.split(/\s+/)[0]
+        : null;
 
     const recipient = DRY_RUN ? DRY_RUN_RECIPIENT : realEmail;
     const subject = DRY_RUN

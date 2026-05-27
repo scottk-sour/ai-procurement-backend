@@ -309,6 +309,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       body: parsed.body,
       linkedInText: parsed.linkedInText || '',
       facebookText: parsed.facebookText || '',
+      placeholders: Array.isArray(parsed.placeholders) ? parsed.placeholders : [],
       pillar: next.pillarId,
       plan: {
         pillar: next.pillarId,

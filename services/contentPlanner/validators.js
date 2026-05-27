@@ -12,7 +12,7 @@
  * Pure functions — no DB access, no side effects.
  */
 
-const PLACEHOLDER_PATTERN = /\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]/i;
+const PLACEHOLDER_PATTERN = /\[\[[a-zA-Z_]+\]\]|\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]/i;
 
 const BANNED_PHRASES = [
   /\bin today'?s fast-paced\b/i,
@@ -67,9 +67,10 @@ const PROXIMITY_WINDOW = 250;
  */
 export function countPlaceholders(text) {
   if (typeof text !== 'string') return 0;
+  const inline = text.match(/\[\[[a-zA-Z_]+\]\]/g) || [];
   const keyed = text.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]/gi) || [];
   const legacy = text.match(/\[FIRM TO PROVIDE[: ]/gi) || [];
-  return keyed.length + legacy.length;
+  return inline.length + keyed.length + legacy.length;
 }
 
 /**

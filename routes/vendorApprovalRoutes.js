@@ -101,16 +101,22 @@ router.post('/:id/firm-data', async (req, res) => {
     });
     await vendor.save();
 
-    // Replace [FIRM_DATA: key | ...] in draft content
+    // Replace placeholders in draft content — supports all three formats:
+    // [[token]] (new), [FIRM_DATA: key | ...] (v1), [FIRM TO PROVIDE: ...] (legacy)
     const keyPattern = new RegExp(`\\[FIRM_DATA:\\s*${key}\\s*\\|[^\\]]*\\]`, 'g');
-    if (approval.draftPayload?.body) {
-      approval.draftPayload.body = approval.draftPayload.body.replace(keyPattern, String(value));
-    }
-    if (approval.draftPayload?.linkedInText) {
-      approval.draftPayload.linkedInText = approval.draftPayload.linkedInText.replace(keyPattern, String(value));
-    }
-    if (approval.draftPayload?.facebookText) {
-      approval.draftPayload.facebookText = approval.draftPayload.facebookText.replace(keyPattern, String(value));
+    const tokenNames = (approval.draftPayload?.placeholders || [])
+      .filter(p => p.key === key)
+      .map(p => p.token)
+      .filter(Boolean);
+    const tokenPatterns = tokenNames.map(t => new RegExp(`\\[\\[${t}\\]\\]`, 'g'));
+
+    for (const field of ['body', 'linkedInText', 'facebookText']) {
+      if (approval.draftPayload?.[field]) {
+        approval.draftPayload[field] = approval.draftPayload[field].replace(keyPattern, String(value));
+        for (const tp of tokenPatterns) {
+          approval.draftPayload[field] = approval.draftPayload[field].replace(tp, String(value));
+        }
+      }
     }
     approval.markModified('draftPayload');
     await approval.save();
