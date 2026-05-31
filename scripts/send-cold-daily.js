@@ -43,25 +43,31 @@ const ColdOutreachLog = mongoose.models.ColdOutreachLog || mongoose.model('ColdO
 
 function buildBody(f) {
   const greeting = f.firstName ? `Hi ${f.firstName}` : `Hi ${f.firmName} team`;
+  const competitorLine = f.topCompetitor
+    ? `${f.firmName} scored ${f.score}/100. When we asked ChatGPT for a ${f.practiceArea} solicitor in ${f.city}, it recommended ${f.topCompetitor}. ${f.firmName} wasn't mentioned.`
+    : `${f.firmName} scored ${f.score}/100 and didn't appear in any of the AI assistants we tested.`;
+
   return `${greeting},
 
-Quick note about how AI assistants are recommending ${f.practiceArea} solicitors in ${f.city}.
+More prospective clients are now asking ChatGPT questions like:
 
-I run TendorAI, a UK platform that audits how ChatGPT, Claude, Perplexity, Gemini and Copilot recommend SRA-regulated firms. Last week we tested ${f.firmName} and the wider ${f.city} solicitor market.
+"Who's the best ${f.practiceArea} solicitor in ${f.city}?"
+"Can you recommend a ${f.practiceArea} solicitor near me?"
 
-${f.firmName} scored ${f.score} out of 100. Full report (no signup needed):
+AI assistants name only 2–3 firms in the answer. Everyone else is absent completely.
+
+We tested the ${f.city} solicitor market last week — SRA-registered firms across ChatGPT, Claude and Perplexity.
+
+${competitorLine}
+
+In most cases the issue isn't legal quality — it's that AI systems can't confidently verify the firm's services, specialisms and regulatory identity across the public web.
+
+Free report — where your firm currently appears, which competitors AI mentions instead, what signals are missing, and how firms move into the cited group:
+
 https://www.tendorai.com/aeo-report/results/${f.reportId}
 
-For context, the median score across the UK solicitor firms we tested was around 40/100. The firms ChatGPT does name in ${f.city} when asked for a ${f.practiceArea} solicitor sit at 60+. The gap is fixable — it's a structured-signals problem, not a service problem.
+No signup needed.
 
-${f.firmName} already has a basic profile on TendorAI from the SRA register. It's unclaimed, which means AI can only see your firm name and SRA number — not your specialisms, fee earners, or accreditations.
-
-Claiming is free and takes 2 minutes:
-https://www.tendorai.com/vendor-signup
-
-Happy to answer any questions, or send across the methodology if useful.
-
-Best regards,
 Scott Davies
 Founder, TendorAI Ltd (Companies House 16521860)
 The UK's AI Visibility Platform for regulated services firms
@@ -87,7 +93,7 @@ async function main() {
     vendorId: { $ne: null },
   })
     .sort({ score: 1 })
-    .select('_id vendorId companyName score email category city')
+    .select('_id vendorId companyName score email category city competitors')
     .limit(LIMIT + sentVendorIds.size)
     .lean();
 
@@ -125,13 +131,17 @@ async function main() {
     const reportId = report._id.toString();
     const realEmail = vendor?.email || report.email;
     const _fw = vendor?.name ? vendor.name.trim().split(/\s+/)[0] : ''; const firstName = vendor?.name && !vendor.name.match(/^(admin|reception|info|office)/i) && !firmName.toLowerCase().includes(_fw.toLowerCase()) ? _fw : null;
+    const topCompetitor = report.competitors?.[0]?.name || null;
 
     const recipient = DRY_RUN ? DRY_RUN_RECIPIENT : realEmail;
-    const subject = DRY_RUN
-      ? `[DRY → would send to ${realEmail}] ${firmName} — AI visibility score: ${score}/100`
+    const subjectLive = topCompetitor
+      ? `ChatGPT recommended ${topCompetitor} in ${city}, not ${firmName}`
       : `${firmName} — AI visibility score: ${score}/100`;
+    const subject = DRY_RUN
+      ? `[DRY → would send to ${realEmail}] ${subjectLive}`
+      : subjectLive;
 
-    const body = buildBody({ firmName, city, practiceArea, score, reportId, firstName });
+    const body = buildBody({ firmName, city, practiceArea, score, reportId, firstName, topCompetitor });
 
     try {
       const result = await sendEmail({
