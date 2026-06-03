@@ -87,10 +87,21 @@ async function main() {
   const sentVendorIds = new Set(alreadySent.map(s => s.vendorId.toString()));
   console.log(`Already sent: ${sentVendorIds.size} vendors in cold_outreach_log`);
 
+  // Solicitor-only: the outreach copy is solicitor-specific, so restrict candidates to
+  // vendors whose canonical vertical is solicitor. vendorType is an indexed enum.
+  const solicitorVendors = await Vendor.find({ vendorType: 'solicitor' }).select('_id').lean();
+  const solicitorVendorIds = solicitorVendors.map(v => v._id);
+  console.log(`Solicitor vendors in DB: ${solicitorVendorIds.length}`);
+  if (solicitorVendorIds.length === 0) {
+    console.error('No solicitor vendors found — aborting to avoid sending solicitor copy to other verticals.');
+    await mongoose.disconnect();
+    return;
+  }
+
   const reports = await AeoReport.find({
     score: { $ne: null },
     email: { $exists: true, $ne: '', $not: /tendorai\.com$/ },
-    vendorId: { $ne: null },
+    vendorId: { $in: solicitorVendorIds },
   })
     .sort({ score: 1 })
     .select('_id vendorId companyName score email category city competitors')
@@ -123,6 +134,10 @@ async function main() {
   for (let i = 0; i < batch.length; i++) {
     const report = batch[i];
     const vendor = vendorMap.get(report.vendorId.toString());
+    if (!vendor || vendor.vendorType !== 'solicitor') {
+      console.log(`– [${i + 1}/${batch.length}] ${report.companyName || report.vendorId} — skipped (not solicitor)`);
+      continue;
+    }
 
     const _rawFirm = vendor?.company || report.companyName || 'Unknown'; const firmName = _rawFirm.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     const city = vendor?.location?.city || report.city || 'your area';
@@ -166,7 +181,7 @@ async function main() {
       }).catch(err => console.error(`  Log write failed: ${err.message}`));
 
       sent++;
-      console.log(`✓ [${i + 1}/${batch.length}] ${firmName} (${score}/100) — sent to ${recipient} (id: ${resendId})`);
+      console.log(`✓ [${i + 1}/${batch.length}] ${firmName} [${vendor.vendorType}] (${score}/100) — sent to ${recipient} (id: ${resendId})`);
     } catch (err) {
       failed++;
       failures.push({ firm: firmName, error: err.message });
