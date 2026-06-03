@@ -23,9 +23,9 @@ import { sendEmail } from '../services/emailService.js';
 // CONFIG — edit these before each run
 // ================================================================
 const CONFIG = {
-  vendorType: 'estate-agent',
-  cityRegex: /cardiff/i,        // change the word for another city, or set to /.*/ for nationwide
-  limit: 30,
+  vendorType: 'solicitor',
+  cityRegex: /london/i,        // change the word for another city, or set to /.*/ for nationwide
+  limit: 500,
   emailOverride: 'kinder1975.sd@gmail.com',
   pauseMs: 5000,
 };
