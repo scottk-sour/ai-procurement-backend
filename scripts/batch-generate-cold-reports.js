@@ -23,9 +23,9 @@ import { sendEmail } from '../services/emailService.js';
 // CONFIG — edit these before each run
 // ================================================================
 const CONFIG = {
-  vendorType: 'solicitor',
-  cityRegex: /birmingham/i,
-  limit: 10,
+  vendorType: 'estate-agent',
+  cityRegex: /cardiff/i,        // change the word for another city, or set to /.*/ for nationwide
+  limit: 30,
   emailOverride: 'kinder1975.sd@gmail.com',
   pauseMs: 5000,
 };
@@ -69,7 +69,7 @@ async function main() {
   const vendors = await Vendor.find({
     vendorType: CONFIG.vendorType,
     tier: 'free',
-    email: { $exists: true, $ne: '' },
+    'contactInfo.website': { $exists: true, $ne: '' },
     'location.city': CONFIG.cityRegex,
   })
     .select('_id company email vendorType practiceAreas services location contactInfo name')
@@ -84,9 +84,14 @@ async function main() {
     return;
   }
 
-  // Filter out placeholder emails
-  const eligible = vendors.filter(v => !v.email.endsWith('@placeholder.tendorai.com'));
-  console.log(`${eligible.length} vendors after removing placeholder emails.\n`);
+  if (process.env.COUNT_ONLY === 'true') {
+    console.log(`COUNT_ONLY: ${vendors.length} estate-agent vendors match (with website). Sample:`);
+    vendors.slice(0, 10).forEach(v => console.log(`  - ${v.company} (${v.location?.city})`));
+    await mongoose.disconnect();
+    return;
+  }
+
+  const eligible = vendors;
 
   let completed = 0;
   let failed = 0;
