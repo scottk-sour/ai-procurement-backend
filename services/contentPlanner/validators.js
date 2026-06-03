@@ -1,3 +1,5 @@
+import { detectPossibleFabrication } from './writerGuards.js';
+
 /**
  * Pre-publish validator for Writer Agent content drafts.
  *
@@ -147,6 +149,14 @@ export function validateContentDraft(payload) {
     warnings.push(
       `${unsourced.length} statistic(s) without a nearby Tier 1 source: ${unsourced.map(u => u.stat).slice(0, 5).join(', ')}${unsourced.length > 5 ? '...' : ''}`
     );
+  }
+
+  // Hard-block fabricated statistics attributed to a named body (Rule 20/23),
+  // across all verticals. Promotes the existing detector from a generation-time
+  // warning to a publish-blocking error.
+  const fabricated = detectPossibleFabrication(allText);
+  for (const f of fabricated) {
+    errors.push(`Fabricated statistic attributed to ${f.body}: "${f.excerpt.trim()}"`);
   }
 
   return {
