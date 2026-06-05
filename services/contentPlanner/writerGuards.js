@@ -27,9 +27,12 @@ const ATTRIBUTION_SOURCES = [
 const REGULATORY_BODIES = ATTRIBUTION_SOURCES;
 
 const DATA_VERBS = [
-  'shows', 'reveals', 'analysis', 'report', 'study', 'research',
-  'data', 'survey', 'found', 'indicates', 'reports',
-  'according to', 'figures', 'statistics',
+  'shows', 'reveals', 'analysis', 'analytics', 'report', 'study', 'research',
+  'data', 'survey', 'found', 'finds', 'indicates', 'indicate', 'reports',
+  'reported', 'revealed', 'according to', 'figures', 'statistics',
+  'identifies', 'identify', 'emphasise', 'emphasises', 'emphasizes',
+  'suggest', 'suggests', 'estimate', 'estimates', 'confirm', 'confirms',
+  'highlight', 'highlights', 'notes', 'recommends', 'advises', 'warns',
 ];
 
 // Escape regex-special characters so names like "gov.uk" are treated literally.
@@ -55,13 +58,13 @@ export function detectPossibleFabrication(draftText) {
 
   const flagged = [];
   const verbPattern = DATA_VERBS.map(escapeRegex).join('|');
-  const numberPattern = '(\\d+[,.]?\\d*\\%?|\\d{1,3}(,\\d{3})+)';
+  const numberPattern = '(\\d+(?:[,.]\\d+)*(?:\\s*(?:-|–)\\s*\\d+(?:[,.]\\d+)*)?\\s*(?:%|per\\s*cent|percent|days?|weeks?|months?|years?|hours?|x\\b)?)';
 
   for (const body of ATTRIBUTION_SOURCES) {
     const b = '\\b' + escapeRegex(body) + '\\b';
-    const patternA = new RegExp(b + '[^.]{0,200}' + numberPattern + '[^.]{0,200}(' + verbPattern + ')', 'gi');
-    const patternB = new RegExp(b + '[^.]{0,100}(' + verbPattern + ')[^.]{0,200}' + numberPattern, 'gi');
-    const patternC = new RegExp('(' + verbPattern + ')[^.]{0,100}' + b + '[^.]{0,200}' + numberPattern, 'gi');
+    const patternA = new RegExp(b + '[\\s\\S]{0,200}' + numberPattern + '[\\s\\S]{0,200}(' + verbPattern + ')', 'gi');
+    const patternB = new RegExp(b + '[\\s\\S]{0,100}(' + verbPattern + ')[\\s\\S]{0,200}' + numberPattern, 'gi');
+    const patternC = new RegExp('(' + verbPattern + ')[\\s\\S]{0,100}' + b + '[\\s\\S]{0,200}' + numberPattern, 'gi');
 
     for (const pat of [patternA, patternB, patternC]) {
       let match;
@@ -82,6 +85,43 @@ export function countAllPlaceholderFormats(text) {
   const keyed = (text.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]/g) || []).length;
   const legacy = (text.match(/\[FIRM TO PROVIDE[: ][^\]]*\]/gi) || []).length;
   return keyed + legacy;
+}
+
+const PERFORMANCE_NOUNS = [
+  'sold', 'completed', 'achieved', 'handled', 'processed', 'managed',
+  'transactions', 'properties', 'cases', 'clients', 'instructions',
+  'completions', 'sales', 'lettings', 'exchanges',
+];
+
+const PLACEHOLDER_FENCE = /\[FIRM_DATA:[^\]]+\]|\[FIRM TO PROVIDE[^\]]*\]/g;
+
+export function detectFirmPerformanceClaims(draftText, firmName) {
+  if (!draftText || typeof draftText !== 'string') return [];
+
+  const stripped = draftText.replace(PLACEHOLDER_FENCE, '___PLACEHOLDER___');
+  const flagged = [];
+  const numPat = /\d+(?:[,.]?\d+)*\s*%?/g;
+  let numMatch;
+
+  while ((numMatch = numPat.exec(stripped)) !== null) {
+    const pos = numMatch.index;
+    const windowStart = Math.max(0, pos - 60);
+    const windowEnd = Math.min(stripped.length, pos + numMatch[0].length + 60);
+    const window = stripped.slice(windowStart, windowEnd).toLowerCase();
+
+    if (window.includes('___placeholder___')) continue;
+
+    const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => window.includes(n));
+    if (hasPerformanceNoun) {
+      flagged.push({
+        type: 'firm_performance_claim',
+        excerpt: stripped.slice(windowStart, windowEnd).trim(),
+        position: pos,
+      });
+    }
+  }
+
+  return flagged;
 }
 
 export { ATTRIBUTION_SOURCES, REGULATORY_BODIES, DATA_VERBS };

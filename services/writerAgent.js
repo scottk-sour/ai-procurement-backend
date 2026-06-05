@@ -3,6 +3,7 @@ import AgentRun from '../models/AgentRun.js';
 import { PILLAR_LIBRARIES, VERTICAL_ENTITIES } from './contentPlanner/pillarLibraries.js';
 import { SYSTEM_PROMPT_V7, SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS } from './contentPlanner/prompts.js';
 import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
+import { reviewDraftForFabrication } from './contentPlanner/fabricationReview.js';
 import { countAllPlaceholders as countPlaceholders } from './writerAgent/parsePlaceholders.js';
 import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
@@ -293,11 +294,64 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     };
   }
 
-  // Rule 20 fabrication guard — scan before saving
+  // ── Checkpoint 1: Hard-block fabrication at generation time ──
+
+  // 1a. Regex detector (fast, deterministic backup)
   const fabricationFlags = detectPossibleFabrication(parsed.body || '');
   if (fabricationFlags.length > 0) {
-    console.warn(`[WriterAgent] Draft for ${vendor.company} contains ${fabricationFlags.length} possible fabrication(s)`);
+    const reasons = fabricationFlags.map(f => `${f.body}: "${f.excerpt.substring(0, 80)}"`).join('; ');
+    const summary = `Draft "${parsed.title}" BLOCKED — regex detected ${fabricationFlags.length} fabricated attribution(s): ${reasons}`;
+    await completeRun(agentRun._id, {
+      summary,
+      artifacts: {
+        pillarId: next.pillarId, topicIndex: next.topicIndex,
+        lastPillar: next.pillarId, lastTopicIndex: next.topicIndex,
+        postsDrafted: 0, blockedReason: 'regex_fabrication_detected',
+        fabricationFlags, costEstimateUSD, model: MODEL,
+      },
+    });
+    console.log(`${logPrefix} ${vendor.company}: ${summary}`);
+    return { success: false, blocked: true, reason: 'regex_fabrication_detected', vendorId: String(vendorId), costEstimateUSD };
   }
+
+  // 1b. LLM second-pass review (catches phrasings the regex misses)
+  let fabricationReview = { verdict: 'fail', error: 'not_run' };
+  try {
+    fabricationReview = await reviewDraftForFabrication({
+      draftText: [parsed.body || '', parsed.linkedInText || '', parsed.facebookText || ''].join('\n\n'),
+      firmContext: firmContextBlock,
+      vertical: vendor.vendorType,
+    });
+  } catch (err) {
+    console.error(`${logPrefix} Fabrication review threw for ${vendor.company}:`, err.message);
+    fabricationReview = { verdict: 'fail', error: err.message, fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 };
+  }
+
+  if (fabricationReview.verdict === 'fail') {
+    const attrCount = (fabricationReview.fabricatedAttributions || []).length;
+    const firmCount = (fabricationReview.firmClaimsNotInContext || []).length;
+    const reasons = [
+      ...(fabricationReview.fabricatedAttributions || []).map(a => `attributed to ${a.body}: "${(a.claim || '').substring(0, 80)}"`),
+      ...(fabricationReview.firmClaimsNotInContext || []).map(c => `firm claim: "${(c.claim || '').substring(0, 80)}"`),
+    ].join('; ');
+    const reviewNote = fabricationReview.error
+      ? `LLM review error (fail-closed): ${fabricationReview.error}`
+      : `LLM review failed: ${attrCount} fabricated attribution(s), ${firmCount} unverified firm claim(s), quality ${fabricationReview.qualityScore}/10`;
+    const summary = `Draft "${parsed.title}" BLOCKED — ${reviewNote}${reasons ? '. ' + reasons : ''}`;
+    await completeRun(agentRun._id, {
+      summary,
+      artifacts: {
+        pillarId: next.pillarId, topicIndex: next.topicIndex,
+        lastPillar: next.pillarId, lastTopicIndex: next.topicIndex,
+        postsDrafted: 0, blockedReason: 'llm_fabrication_review_failed',
+        fabricationReview, costEstimateUSD, model: MODEL,
+      },
+    });
+    console.log(`${logPrefix} ${vendor.company}: ${summary}`);
+    return { success: false, blocked: true, reason: 'llm_fabrication_review_failed', vendorId: String(vendorId), costEstimateUSD };
+  }
+
+  // ── Both checks passed — create approval ──
 
   const approval = await createApproval({
     vendorId,
@@ -337,15 +391,13 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       placeholderCount: verifiedPlaceholderCount,
       topicSuitabilityFlag,
       agentReportedPlaceholderCount,
+      qualityScore: fabricationReview.qualityScore,
       ...(dryRun ? { dryRun: true } : {}),
-      ...(fabricationFlags.length > 0 ? {
-        qualityFlags: [{ type: 'possible_fabrication', detected: fabricationFlags, severity: 'high' }],
-      } : {}),
     },
     source: 'writer-agent-cron',
   });
 
-  const summary = `Drafted "${parsed.title}" for ${next.pillarId} pillar (topic ${next.topicIndex}). Approval pending. Estimated cost $${costEstimateUSD.toFixed(4)}.`;
+  const summary = `Drafted "${parsed.title}" for ${next.pillarId} pillar (topic ${next.topicIndex}). Quality ${fabricationReview.qualityScore}/10. Approval pending. Cost $${costEstimateUSD.toFixed(4)}.`;
 
   await completeRun(agentRun._id, {
     summary,
