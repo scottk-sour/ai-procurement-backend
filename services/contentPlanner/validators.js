@@ -1,4 +1,4 @@
-import { detectPossibleFabrication } from './writerGuards.js';
+import { detectPossibleFabrication, detectFirmPerformanceClaims } from './writerGuards.js';
 
 /**
  * Pre-publish validator for Writer Agent content drafts.
@@ -157,6 +157,12 @@ export function validateContentDraft(payload) {
   const fabricated = detectPossibleFabrication(allText);
   for (const f of fabricated) {
     errors.push(`Fabricated statistic attributed to ${f.body}: "${f.excerpt.trim()}"`);
+  }
+
+  // Hard-block unverified firm performance claims (Rule 22).
+  const firmClaims = detectFirmPerformanceClaims(allText);
+  for (const f of firmClaims) {
+    errors.push(`Unverified firm performance claim: "${f.excerpt.trim()}"`);
   }
 
   return {
