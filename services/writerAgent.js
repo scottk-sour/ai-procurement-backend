@@ -336,20 +336,137 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     };
   }
 
-  // ── Checkpoint 1: Hard-block fabrication at generation time ──
+  // ── Checkpoint 1: Fabrication detection + repair loop ──
 
-  // 1a. Regex detector (fast, deterministic backup)
-  const fabricationFlags = detectPossibleFabrication(parsed.body || '');
-  if (fabricationFlags.length > 0) {
-    const reasons = fabricationFlags.map(f => `${f.body}: "${f.excerpt.substring(0, 80)}"`).join('; ');
-    const summary = `Draft "${parsed.title}" BLOCKED — regex detected ${fabricationFlags.length} fabricated attribution(s): ${reasons}`;
+  let draftBody = parsed.body || '';
+  let draftLinkedIn = parsed.linkedInText || '';
+  let draftFacebook = parsed.facebookText || '';
+  let repaired = false;
+  let repairedViolations = null;
+  let repairCostUSD = 0;
+
+  const allDraftText = () => [draftBody, draftLinkedIn, draftFacebook].join('\n\n');
+
+  function collectViolations() {
+    const regexFlags = detectPossibleFabrication(draftBody);
+    return { regexFlags };
+  }
+
+  async function runLlmReview() {
+    try {
+      return await reviewDraftForFabrication({
+        draftText: allDraftText(),
+        firmContext: firmContextBlock,
+        vertical: vendor.vendorType,
+      });
+    } catch (err) {
+      console.error(`${logPrefix} Fabrication review threw for ${vendor.company}:`, err.message);
+      return { verdict: 'fail', error: err.message, fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 };
+    }
+  }
+
+  function buildViolationList(regexFlags, llmReview) {
+    const items = [];
+    for (const f of regexFlags) {
+      items.push(`[regex] ${f.body}: "${f.excerpt.substring(0, 120)}"`);
+    }
+    for (const a of (llmReview.fabricatedAttributions || [])) {
+      items.push(`[llm-attribution] ${a.body || 'anonymous'}: "${(a.claim || '').substring(0, 120)}"`);
+    }
+    for (const c of (llmReview.firmClaimsNotInContext || [])) {
+      items.push(`[llm-firm-claim] "${(c.claim || '').substring(0, 120)}"`);
+    }
+    return items;
+  }
+
+  // First pass
+  let { regexFlags } = collectViolations();
+  let llmReview = regexFlags.length > 0
+    ? { verdict: 'fail', fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 }
+    : await runLlmReview();
+
+  const firstPassBlocked = regexFlags.length > 0 || llmReview.verdict === 'fail';
+  const firstPassViolations = firstPassBlocked ? buildViolationList(regexFlags, llmReview) : [];
+
+  // Repair attempt (max 1)
+  if (firstPassBlocked && firstPassViolations.length > 0 && !llmReview.error) {
+    console.log(`${logPrefix} ${vendor.company}: ${firstPassViolations.length} violation(s) detected — attempting repair`);
+
+    const repairPrompt = `The following draft was rejected by our automated fabrication detector. Rewrite ONLY the flagged sentences — replace sourced/statistical claims with qualitative phrasing and delete credential claims not supported by firm_context. Leave all other content untouched. Return the full corrected draft as a JSON object with fields: body, linkedInText, facebookText.
+
+VIOLATIONS FOUND:
+${firstPassViolations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
+
+ORIGINAL DRAFT:
+${JSON.stringify({ body: draftBody, linkedInText: draftLinkedIn, facebookText: draftFacebook })}`;
+
+    try {
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const repairResponse = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 4000,
+        temperature: 0.3,
+        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+        messages: [{ role: 'user', content: repairPrompt }],
+      });
+
+      const repairInputTokens = repairResponse.usage?.input_tokens || 0;
+      const repairOutputTokens = repairResponse.usage?.output_tokens || 0;
+      repairCostUSD = (repairInputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +
+                      (repairOutputTokens / 1_000_000 * SONNET_OUTPUT_COST_PER_M);
+
+      const repairText = repairResponse.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
+      const repairJson = repairText.match(/\{[\s\S]*\}/);
+      if (repairJson) {
+        const repairedDraft = JSON.parse(repairJson[0]);
+        if (repairedDraft.body) {
+          draftBody = repairedDraft.body;
+          draftLinkedIn = repairedDraft.linkedInText || draftLinkedIn;
+          draftFacebook = repairedDraft.facebookText || draftFacebook;
+
+          // Re-check repaired draft
+          const repair2 = collectViolations();
+          const llmReview2 = repair2.regexFlags.length > 0
+            ? { verdict: 'fail', fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 }
+            : await runLlmReview();
+
+          if (repair2.regexFlags.length === 0 && llmReview2.verdict === 'pass') {
+            repaired = true;
+            repairedViolations = firstPassViolations;
+            regexFlags = repair2.regexFlags;
+            llmReview = llmReview2;
+            console.log(`${logPrefix} ${vendor.company}: repair succeeded — ${firstPassViolations.length} violation(s) fixed`);
+          } else {
+            regexFlags = repair2.regexFlags;
+            llmReview = llmReview2;
+            console.log(`${logPrefix} ${vendor.company}: repair failed — still ${buildViolationList(repair2.regexFlags, llmReview2).length} violation(s)`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`${logPrefix} Repair call failed for ${vendor.company}:`, err.message);
+    }
+  }
+
+  // Update total cost with repair
+  costEstimateUSD += repairCostUSD;
+
+  // Final decision
+  const finalRegexBlocked = regexFlags.length > 0;
+  const finalLlmBlocked = llmReview.verdict === 'fail';
+
+  if (finalRegexBlocked) {
+    const reasons = regexFlags.map(f => `${f.body}: "${f.excerpt.substring(0, 80)}"`).join('; ');
+    const summary = `Draft "${parsed.title}" BLOCKED — regex detected ${regexFlags.length} fabricated attribution(s)${repaired === false && repairedViolations === null ? '' : ' (after repair attempt)'}: ${reasons}`;
     await completeRun(agentRun._id, {
       summary,
       artifacts: {
         pillarId: next.pillarId, topicIndex: next.topicIndex,
         lastPillar: next.pillarId, lastTopicIndex: next.topicIndex,
         postsDrafted: 0, blockedReason: 'regex_fabrication_detected',
-        fabricationFlags, costEstimateUSD, model: MODEL,
+        fabricationFlags: regexFlags, costEstimateUSD, model: MODEL,
+        firstPassViolations: firstPassViolations.length > 0 ? firstPassViolations : undefined,
       },
       metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
     });
@@ -357,43 +474,30 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     return { success: false, blocked: true, reason: 'regex_fabrication_detected', vendorId: String(vendorId), costEstimateUSD };
   }
 
-  // 1b. LLM second-pass review (catches phrasings the regex misses)
-  let fabricationReview = { verdict: 'fail', error: 'not_run' };
-  try {
-    fabricationReview = await reviewDraftForFabrication({
-      draftText: [parsed.body || '', parsed.linkedInText || '', parsed.facebookText || ''].join('\n\n'),
-      firmContext: firmContextBlock,
-      vertical: vendor.vendorType,
-    });
-  } catch (err) {
-    console.error(`${logPrefix} Fabrication review threw for ${vendor.company}:`, err.message);
-    fabricationReview = { verdict: 'fail', error: err.message, fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 };
-  }
-
-  if (fabricationReview.verdict === 'fail') {
-    const attrCount = (fabricationReview.fabricatedAttributions || []).length;
-    const firmCount = (fabricationReview.firmClaimsNotInContext || []).length;
-    const reasons = [
-      ...(fabricationReview.fabricatedAttributions || []).map(a => `attributed to ${a.body}: "${(a.claim || '').substring(0, 80)}"`),
-      ...(fabricationReview.firmClaimsNotInContext || []).map(c => `firm claim: "${(c.claim || '').substring(0, 80)}"`),
-    ].join('; ');
-    const reviewNote = fabricationReview.error
-      ? `LLM review error (fail-closed): ${fabricationReview.error}`
-      : `LLM review failed: ${attrCount} fabricated attribution(s), ${firmCount} unverified firm claim(s), quality ${fabricationReview.qualityScore}/10`;
-    const summary = `Draft "${parsed.title}" BLOCKED — ${reviewNote}${reasons ? '. ' + reasons : ''}`;
+  if (finalLlmBlocked) {
+    const attrCount = (llmReview.fabricatedAttributions || []).length;
+    const firmCount = (llmReview.firmClaimsNotInContext || []).length;
+    const reasons = buildViolationList([], llmReview).join('; ');
+    const reviewNote = llmReview.error
+      ? `LLM review error (fail-closed): ${llmReview.error}`
+      : `LLM review failed: ${attrCount} fabricated attribution(s), ${firmCount} unverified firm claim(s), quality ${llmReview.qualityScore}/10`;
+    const summary = `Draft "${parsed.title}" BLOCKED — ${reviewNote}${repaired === false && repairedViolations === null ? '' : ' (after repair attempt)'}${reasons ? '. ' + reasons : ''}`;
     await completeRun(agentRun._id, {
       summary,
       artifacts: {
         pillarId: next.pillarId, topicIndex: next.topicIndex,
         lastPillar: next.pillarId, lastTopicIndex: next.topicIndex,
         postsDrafted: 0, blockedReason: 'llm_fabrication_review_failed',
-        fabricationReview, costEstimateUSD, model: MODEL,
+        fabricationReview: llmReview, costEstimateUSD, model: MODEL,
+        firstPassViolations: firstPassViolations.length > 0 ? firstPassViolations : undefined,
       },
       metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
     });
     console.log(`${logPrefix} ${vendor.company}: ${summary}`);
     return { success: false, blocked: true, reason: 'llm_fabrication_review_failed', vendorId: String(vendorId), costEstimateUSD };
   }
+
+  const fabricationReview = llmReview;
 
   // ── Both checks passed — create approval ──
 
@@ -404,9 +508,9 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     title: `Draft: ${parsed.title}`,
     draftPayload: {
       title: parsed.title,
-      body: parsed.body,
-      linkedInText: parsed.linkedInText || '',
-      facebookText: parsed.facebookText || '',
+      body: draftBody,
+      linkedInText: draftLinkedIn,
+      facebookText: draftFacebook,
       pillar: next.pillarId,
       plan: {
         pillar: next.pillarId,
@@ -437,12 +541,13 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       agentReportedPlaceholderCount,
       qualityScore: fabricationReview.qualityScore,
       dataGaps: dataGaps.length > 0 ? dataGaps : undefined,
+      ...(repaired ? { repaired: true, repairedViolations } : {}),
       ...(dryRun ? { dryRun: true } : {}),
     },
     source: 'writer-agent-cron',
   });
 
-  const summary = `Drafted "${parsed.title}" for ${next.pillarId} pillar (topic ${next.topicIndex}). Quality ${fabricationReview.qualityScore}/10. Approval pending. Cost $${costEstimateUSD.toFixed(4)}.`;
+  const summary = `Drafted "${parsed.title}" for ${next.pillarId} pillar (topic ${next.topicIndex}). Quality ${fabricationReview.qualityScore}/10.${repaired ? ' Repaired.' : ''} Approval pending. Cost $${costEstimateUSD.toFixed(4)}.`;
 
   await completeRun(agentRun._id, {
     summary,
