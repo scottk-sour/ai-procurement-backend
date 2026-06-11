@@ -53,29 +53,39 @@ export function buildCtaForVendor(vendor) {
   };
 }
 
+// Legislation names are verifiable facts, not fabrication sources.
+const LEGISLATION_PATTERN = /\b(?:\w+\s+){0,4}Act\s+\d{4}\b|\bRegulations?\s+\d{4}\b|\bAML\b|\bGDPR\b/gi;
+
 export function detectPossibleFabrication(draftText) {
   if (!draftText || typeof draftText !== 'string') return [];
 
   // Strip placeholder tokens so org names inside them aren't flagged.
-  // Placeholders are declared gaps, not fabrication.
-  const text = draftText
+  const cleaned = draftText
     .replace(/\[FIRM_DATA:[^\]]*\]/g, '___PLACEHOLDER___')
     .replace(/\[FIRM TO PROVIDE[^\]]*\]/g, '___PLACEHOLDER___');
 
+  // Strip legislation references so "Estate Agents Act 1979" isn't treated as a source + number.
+  const text = cleaned.replace(LEGISLATION_PATTERN, '___LEGISLATION___');
+
   const flagged = [];
   const verbPattern = DATA_VERBS.map(escapeRegex).join('|');
-  const numberPattern = '(\\d+(?:[,.]\\d+)*(?:\\s*(?:-|–)\\s*\\d+(?:[,.]\\d+)*)?\\s*(?:%|per\\s*cent|percent|days?|weeks?|months?|years?|hours?|x\\b)?)';
+  const numberPattern = '(\\d+(?:[,.]\\d+)*(?:\\s*(?:-|–)\\s*\\d+(?:[,.]\\d+)*)?\\s*(?:%|per\\s*cent|percent|days?|weeks?|months?|hours?|x\\b))';
+
+  // Sentence-scoped patterns: [^.!?\n] keeps matches within a single sentence.
+  // Pattern B: body → verb → number (most common: "Propertymark data shows 40%")
+  // Pattern C: verb → body → number ("According to Propertymark, 40%")
+  // Pattern A dropped — it was body → number → verb which is too loose and caused false positives.
 
   for (const body of ATTRIBUTION_SOURCES) {
     const b = '\\b' + escapeRegex(body) + '\\b';
-    const patternA = new RegExp(b + '[\\s\\S]{0,200}' + numberPattern + '[\\s\\S]{0,200}(' + verbPattern + ')', 'gi');
-    const patternB = new RegExp(b + '[\\s\\S]{0,100}(' + verbPattern + ')[\\s\\S]{0,200}' + numberPattern, 'gi');
-    const patternC = new RegExp('(' + verbPattern + ')[\\s\\S]{0,100}' + b + '[\\s\\S]{0,200}' + numberPattern, 'gi');
+    const patternB = new RegExp(b + '[^.!?\\n]{0,60}(' + verbPattern + ')[^.!?\\n]{0,100}' + numberPattern, 'gi');
+    const patternC = new RegExp('(' + verbPattern + ')[^.!?\\n]{0,60}' + b + '[^.!?\\n]{0,100}' + numberPattern, 'gi');
 
-    for (const pat of [patternA, patternB, patternC]) {
+    for (const pat of [patternB, patternC]) {
       let match;
       while ((match = pat.exec(text)) !== null) {
         if (match[0].includes('___PLACEHOLDER___')) continue;
+        if (match[0].includes('___LEGISLATION___')) continue;
         const alreadyFlagged = flagged.some(f => Math.abs(f.position - match.index) < 50);
         if (!alreadyFlagged) {
           flagged.push({ body, excerpt: match[0].substring(0, 200), position: match.index });
