@@ -309,6 +309,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         postsDrafted: 0, blockedReason: 'regex_fabrication_detected',
         fabricationFlags, costEstimateUSD, model: MODEL,
       },
+      metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
     });
     console.log(`${logPrefix} ${vendor.company}: ${summary}`);
     return { success: false, blocked: true, reason: 'regex_fabrication_detected', vendorId: String(vendorId), costEstimateUSD };
@@ -346,6 +347,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         postsDrafted: 0, blockedReason: 'llm_fabrication_review_failed',
         fabricationReview, costEstimateUSD, model: MODEL,
       },
+      metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
     });
     console.log(`${logPrefix} ${vendor.company}: ${summary}`);
     return { success: false, blocked: true, reason: 'llm_fabrication_review_failed', vendorId: String(vendorId), costEstimateUSD };
