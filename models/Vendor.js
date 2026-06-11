@@ -431,6 +431,34 @@ vendorSchema.virtual('activeQuoteCount', {
   match: { status: { $in: ['sent', 'viewed'] } }
 });
 
+// Strip empty strings from optional enum fields before validation.
+// Frontends send "" for blank dropdowns; Mongoose rejects "" if it's
+// not in the enum. Converting to undefined lets the field stay unset.
+const OPTIONAL_ENUM_FIELDS = [
+  'feeModel', 'tenantFindOrFullManagement', 'leaseVsPurchase', 'feeStructureType',
+  'serviceCapabilities.responseTime', 'serviceCapabilities.supportHours',
+  'commercial.creditRating', 'commercial.paymentTerms',
+  'integration.pricingUpdateFrequency',
+];
+
+vendorSchema.pre('validate', function (next) {
+  for (const path of OPTIONAL_ENUM_FIELDS) {
+    const parts = path.split('.');
+    let obj = this;
+    for (let i = 0; i < parts.length - 1; i++) {
+      obj = obj?.[parts[i]];
+      if (!obj) break;
+    }
+    if (obj) {
+      const field = parts[parts.length - 1];
+      if (obj[field] === '') {
+        obj[field] = undefined;
+      }
+    }
+  }
+  next();
+});
+
 // Pre-save middleware for password hashing
 vendorSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
