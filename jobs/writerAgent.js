@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import Vendor from '../models/Vendor.js';
+import AgentRun from '../models/AgentRun.js';
 import { runWriterAgentForVendor } from '../services/writerAgent.js';
 import { sendEmail } from '../services/emailService.js';
 import logger from '../services/logger.js';
@@ -55,6 +56,23 @@ export async function runWeeklyWriterAgent() {
       logger.error(`[WriterAgent] ${vendor.company}: unexpected error — ${err.message}`);
       logger.error(err.stack);
       results.push({ company: vendor.company, vendorId: String(vendor._id), success: false, error: err.message });
+
+      // Close any stuck "running" AgentRun for this vendor so it doesn't block future runs
+      try {
+        const stuckRun = await AgentRun.findOne({
+          vendorId: vendor._id, agentName: 'writer', status: 'running',
+        });
+        if (stuckRun) {
+          stuckRun.status = 'failed';
+          stuckRun.completedAt = new Date();
+          stuckRun.failureReason = `Crash recovery: ${err.message}`;
+          if (stuckRun.startedAt) stuckRun.durationMs = stuckRun.completedAt.getTime() - stuckRun.startedAt.getTime();
+          await stuckRun.save();
+          logger.warn(`[WriterAgent] Closed stuck run ${stuckRun._id} for ${vendor.company}`);
+        }
+      } catch (cleanupErr) {
+        logger.error(`[WriterAgent] Failed to close stuck run for ${vendor.company}: ${cleanupErr.message}`);
+      }
     }
 
     if (vendors.indexOf(vendor) < vendors.length - 1) {

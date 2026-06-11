@@ -16,11 +16,30 @@ export async function createRun({ vendorId, agentName, weekStarting, summary, ar
   return run.save();
 }
 
+const STALE_RUN_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 export async function startRun(runId) {
   const run = await AgentRun.findById(runId);
   if (!run) throw new Error('Agent run not found');
   if (run.status !== 'pending') {
     throw new Error(`Cannot start run with status "${run.status}" — must be "pending"`);
+  }
+
+  // Auto-close stale "running" records for the same vendor+agent+week
+  const stale = await AgentRun.findOne({
+    vendorId: run.vendorId,
+    agentName: run.agentName,
+    weekStarting: run.weekStarting,
+    status: 'running',
+    startedAt: { $lt: new Date(Date.now() - STALE_RUN_THRESHOLD_MS) },
+  });
+  if (stale) {
+    stale.status = 'failed';
+    stale.completedAt = new Date();
+    stale.failureReason = 'stale run auto-closed';
+    if (stale.startedAt) stale.durationMs = stale.completedAt.getTime() - stale.startedAt.getTime();
+    await stale.save();
+    console.warn(`[agentRun.startRun] Auto-closed stale run ${stale._id} (started ${stale.startedAt?.toISOString()})`);
   }
 
   run.status = 'running';
@@ -31,7 +50,9 @@ export async function startRun(runId) {
 export async function completeRun(runId, { summary, artifacts, metricsAfter, relatedApprovalIds }) {
   if (!summary) throw new Error('Summary is required to complete a run');
   if (!artifacts) throw new Error('Artifacts are required to complete a run');
-  if (!metricsAfter) throw new Error('metricsAfter is required to complete a run');
+  if (!metricsAfter) {
+    console.warn(`[agentRun.completeRun] metricsAfter missing for run ${runId} — completing with empty metrics`);
+  }
 
   const run = await AgentRun.findById(runId);
   if (!run) throw new Error('Agent run not found');
@@ -43,7 +64,7 @@ export async function completeRun(runId, { summary, artifacts, metricsAfter, rel
   run.completedAt = new Date();
   run.summary = summary;
   run.artifacts = artifacts;
-  run.metricsAfter = metricsAfter;
+  run.metricsAfter = metricsAfter || {};
   if (relatedApprovalIds) run.relatedApprovalIds = relatedApprovalIds;
   if (run.startedAt) run.durationMs = run.completedAt.getTime() - run.startedAt.getTime();
   return run.save();
