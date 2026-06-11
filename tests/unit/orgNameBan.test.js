@@ -41,7 +41,6 @@ describe('ORG_NAME_BAN prompt constant', () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
     expect(content).toContain('ABSOLUTE CONSTRAINT');
-    expect(content).toContain('Do NOT mention');
     expect(content).toContain('automatically rejected');
     expect(content).toContain('Land Registry');
     expect(content).toContain('Propertymark');

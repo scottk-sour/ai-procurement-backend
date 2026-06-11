@@ -48,7 +48,7 @@ export function buildUserPrompt(ctx) {
     lines.push(`This topic is from the ${pillarSpec.pillarName} pillar.`);
     if (pillarSpec.tactic) lines.push(`Tactic: ${pillarSpec.tactic}`);
     if (pillarSpec.mustInclude && pillarSpec.mustInclude.length) {
-      lines.push(`Content goals (use ONLY if real data is available in firm_context; otherwise use a [FIRM_DATA] placeholder or write qualitatively — NEVER invent figures): ${pillarSpec.mustInclude.join('; ')}`);
+      lines.push(`Content goals (ONLY if the relevant data exists in firm_context — skip any goal requiring figures you don't have; write that section qualitatively instead): ${pillarSpec.mustInclude.join('; ')}`);
     }
     if (pillarSpec.wordCount) lines.push(`Word count target: ${pillarSpec.wordCount} words.`);
     if (pillarSpec.primaryAIQuery) lines.push(`Primary AI query this post targets: "${pillarSpec.primaryAIQuery}"`);
@@ -70,7 +70,7 @@ export function buildUserPrompt(ctx) {
   if (primaryData && primaryData.trim()) {
     lines.push(`The firm has provided this first-party data — weave it into the post naturally: "${primaryData.trim()}"`);
   } else if (pillarSpec && pillarSpec.primaryDataHook) {
-    lines.push(`Primary data hook — if the firm's data is in firm_context, use it. If not, emit a [FIRM_DATA] placeholder. NEVER invent figures to fill this pattern. Pattern: "${pillarSpec.primaryDataHook}"`);
+    lines.push(`Primary data hook — use this pattern ONLY if the firm's data is in firm_context. If not, skip it entirely and write the section qualitatively. NEVER invent figures. Pattern: "${pillarSpec.primaryDataHook}"`);
   }
 
   if (stats && stats.trim()) {
