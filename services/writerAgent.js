@@ -20,6 +20,26 @@ const MODEL = 'claude-sonnet-4-20250514';
 
 const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
 
+const ORG_NAME_BAN = `## ABSOLUTE CONSTRAINT — ORGANISATION NAME BAN
+
+Do NOT mention any of the following organisations by name in the article body UNLESS the exact figure or claim being attributed to them is present verbatim in the firm_context block above:
+
+Land Registry, HM Land Registry, Propertymark, NAEA, ARLA, RICS, TPO, Property Ombudsman, PRS, Rightmove, Zoopla, OnTheMarket, SRA, Solicitors Regulation Authority, Law Society, ICAEW, ACCA, FCA, Financial Conduct Authority, HMRC, ONS, Office for National Statistics, Companies House, Bank of England, CMA, Legal Ombudsman, Financial Ombudsman, FSCS, CQS, Xero, QuickBooks, Sage, FreeAgent.
+
+This means:
+- NO "Rightmove data shows..." — unless firm_context contains that exact Rightmove figure.
+- NO "Land Registry processing times..." — unless firm_context contains that exact figure.
+- NO "NAEA research identifies..." — unless firm_context contains that exact claim.
+- NO "according to Propertymark..." — unless firm_context contains the cited figure.
+
+If you have NO data from firm_context for a claim, write from general qualitative knowledge with NO named source:
+- GOOD: "Conveyancing is typically the longest stage of a property transaction."
+- GOOD: "Accurately priced properties tend to sell faster."
+- BAD: "Land Registry data shows 8-12 weeks is typical." (fabricated attribution)
+- BAD: "Propertymark research identifies five accelerators." (fabricated attribution)
+
+This constraint is checked by an automated detector AFTER generation. Any draft containing an organisation name near a statistic not in firm_context will be automatically rejected. Emit [FIRM_DATA: ...] placeholders freely — those are correct and will NOT be flagged.`;
+
 function isProTier(tier) {
   return PRO_TIERS.has(tier);
 }
@@ -212,7 +232,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       model: MODEL,
       max_tokens: 4000,
       temperature: 0.7,
-      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${firmContextBlock}`,
+      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
       messages: [{ role: 'user', content: cleanedPrompt }],
     });
   } catch (err) {
@@ -446,4 +466,4 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   };
 }
 
-export { resolveNextTopic, isProTier, MONTHLY_COST_CAP_USD, MONTHLY_PER_VENDOR_CAP, SONNET_INPUT_COST_PER_M, SONNET_OUTPUT_COST_PER_M };
+export { resolveNextTopic, isProTier, MONTHLY_COST_CAP_USD, MONTHLY_PER_VENDOR_CAP, SONNET_INPUT_COST_PER_M, SONNET_OUTPUT_COST_PER_M, ORG_NAME_BAN };

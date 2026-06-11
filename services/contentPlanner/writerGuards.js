@@ -56,6 +56,12 @@ export function buildCtaForVendor(vendor) {
 export function detectPossibleFabrication(draftText) {
   if (!draftText || typeof draftText !== 'string') return [];
 
+  // Strip placeholder tokens so org names inside them aren't flagged.
+  // Placeholders are declared gaps, not fabrication.
+  const text = draftText
+    .replace(/\[FIRM_DATA:[^\]]*\]/g, '___PLACEHOLDER___')
+    .replace(/\[FIRM TO PROVIDE[^\]]*\]/g, '___PLACEHOLDER___');
+
   const flagged = [];
   const verbPattern = DATA_VERBS.map(escapeRegex).join('|');
   const numberPattern = '(\\d+(?:[,.]\\d+)*(?:\\s*(?:-|–)\\s*\\d+(?:[,.]\\d+)*)?\\s*(?:%|per\\s*cent|percent|days?|weeks?|months?|years?|hours?|x\\b)?)';
@@ -68,7 +74,8 @@ export function detectPossibleFabrication(draftText) {
 
     for (const pat of [patternA, patternB, patternC]) {
       let match;
-      while ((match = pat.exec(draftText)) !== null) {
+      while ((match = pat.exec(text)) !== null) {
+        if (match[0].includes('___PLACEHOLDER___')) continue;
         const alreadyFlagged = flagged.some(f => Math.abs(f.position - match.index) < 50);
         if (!alreadyFlagged) {
           flagged.push({ body, excerpt: match[0].substring(0, 200), position: match.index });
