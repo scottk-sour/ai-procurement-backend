@@ -195,6 +195,15 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     allowedFirmDataKeys: FIRM_DATA_KEYS,
   });
 
+  // Strip unfilled template patterns from the prompt so the model never sees
+  // raw {N}, {X}, {specialism} tokens and tries to invent values for them.
+  // Also strip any primaryDataHook line that still contains unfilled templates.
+  const cleanedPrompt = userPrompt
+    .replace(/Primary data hook[^\n]*\{[NXa-z]+\}[^\n]*/gi, '')
+    .replace(/\{N\}/g, '[number]')
+    .replace(/\{X\}/g, '[amount]')
+    .replace(/\{[a-z_-]+\}/gi, '[detail]');
+
   let response;
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -204,7 +213,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       max_tokens: 4000,
       temperature: 0.7,
       system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${firmContextBlock}`,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages: [{ role: 'user', content: cleanedPrompt }],
     });
   } catch (err) {
     await failRun(agentRun._id, { failureReason: `claude_api_error: ${err.message}` });
