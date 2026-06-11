@@ -1,59 +1,73 @@
 import { describe, it, expect } from 'vitest';
 
-describe('Writer repair pass — design verification', () => {
-  it('writerAgent.js contains the repair loop structure', async () => {
+describe('Writer repair pass — deterministic deletion', () => {
+  it('writerAgent.js uses deterministic deletion, not LLM repair', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    expect(content).toContain('attempting repair');
-    expect(content).toContain('repair succeeded');
-    expect(content).toContain('repair failed');
-    expect(content).toContain('repairCostUSD');
-    expect(content).toContain('costEstimateUSD += repairCostUSD');
+    expect(content).toContain('deterministic repair');
+    expect(content).toContain('deletedSentences');
+    expect(content).not.toContain('repairPrompt');
+    expect(content).not.toContain('repairResponse');
   });
 
-  it('repair prompt includes flagged violations verbatim', async () => {
+  it('costEstimateUSD is declared with let (not const)', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    expect(content).toContain('VIOLATIONS FOUND');
-    expect(content).toContain('firstPassViolations.map');
+    expect(content).toContain('let costEstimateUSD');
+    expect(content).not.toMatch(/const costEstimateUSD\b/);
   });
 
-  it('repaired metadata is stored on approved drafts', async () => {
+  it('repair extracts excerpts from violation strings and deletes sentences', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    expect(content).toContain('repaired: true');
-    expect(content).toContain('repairedViolations');
+    expect(content).toContain('excerpt.substring(0, 30)');
+    expect(content).toContain('src.replace(sentence,');
+    expect(content).toContain('deletedSentences.push');
   });
 
-  it('blocked-after-repair includes firstPassViolations', async () => {
+  it('unmatched excerpt is logged and tolerated', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    expect(content).toContain('firstPassViolations:');
+    expect(content).toContain('Could not locate excerpt for deletion');
+  });
+
+  it('tidy function collapses blank lines and empty headings', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('services/writerAgent.js', 'utf8');
+
+    expect(content).toContain('\\n{3,}');
+    expect(content).toContain('^#{1,6}\\s*\\n');
+    expect(content).toContain('^[-*]\\s*\\n');
+  });
+
+  it('repaired metadata includes deletedSentences', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('services/writerAgent.js', 'utf8');
+
+    expect(content).toContain('repaired: true, repairedViolations, deletedSentences');
+  });
+
+  it('blocked paths after repair are reachable (no const crash)', async () => {
+    const fs = await import('fs');
+    const content = fs.readFileSync('services/writerAgent.js', 'utf8');
+
+    // The still-blocked path should reference "after repair attempt"
     expect(content).toContain('after repair attempt');
+    // And should call completeRun + return
+    const afterRepairSection = content.slice(content.indexOf('Final decision'));
+    expect(afterRepairSection).toContain('completeRun');
+    expect(afterRepairSection).toContain('return { success: false');
   });
 
-  it('repair uses the same system prompt + ORG_NAME_BAN as generation', async () => {
+  it('no repairCostUSD accumulation (zero cost repair)', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    const repairSection = content.slice(content.indexOf('attempting repair'));
-    expect(repairSection).toContain('SYSTEM_PROMPT_WRITER_V1_1');
-    expect(repairSection).toContain('ORG_NAME_BAN');
-    expect(repairSection).toContain('firmContextBlock');
-  });
-
-  it('max 1 repair attempt — no recursion or loop beyond one retry', async () => {
-    const fs = await import('fs');
-    const content = fs.readFileSync('services/writerAgent.js', 'utf8');
-
-    const repairAttempts = (content.match(/attempting repair/g) || []).length;
-    expect(repairAttempts).toBe(1);
-
-    expect(content).not.toContain('repair attempt 2');
-    expect(content).not.toContain('second repair');
+    expect(content).not.toContain('costEstimateUSD += repairCostUSD');
+    expect(content).toContain('No repair cost');
   });
 });

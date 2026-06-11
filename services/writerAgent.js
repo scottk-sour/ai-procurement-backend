@@ -288,7 +288,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
   const inputTokens = response.usage?.input_tokens || 0;
   const outputTokens = response.usage?.output_tokens || 0;
-  const costEstimateUSD = (inputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +
+  let costEstimateUSD = (inputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +
                           (outputTokens / 1_000_000 * SONNET_OUTPUT_COST_PER_M);
 
   const platformCostSoFar = await getPlatformCostThisMonth();
@@ -343,7 +343,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   let draftFacebook = parsed.facebookText || '';
   let repaired = false;
   let repairedViolations = null;
-  let repairCostUSD = 0;
+  // No repair cost — repair is deterministic deletion, no LLM call
 
   const allDraftText = () => [draftBody, draftLinkedIn, draftFacebook].join('\n\n');
 
@@ -388,69 +388,89 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const firstPassBlocked = regexFlags.length > 0 || llmReview.verdict === 'fail';
   const firstPassViolations = firstPassBlocked ? buildViolationList(regexFlags, llmReview) : [];
 
-  // Repair attempt (max 1)
+  // Repair attempt (max 1) — deterministic sentence deletion, no LLM call
+  const deletedSentences = [];
   if (firstPassBlocked && firstPassViolations.length > 0 && !llmReview.error) {
-    console.log(`${logPrefix} ${vendor.company}: ${firstPassViolations.length} violation(s) detected — attempting repair`);
+    console.log(`${logPrefix} ${vendor.company}: ${firstPassViolations.length} violation(s) detected — attempting deterministic repair`);
 
-    const repairPrompt = `The following draft was rejected by our automated fabrication detector. Rewrite ONLY the flagged sentences — replace sourced/statistical claims with qualitative phrasing and delete credential claims not supported by firm_context. Leave all other content untouched. Return the full corrected draft as a JSON object with fields: body, linkedInText, facebookText.
+    // Extract quoted excerpts from violation strings
+    const excerpts = firstPassViolations
+      .map(v => {
+        const m = v.match(/"([^"]{10,})"/);
+        return m ? m[1] : null;
+      })
+      .filter(Boolean);
 
-VIOLATIONS FOUND:
-${firstPassViolations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
+    for (const excerpt of excerpts) {
+      // Try exact substring match first, then progressively shorter prefixes
+      let found = false;
+      for (const field of ['body', 'linkedIn', 'facebook']) {
+        const src = field === 'body' ? draftBody : field === 'linkedIn' ? draftLinkedIn : draftFacebook;
+        if (!src) continue;
 
-ORIGINAL DRAFT:
-${JSON.stringify({ body: draftBody, linkedInText: draftLinkedIn, facebookText: draftFacebook })}`;
+        // Find the sentence containing this excerpt
+        const idx = src.indexOf(excerpt);
+        const fuzzyIdx = idx === -1 && excerpt.length > 30 ? src.indexOf(excerpt.substring(0, 30)) : idx;
+        const matchIdx = idx !== -1 ? idx : fuzzyIdx;
 
-    try {
-      const { default: Anthropic } = await import('@anthropic-ai/sdk');
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const repairResponse = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: 4000,
-        temperature: 0.3,
-        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
-        messages: [{ role: 'user', content: repairPrompt }],
-      });
+        if (matchIdx !== -1) {
+          // Find sentence boundaries around the match
+          const before = src.lastIndexOf('.', matchIdx);
+          const sentStart = before === -1 ? 0 : before + 1;
+          const after = src.indexOf('.', matchIdx + 10);
+          const sentEnd = after === -1 ? src.length : after + 1;
+          const sentence = src.slice(sentStart, sentEnd).trim();
 
-      const repairInputTokens = repairResponse.usage?.input_tokens || 0;
-      const repairOutputTokens = repairResponse.usage?.output_tokens || 0;
-      repairCostUSD = (repairInputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +
-                      (repairOutputTokens / 1_000_000 * SONNET_OUTPUT_COST_PER_M);
-
-      const repairText = repairResponse.content?.filter(b => b.type === 'text').map(b => b.text).join('') || '';
-      const repairJson = repairText.match(/\{[\s\S]*\}/);
-      if (repairJson) {
-        const repairedDraft = JSON.parse(repairJson[0]);
-        if (repairedDraft.body) {
-          draftBody = repairedDraft.body;
-          draftLinkedIn = repairedDraft.linkedInText || draftLinkedIn;
-          draftFacebook = repairedDraft.facebookText || draftFacebook;
-
-          // Re-check repaired draft
-          const repair2 = collectViolations();
-          const llmReview2 = repair2.regexFlags.length > 0
-            ? { verdict: 'fail', fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 }
-            : await runLlmReview();
-
-          if (repair2.regexFlags.length === 0 && llmReview2.verdict === 'pass') {
-            repaired = true;
-            repairedViolations = firstPassViolations;
-            regexFlags = repair2.regexFlags;
-            llmReview = llmReview2;
-            console.log(`${logPrefix} ${vendor.company}: repair succeeded — ${firstPassViolations.length} violation(s) fixed`);
-          } else {
-            regexFlags = repair2.regexFlags;
-            llmReview = llmReview2;
-            console.log(`${logPrefix} ${vendor.company}: repair failed — still ${buildViolationList(repair2.regexFlags, llmReview2).length} violation(s)`);
+          if (sentence.length > 5) {
+            const updated = src.replace(sentence, '');
+            if (field === 'body') draftBody = updated;
+            else if (field === 'linkedIn') draftLinkedIn = updated;
+            else draftFacebook = updated;
+            deletedSentences.push(sentence.substring(0, 200));
+            found = true;
+            break;
           }
         }
       }
-    } catch (err) {
-      console.error(`${logPrefix} Repair call failed for ${vendor.company}:`, err.message);
+      if (!found) {
+        console.warn(`${logPrefix} Could not locate excerpt for deletion: "${excerpt.substring(0, 60)}..."`);
+      }
+    }
+
+    // Tidy: collapse double whitespace, blank lines, empty headings/list items
+    const tidy = (text) => text
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^#{1,6}\s*\n/gm, '')
+      .replace(/^[-*]\s*\n/gm, '')
+      .replace(/  +/g, ' ')
+      .trim();
+
+    draftBody = tidy(draftBody);
+    draftLinkedIn = tidy(draftLinkedIn);
+    draftFacebook = tidy(draftFacebook);
+
+    if (deletedSentences.length > 0) {
+      console.log(`${logPrefix} ${vendor.company}: deleted ${deletedSentences.length} sentence(s) — re-checking`);
+
+      // Re-check repaired draft
+      const repair2 = collectViolations();
+      const llmReview2 = repair2.regexFlags.length > 0
+        ? { verdict: 'fail', fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0 }
+        : await runLlmReview();
+
+      if (repair2.regexFlags.length === 0 && llmReview2.verdict === 'pass') {
+        repaired = true;
+        repairedViolations = firstPassViolations;
+        regexFlags = repair2.regexFlags;
+        llmReview = llmReview2;
+        console.log(`${logPrefix} ${vendor.company}: repair succeeded — ${deletedSentences.length} sentence(s) removed`);
+      } else {
+        regexFlags = repair2.regexFlags;
+        llmReview = llmReview2;
+        console.log(`${logPrefix} ${vendor.company}: repair failed — still ${buildViolationList(repair2.regexFlags, llmReview2).length} violation(s) after deletion`);
+      }
     }
   }
-
-  // Update total cost with repair
-  costEstimateUSD += repairCostUSD;
 
   // Final decision
   const finalRegexBlocked = regexFlags.length > 0;
@@ -541,7 +561,7 @@ ${JSON.stringify({ body: draftBody, linkedInText: draftLinkedIn, facebookText: d
       agentReportedPlaceholderCount,
       qualityScore: fabricationReview.qualityScore,
       dataGaps: dataGaps.length > 0 ? dataGaps : undefined,
-      ...(repaired ? { repaired: true, repairedViolations } : {}),
+      ...(repaired ? { repaired: true, repairedViolations, deletedSentences } : {}),
       ...(dryRun ? { dryRun: true } : {}),
     },
     source: 'writer-agent-cron',
