@@ -20,25 +20,29 @@ const MODEL = 'claude-sonnet-4-20250514';
 
 const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
 
-const ORG_NAME_BAN = `## ABSOLUTE CONSTRAINT — ORGANISATION NAME BAN
+const ORG_NAME_BAN = `## ABSOLUTE CONSTRAINT — NO STATISTICS WITHOUT DATA
 
-Do NOT mention any of the following organisations by name in the article body UNLESS the exact figure or claim being attributed to them is present verbatim in the firm_context block above:
+The article body must contain ZERO numeric statistics, percentages, market figures, monetary amounts, or specific timelines UNLESS the exact figure appears verbatim in the firm_context block above.
 
-Land Registry, HM Land Registry, Propertymark, NAEA, ARLA, RICS, TPO, Property Ombudsman, PRS, Rightmove, Zoopla, OnTheMarket, SRA, Solicitors Regulation Authority, Law Society, ICAEW, ACCA, FCA, Financial Conduct Authority, HMRC, ONS, Office for National Statistics, Companies House, Bank of England, CMA, Legal Ombudsman, Financial Ombudsman, FSCS, CQS, Xero, QuickBooks, Sage, FreeAgent.
+This includes:
+- Named attributions: "Propertymark data shows 40%..." — BLOCKED
+- Anonymous attributions: "market data shows...", "analysis indicates...", "sales data suggests...", "Cardiff market analysis shows..." — BLOCKED (anonymous attribution is still fabrication)
+- Specific timelines: "8-12 weeks", "15 days faster" — BLOCKED unless in firm_context
+- Specific counts: "87 properties", "5 accelerators" — BLOCKED unless in firm_context
 
-This means:
-- NO "Rightmove data shows..." — unless firm_context contains that exact Rightmove figure.
-- NO "Land Registry processing times..." — unless firm_context contains that exact figure.
-- NO "NAEA research identifies..." — unless firm_context contains that exact claim.
-- NO "according to Propertymark..." — unless firm_context contains the cited figure.
+With no data in firm_context, write QUALITATIVELY with no numbers:
+- GOOD: "Overpriced properties take noticeably longer to sell."
+- GOOD: "Most residential transactions complete within a few months."
+- GOOD: "Accurately priced homes tend to attract more interest."
+- BAD: "Properties sell 40% faster when priced correctly." (invented figure)
+- BAD: "Chain complications account for approximately 15% of delays." (invented figure)
+- BAD: "Cardiff market analysis shows spring generates more enquiries." (anonymous attribution)
 
-If you have NO data from firm_context for a claim, write from general qualitative knowledge with NO named source:
-- GOOD: "Conveyancing is typically the longest stage of a property transaction."
-- GOOD: "Accurately priced properties tend to sell faster."
-- BAD: "Land Registry data shows 8-12 weeks is typical." (fabricated attribution)
-- BAD: "Propertymark research identifies five accelerators." (fabricated attribution)
+Do NOT emit [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens in the article body. If data is missing, write the section qualitatively without it. Missing data keys are tracked separately as metadata — the article must read as a complete, polished piece with no visible gaps.
 
-This constraint is checked by an automated detector AFTER generation. Any draft containing an organisation name near a statistic not in firm_context will be automatically rejected. Emit [FIRM_DATA: ...] placeholders freely — those are correct and will NOT be flagged.`;
+Organisation names (Land Registry, Propertymark, NAEA, ARLA, RICS, TPO, Rightmove, Zoopla, SRA, ICAEW, FCA, HMRC, ONS, etc.) may be mentioned for qualitative context ("SRA-regulated firm", "Propertymark-registered agent") but NEVER alongside a statistic not in firm_context.
+
+This constraint is enforced by TWO automated detectors after generation. Drafts containing fabricated statistics or placeholder tokens in the body are automatically rejected.`;
 
 function isProTier(tier) {
   return PRO_TIERS.has(tier);
@@ -199,6 +203,15 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   }
   const firmContextBlock = renderFirmContextBlock(firmContext);
 
+  // Identify which pillar-required data keys are missing from firm context
+  const dataGaps = [];
+  const firmContextStr = firmContextBlock.toLowerCase();
+  for (const [key, label] of Object.entries(FIRM_DATA_KEYS)) {
+    if (!firmContextStr.includes(key.toLowerCase()) && !firmContextStr.includes(label.toLowerCase().split('(')[0].trim())) {
+      dataGaps.push(key);
+    }
+  }
+
   const cta = buildCtaForVendor(vendor);
   const userPrompt = buildUserPrompt({
     topic: topicTitle,
@@ -212,7 +225,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     linkedInHookType: next.topic.linkedInHookType || 'opinion',
     ctaUrl: cta.ctaUrl,
     ctaText: cta.ctaText,
-    allowedFirmDataKeys: FIRM_DATA_KEYS,
+    allowedFirmDataKeys: {},
   });
 
   // Strip unfilled template patterns from the prompt so the model never sees
@@ -423,6 +436,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       topicSuitabilityFlag,
       agentReportedPlaceholderCount,
       qualityScore: fabricationReview.qualityScore,
+      dataGaps: dataGaps.length > 0 ? dataGaps : undefined,
       ...(dryRun ? { dryRun: true } : {}),
     },
     source: 'writer-agent-cron',
