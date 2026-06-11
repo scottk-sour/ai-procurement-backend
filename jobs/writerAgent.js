@@ -42,12 +42,15 @@ export async function runWeeklyWriterAgent() {
         skippedCount++;
         skipReasons[result.reason] = (skipReasons[result.reason] || 0) + 1;
         logger.info(`[WriterAgent] ${vendor.company}: skipped — ${result.reason}`);
+      } else if (result.blocked) {
+        failedCount++;
+        logger.warn(`[WriterAgent] ${vendor.company}: blocked — ${result.reason}`);
       } else if (result.success) {
         draftedCount++;
         logger.info(`[WriterAgent] ${vendor.company}: drafted "${result.draftTitle}" ($${result.costEstimateUSD?.toFixed(4)})`);
       } else {
         failedCount++;
-        logger.error(`[WriterAgent] ${vendor.company}: failed — ${result.error}`);
+        logger.error(`[WriterAgent] ${vendor.company}: failed — ${result.error || 'unknown'}`);
       }
 
       results.push({ company: vendor.company, vendorId: String(vendor._id), ...result });
