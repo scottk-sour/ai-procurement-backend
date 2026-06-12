@@ -450,6 +450,33 @@ router.put('/:vendorId/posts/:postId/hide', vendorAuth, async (req, res) => {
   }
 });
 
+// GET /api/posts/sitemap.xml — sitemap of all published posts for crawlers
+router.get('/sitemap.xml', async (req, res) => {
+  try {
+    const posts = await VendorPost.find({ status: 'published' })
+      .select('slug updatedAt')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const baseUrl = 'https://www.tendorai.com';
+    const urls = posts.map(p => `  <url>
+    <loc>${baseUrl}/posts/${p.slug}</loc>
+    <lastmod>${(p.updatedAt || new Date()).toISOString().split('T')[0]}</lastmod>
+    <changefreq>monthly</changefreq>
+  </url>`).join('\n');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>`;
+
+    res.set('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (error) {
+    res.status(500).send('<?xml version="1.0"?><urlset/>');
+  }
+});
+
 // GET /api/posts/feed — all published posts across vendors (public, for GEO crawling)
 router.get('/feed', async (req, res) => {
   try {
