@@ -31,6 +31,24 @@ describe('detectFirmPerformanceClaims — false positive fixes', () => {
     const flagged = detectFirmPerformanceClaims(text);
     expect(flagged.length).toBe(0);
   });
+
+  it('does NOT flag bulleted list with generic process info (Case 1: "comparable sales data")', () => {
+    const text = '- **Property valuation stage**: Estate agents assess market value using comparable sales data and current market conditions in Cardiff\n- **Marketing preparation**: Professional photography, floorplans, and 12 portal listings prepared within 48 hours';
+    const flagged = detectFirmPerformanceClaims(text);
+    expect(flagged.length, `Should not flag generic process bullets: ${JSON.stringify(flagged)}`).toBe(0);
+  });
+
+  it('does NOT flag markdown table with generic timeframes (Case 2: "1-2 weeks")', () => {
+    const text = '## Cardiff Property Sales Timeframes in 2026\n| Stage | Typical Duration | Key Activities |\n|-------|------------------|----------------|\n| Valuation to marketing | 1-2 weeks | Photography, EPC, floorplan |\n| On market to offer | 4-8 weeks | Viewings, negotiations |\n| Offer to exchange | 6-10 weeks | Surveys, searches, mortgage |';
+    const flagged = detectFirmPerformanceClaims(text);
+    expect(flagged.length, `Should not flag generic table: ${JSON.stringify(flagged)}`).toBe(0);
+  });
+
+  it('does NOT flag generic industry prose with "sales typically take"', () => {
+    const text = 'Property sales typically take 12-16 weeks from instruction to completion in Cardiff.';
+    const flagged = detectFirmPerformanceClaims(text);
+    expect(flagged.length).toBe(0);
+  });
 });
 
 describe('detectFirmPerformanceClaims — true positives still blocked', () => {

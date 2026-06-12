@@ -122,30 +122,55 @@ export function detectFirmPerformanceClaims(draftText, firmName) {
 
   const flagged = [];
 
-  // Split into sentences and check each independently
-  const sentences = stripped.split(/(?<=[.!?])\s+/);
-  for (const sentence of sentences) {
-    if (sentence.includes('___PLACEHOLDER___')) continue;
-    if (sentence.includes('___LEGISLATION___')) continue;
+  // Split on sentence boundaries AND markdown structure (bullets, table rows, headings, newlines)
+  const segments = stripped.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim());
+
+  // First-person / firm-specific indicators — a real firm performance claim
+  // attributes a figure to the firm itself, not generic industry info
+  const FIRM_INDICATORS = /\b(?:we|our|us|the firm|the team|the company)\b/i;
+
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    const clean = trimmed.replace(/^[-*•|#>\s]+/, '').trim();
+    if (!clean) continue;
+    if (clean.includes('___PLACEHOLDER___')) continue;
+    if (clean.includes('___LEGISLATION___')) continue;
+
+    // Skip markdown headings — structural, not assertions
+    if (/^#{1,6}\s/.test(trimmed)) continue;
+
+    // Skip table header/separator rows and generic table content
+    if (/^\|[-\s|]+\|$/.test(trimmed)) continue;
+    if (/^\|/.test(trimmed)) continue;
 
     // Must contain a number (not just a list marker like "1.")
-    const hasNumber = /\d{2,}|\d+\s*%|\d+\s+(?:properties|transactions|cases|clients|days|weeks|months|hours)/.test(sentence);
+    const hasNumber = /\d{2,}|\d+\s*%/.test(clean);
     if (!hasNumber) continue;
 
-    // Check for whole-word performance nouns
-    const lower = sentence.toLowerCase();
+    // Must contain a whole-word performance noun
+    const lower = clean.toLowerCase();
     const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => {
       const re = new RegExp('\\b' + n + '\\b', 'i');
       return re.test(lower);
     });
+    if (!hasPerformanceNoun) continue;
 
-    if (hasPerformanceNoun) {
-      flagged.push({
-        type: 'firm_performance_claim',
-        excerpt: sentence.trim().substring(0, 200),
-        position: stripped.indexOf(sentence),
-      });
-    }
+    // Only flag if it reads as a FIRM-SPECIFIC claim:
+    // - First-person/possessive ("we sold", "our team completed")
+    // - Past-tense performance verb as if reporting the firm's results
+    //   ("sold 87 properties" — article is published as the firm's voice)
+    // NOT generic process description ("sales typically take 4-8 weeks")
+    const hasFirmVoice = FIRM_INDICATORS.test(clean);
+    const hasGenericHedge = /\b(?:typically|usually|generally|on average|average|often|most|many|standard|normal|common)\b/i.test(clean);
+
+    if (!hasFirmVoice && hasGenericHedge) continue;
+    if (!hasFirmVoice && /^\|/.test(segment.trim())) continue; // table row without firm voice
+
+    flagged.push({
+      type: 'firm_performance_claim',
+      excerpt: clean.substring(0, 200),
+      position: stripped.indexOf(segment),
+    });
   }
 
   return flagged;
