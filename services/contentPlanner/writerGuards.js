@@ -120,6 +120,9 @@ const FIRM_SUBJECT = /\b(?:we|our|us|the firm|the team|the company)\b/i;
 // Generic-industry subjects — the claim is about the market/process, not the firm
 const GENERIC_SUBJECT = /\b(?:sales|conveyancing|transactions?|properties|the (?:average|typical|standard)|most|many|an? average)\b.*\b(?:typically|usually|generally|often|on average|normally|commonly|tend to|can take|range from)\b/i;
 
+// BYPASSED at publish-time — replaced by semantic Haiku check in approvalQueue.js.
+// Kept for reference/tests. The regex approach false-positived on generic process
+// descriptions, markdown tables, years, and industry vocabulary it couldn't generalise.
 export function detectFirmPerformanceClaims(draftText, firmName) {
   if (!draftText || typeof draftText !== 'string') return [];
 

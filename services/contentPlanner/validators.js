@@ -1,4 +1,4 @@
-import { detectPossibleFabrication, detectFirmPerformanceClaims } from './writerGuards.js';
+import { detectPossibleFabrication } from './writerGuards.js';
 
 /**
  * Pre-publish validator for Writer Agent content drafts.
@@ -159,11 +159,10 @@ export function validateContentDraft(payload) {
     errors.push(`Fabricated statistic attributed to ${f.body}: "${f.excerpt.trim()}"`);
   }
 
-  // Hard-block unverified firm performance claims (Rule 22).
-  const firmClaims = detectFirmPerformanceClaims(allText);
-  for (const f of firmClaims) {
-    errors.push(`Unverified firm performance claim: "${f.excerpt.trim()}"`);
-  }
+  // Firm performance claims are now checked semantically via Haiku at publish-time
+  // (in approvalQueue.js content_draft handler), not by the deterministic regex here.
+  // The regex detectFirmPerformanceClaims was removed from the publish path because
+  // it false-positived on generic process descriptions, markdown tables, and years.
 
   return {
     passed: errors.length === 0,
