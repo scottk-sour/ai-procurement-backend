@@ -76,7 +76,7 @@ const executionHandlers = {
       body: payload.body,
       category: payload.category || 'guide',
       tags: payload.tags || [],
-      status: 'draft',
+      status: 'published',
       aiGenerated: true,
       topic: payload.topic,
       stats: payload.stats,
