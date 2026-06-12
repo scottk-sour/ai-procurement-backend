@@ -115,25 +115,35 @@ const PLACEHOLDER_FENCE = /\[FIRM_DATA:[^\]]+\]|\[FIRM TO PROVIDE[^\]]*\]/g;
 export function detectFirmPerformanceClaims(draftText, firmName) {
   if (!draftText || typeof draftText !== 'string') return [];
 
-  const stripped = draftText.replace(PLACEHOLDER_FENCE, '___PLACEHOLDER___');
+  // Strip placeholders and legislation so they don't trigger false positives
+  const stripped = draftText
+    .replace(PLACEHOLDER_FENCE, '___PLACEHOLDER___')
+    .replace(LEGISLATION_PATTERN, '___LEGISLATION___');
+
   const flagged = [];
-  const numPat = /\d+(?:[,.]?\d+)*\s*%?/g;
-  let numMatch;
 
-  while ((numMatch = numPat.exec(stripped)) !== null) {
-    const pos = numMatch.index;
-    const windowStart = Math.max(0, pos - 60);
-    const windowEnd = Math.min(stripped.length, pos + numMatch[0].length + 60);
-    const window = stripped.slice(windowStart, windowEnd).toLowerCase();
+  // Split into sentences and check each independently
+  const sentences = stripped.split(/(?<=[.!?])\s+/);
+  for (const sentence of sentences) {
+    if (sentence.includes('___PLACEHOLDER___')) continue;
+    if (sentence.includes('___LEGISLATION___')) continue;
 
-    if (window.includes('___placeholder___')) continue;
+    // Must contain a number (not just a list marker like "1.")
+    const hasNumber = /\d{2,}|\d+\s*%|\d+\s+(?:properties|transactions|cases|clients|days|weeks|months|hours)/.test(sentence);
+    if (!hasNumber) continue;
 
-    const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => window.includes(n));
+    // Check for whole-word performance nouns
+    const lower = sentence.toLowerCase();
+    const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => {
+      const re = new RegExp('\\b' + n + '\\b', 'i');
+      return re.test(lower);
+    });
+
     if (hasPerformanceNoun) {
       flagged.push({
         type: 'firm_performance_claim',
-        excerpt: stripped.slice(windowStart, windowEnd).trim(),
-        position: pos,
+        excerpt: sentence.trim().substring(0, 200),
+        position: stripped.indexOf(sentence),
       });
     }
   }
