@@ -105,12 +105,20 @@ export function countAllPlaceholderFormats(text) {
 }
 
 const PERFORMANCE_NOUNS = [
-  'sold', 'completed', 'achieved', 'handled', 'processed', 'managed',
-  'transactions', 'properties', 'cases', 'clients', 'instructions',
-  'completions', 'sales', 'lettings', 'exchanges',
+  'sold', 'sell', 'selling', 'completed', 'completing', 'completion',
+  'achieved', 'achieving', 'handled', 'handling', 'processed', 'processing',
+  'managed', 'managing', 'transactions', 'transaction', 'properties', 'property',
+  'cases', 'clients', 'instructions', 'completions',
+  'sales', 'lettings', 'letting', 'exchanges', 'exchange',
 ];
 
 const PLACEHOLDER_FENCE = /\[FIRM_DATA:[^\]]+\]|\[FIRM TO PROVIDE[^\]]*\]/g;
+
+// Firm-subject indicators — the claim is attributed to THIS firm
+const FIRM_SUBJECT = /\b(?:we|our|us|the firm|the team|the company)\b/i;
+
+// Generic-industry subjects — the claim is about the market/process, not the firm
+const GENERIC_SUBJECT = /\b(?:sales|conveyancing|transactions?|properties|the (?:average|typical|standard)|most|many|an? average)\b.*\b(?:typically|usually|generally|often|on average|normally|commonly|tend to|can take|range from)\b/i;
 
 export function detectFirmPerformanceClaims(draftText, firmName) {
   if (!draftText || typeof draftText !== 'string') return [];
@@ -122,12 +130,8 @@ export function detectFirmPerformanceClaims(draftText, firmName) {
 
   const flagged = [];
 
-  // Split on sentence boundaries AND markdown structure (bullets, table rows, headings, newlines)
+  // Split on sentence boundaries AND markdown structure
   const segments = stripped.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim());
-
-  // First-person / firm-specific indicators — a real firm performance claim
-  // attributes a figure to the firm itself, not generic industry info
-  const FIRM_INDICATORS = /\b(?:we|our|us|the firm|the team|the company)\b/i;
 
   for (const segment of segments) {
     const trimmed = segment.trim();
@@ -136,36 +140,31 @@ export function detectFirmPerformanceClaims(draftText, firmName) {
     if (clean.includes('___PLACEHOLDER___')) continue;
     if (clean.includes('___LEGISLATION___')) continue;
 
-    // Skip markdown headings — structural, not assertions
+    // Skip markdown headings and table rows — structural, not assertions
     if (/^#{1,6}\s/.test(trimmed)) continue;
-
-    // Skip table header/separator rows and generic table content
-    if (/^\|[-\s|]+\|$/.test(trimmed)) continue;
     if (/^\|/.test(trimmed)) continue;
 
-    // Must contain a number (not just a list marker like "1.")
+    // Must contain a meaningful number (not a list marker)
     const hasNumber = /\d{2,}|\d+\s*%/.test(clean);
     if (!hasNumber) continue;
 
     // Must contain a whole-word performance noun
-    const lower = clean.toLowerCase();
     const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => {
       const re = new RegExp('\\b' + n + '\\b', 'i');
-      return re.test(lower);
+      return re.test(clean);
     });
     if (!hasPerformanceNoun) continue;
 
-    // Only flag if it reads as a FIRM-SPECIFIC claim:
-    // - First-person/possessive ("we sold", "our team completed")
-    // - Past-tense performance verb as if reporting the firm's results
-    //   ("sold 87 properties" — article is published as the firm's voice)
-    // NOT generic process description ("sales typically take 4-8 weeks")
-    const hasFirmVoice = FIRM_INDICATORS.test(clean);
-    const hasGenericHedge = /\b(?:typically|usually|generally|on average|average|often|most|many|standard|normal|common)\b/i.test(clean);
+    // Subject gate: is the claim attributed to the firm or to the generic industry?
+    const hasFirmSubject = FIRM_SUBJECT.test(clean);
+    const hasGenericSubject = GENERIC_SUBJECT.test(clean);
 
-    if (!hasFirmVoice && hasGenericHedge) continue;
-    if (!hasFirmVoice && /^\|/.test(segment.trim())) continue; // table row without firm voice
+    // If the subject is clearly generic industry ("sales typically take 4-8 weeks"), pass
+    if (hasGenericSubject && !hasFirmSubject) continue;
 
+    // If the subject is the firm ("we sold 87", "our average is 10 weeks"), flag
+    // If ambiguous (no clear subject either way), flag — the article is published
+    // in the firm's voice, so an unattributed claim defaults to the firm
     flagged.push({
       type: 'firm_performance_claim',
       excerpt: clean.substring(0, 200),
