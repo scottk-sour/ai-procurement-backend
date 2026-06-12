@@ -208,7 +208,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const firmContextStr = firmContextBlock.toLowerCase();
   for (const [key, label] of Object.entries(FIRM_DATA_KEYS)) {
     if (!firmContextStr.includes(key.toLowerCase()) && !firmContextStr.includes(label.toLowerCase().split('(')[0].trim())) {
-      dataGaps.push(key);
+      dataGaps.push({ key, label });
     }
   }
 
@@ -547,6 +547,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       tags: [next.pillarId, vendor.vendorType, vendor.location?.city?.toLowerCase()].filter(Boolean),
       placeholderCount: verifiedPlaceholderCount,
       topicSuitabilityFlag,
+      dataGaps: dataGaps.length > 0 ? dataGaps : [],
     },
     metadata: {
       agentRunId: agentRun._id,
