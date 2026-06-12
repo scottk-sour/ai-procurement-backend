@@ -112,6 +112,18 @@ router.post('/:id/firm-data', async (req, res) => {
     if (approval.draftPayload?.facebookText) {
       approval.draftPayload.facebookText = approval.draftPayload.facebookText.replace(keyPattern, String(value));
     }
+    // Remove saved key from dataGaps so it disappears on refresh
+    if (Array.isArray(approval.draftPayload?.dataGaps)) {
+      approval.draftPayload.dataGaps = approval.draftPayload.dataGaps.filter(g =>
+        typeof g === 'string' ? g !== key : g?.key !== key
+      );
+    }
+    if (Array.isArray(approval.metadata?.dataGaps)) {
+      approval.metadata.dataGaps = approval.metadata.dataGaps.filter(g =>
+        typeof g === 'string' ? g !== key : g?.key !== key
+      );
+      approval.markModified('metadata');
+    }
     approval.markModified('draftPayload');
     await approval.save();
 
