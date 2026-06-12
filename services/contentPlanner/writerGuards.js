@@ -105,12 +105,20 @@ export function countAllPlaceholderFormats(text) {
 }
 
 const PERFORMANCE_NOUNS = [
-  'sold', 'completed', 'achieved', 'handled', 'processed', 'managed',
-  'transactions', 'properties', 'cases', 'clients', 'instructions',
-  'completions', 'sales', 'lettings', 'exchanges',
+  'sold', 'sell', 'selling', 'completed', 'completing', 'completion',
+  'achieved', 'achieving', 'handled', 'handling', 'processed', 'processing',
+  'managed', 'managing', 'transactions', 'transaction', 'properties', 'property',
+  'cases', 'clients', 'instructions', 'completions',
+  'sales', 'lettings', 'letting', 'exchanges', 'exchange',
 ];
 
 const PLACEHOLDER_FENCE = /\[FIRM_DATA:[^\]]+\]|\[FIRM TO PROVIDE[^\]]*\]/g;
+
+// Firm-subject indicators — the claim is attributed to THIS firm
+const FIRM_SUBJECT = /\b(?:we|our|us|the firm|the team|the company)\b/i;
+
+// Generic-industry subjects — the claim is about the market/process, not the firm
+const GENERIC_SUBJECT = /\b(?:sales|conveyancing|transactions?|properties|the (?:average|typical|standard)|most|many|an? average)\b.*\b(?:typically|usually|generally|often|on average|normally|commonly|tend to|can take|range from)\b/i;
 
 export function detectFirmPerformanceClaims(draftText, firmName) {
   if (!draftText || typeof draftText !== 'string') return [];
@@ -122,30 +130,46 @@ export function detectFirmPerformanceClaims(draftText, firmName) {
 
   const flagged = [];
 
-  // Split into sentences and check each independently
-  const sentences = stripped.split(/(?<=[.!?])\s+/);
-  for (const sentence of sentences) {
-    if (sentence.includes('___PLACEHOLDER___')) continue;
-    if (sentence.includes('___LEGISLATION___')) continue;
+  // Split on sentence boundaries AND markdown structure
+  const segments = stripped.split(/(?<=[.!?])\s+|\n+/).filter(s => s.trim());
 
-    // Must contain a number (not just a list marker like "1.")
-    const hasNumber = /\d{2,}|\d+\s*%|\d+\s+(?:properties|transactions|cases|clients|days|weeks|months|hours)/.test(sentence);
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    const clean = trimmed.replace(/^[-*•|#>\s]+/, '').trim();
+    if (!clean) continue;
+    if (clean.includes('___PLACEHOLDER___')) continue;
+    if (clean.includes('___LEGISLATION___')) continue;
+
+    // Skip markdown headings and table rows — structural, not assertions
+    if (/^#{1,6}\s/.test(trimmed)) continue;
+    if (/^\|/.test(trimmed)) continue;
+
+    // Must contain a meaningful number (not a list marker)
+    const hasNumber = /\d{2,}|\d+\s*%/.test(clean);
     if (!hasNumber) continue;
 
-    // Check for whole-word performance nouns
-    const lower = sentence.toLowerCase();
+    // Must contain a whole-word performance noun
     const hasPerformanceNoun = PERFORMANCE_NOUNS.some(n => {
       const re = new RegExp('\\b' + n + '\\b', 'i');
-      return re.test(lower);
+      return re.test(clean);
     });
+    if (!hasPerformanceNoun) continue;
 
-    if (hasPerformanceNoun) {
-      flagged.push({
-        type: 'firm_performance_claim',
-        excerpt: sentence.trim().substring(0, 200),
-        position: stripped.indexOf(sentence),
-      });
-    }
+    // Subject gate: is the claim attributed to the firm or to the generic industry?
+    const hasFirmSubject = FIRM_SUBJECT.test(clean);
+    const hasGenericSubject = GENERIC_SUBJECT.test(clean);
+
+    // If the subject is clearly generic industry ("sales typically take 4-8 weeks"), pass
+    if (hasGenericSubject && !hasFirmSubject) continue;
+
+    // If the subject is the firm ("we sold 87", "our average is 10 weeks"), flag
+    // If ambiguous (no clear subject either way), flag — the article is published
+    // in the firm's voice, so an unattributed claim defaults to the firm
+    flagged.push({
+      type: 'firm_performance_claim',
+      excerpt: clean.substring(0, 200),
+      position: stripped.indexOf(segment),
+    });
   }
 
   return flagged;
