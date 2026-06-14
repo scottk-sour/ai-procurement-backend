@@ -1,7 +1,7 @@
 import Vendor from '../models/Vendor.js';
 import AgentRun from '../models/AgentRun.js';
 import { PILLAR_LIBRARIES, VERTICAL_ENTITIES } from './contentPlanner/pillarLibraries.js';
-import { SYSTEM_PROMPT_V7, SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS } from './contentPlanner/prompts.js';
+import { SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS, ORG_NAME_BAN } from './contentPlanner/prompts.js';
 import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
 import { reviewDraftForFabrication } from './contentPlanner/fabricationReview.js';
 import { countAllPlaceholders as countPlaceholders } from './writerAgent/parsePlaceholders.js';

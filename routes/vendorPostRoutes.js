@@ -7,7 +7,12 @@ import {
   VERTICAL_ENTITIES,
   LINKEDIN_HOOK_TYPES, // eslint-disable-line no-unused-vars
 } from '../services/contentPlanner/pillarLibraries.js';
-import { SYSTEM_PROMPT_V7, VERTICAL_LABELS } from '../services/contentPlanner/prompts.js';
+import { SYSTEM_PROMPT_WRITER_V1_1, VERTICAL_LABELS, ORG_NAME_BAN } from '../services/contentPlanner/prompts.js';
+import { getFirmContext, renderFirmContextBlock } from '../services/contentPlanner/firmContext.js';
+import { reviewDraftForFabrication } from '../services/contentPlanner/fabricationReview.js';
+import { detectPossibleFabrication, buildCtaForVendor } from '../services/contentPlanner/writerGuards.js';
+import { FIRM_DATA_KEYS } from '../services/writerAgent/firmDataKeys.js';
+import { countAllPlaceholders } from '../services/writerAgent/parsePlaceholders.js';
 
 const router = express.Router();
 
@@ -246,7 +251,7 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
     }
 
     const vendor = await Vendor.findById(vendorId)
-      .select('tier vendorType company location.city')
+      .select('tier vendorType company slug location.city')
       .lean();
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
@@ -261,6 +266,17 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
     if (!process.env.ANTHROPIC_API_KEY) {
       return res.status(500).json({ success: false, error: 'AI service not configured' });
     }
+
+    let firmContextBlock = '';
+    try {
+      const firmContext = await getFirmContext(vendorId);
+      firmContextBlock = renderFirmContextBlock(firmContext);
+    } catch (err) {
+      console.error('[PostGenerate] firmContext fetch failed:', err.message);
+      return res.status(500).json({ success: false, error: 'Could not load firm context' });
+    }
+
+    const cta = buildCtaForVendor(vendor);
 
     const { topic, stats, pillar, topicIndex = 0, primaryData = '' } = req.body;
     if (!topic || !topic.trim()) {
@@ -311,7 +327,16 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       pillarSpec,
       vendorTypeEntities,
       linkedInHookType,
+      ctaUrl: cta.ctaUrl,
+      ctaText: cta.ctaText,
+      allowedFirmDataKeys: FIRM_DATA_KEYS,
     });
+
+    const cleanedPrompt = userPrompt
+      .replace(/Primary data hook[^\n]*\{[NXa-z]+\}[^\n]*/gi, '')
+      .replace(/\{N\}/g, '[number]')
+      .replace(/\{X\}/g, '[amount]')
+      .replace(/\{[a-z_-]+\}/gi, '[detail]');
 
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -320,8 +345,8 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
       temperature: 0.7,
-      system: SYSTEM_PROMPT_V7,
-      messages: [{ role: 'user', content: userPrompt }],
+      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+      messages: [{ role: 'user', content: cleanedPrompt }],
     });
 
     const text = response.content
@@ -335,6 +360,51 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
+
+    const topicSuitabilityFlag = ['ok', 'thin_data', 'unsuitable'].includes(parsed.topicSuitabilityFlag)
+      ? parsed.topicSuitabilityFlag : 'ok';
+    const verifiedPlaceholderCount =
+      countAllPlaceholders(parsed.body || '') +
+      countAllPlaceholders(parsed.linkedInText || '') +
+      countAllPlaceholders(parsed.facebookText || '');
+
+    // Fabrication detection — fail-closed hard-block, no repair
+    const regexFlags = detectPossibleFabrication(parsed.body || '');
+    if (regexFlags.length > 0) {
+      return res.status(422).json({
+        success: false,
+        error: 'Draft blocked — fabricated attributions detected',
+        fabricationFlags: regexFlags.map(f => ({ body: f.body, excerpt: f.excerpt.substring(0, 120) })),
+      });
+    }
+
+    const allText = [parsed.body || '', parsed.linkedInText || '', parsed.facebookText || ''].join('\n\n');
+    let semanticReview;
+    try {
+      semanticReview = await reviewDraftForFabrication({
+        draftText: allText,
+        firmContext: firmContextBlock,
+        vertical: vendor.vendorType,
+      });
+    } catch (err) {
+      console.error('[PostGenerate] Fabrication review error (fail-closed):', err.message);
+      return res.status(422).json({
+        success: false,
+        error: 'Draft blocked — fabrication review unavailable (fail-closed)',
+      });
+    }
+
+    if (semanticReview.verdict === 'fail') {
+      return res.status(422).json({
+        success: false,
+        error: 'Draft blocked — semantic review failed',
+        qualityScore: semanticReview.qualityScore,
+        fabricatedAttributions: semanticReview.fabricatedAttributions,
+        firmClaimsNotInContext: semanticReview.firmClaimsNotInContext,
+        reviewError: semanticReview.error || undefined,
+      });
+    }
+
     res.json({
       success: true,
       title: parsed.title || '',
@@ -343,6 +413,9 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
       facebookText: parsed.facebookText || '',
       plan: pillarSpec || null,
       pillar: pillar || null,
+      topicSuitabilityFlag,
+      placeholderCount: verifiedPlaceholderCount,
+      qualityScore: semanticReview.qualityScore,
     });
 
     // Auto-detect: onboarding checklist — firstPillarPostGenerated

@@ -377,3 +377,27 @@ Every [FIRM_DATA: key | label] placeholder renders as a distinct un-publishable 
 
 Output the JSON object only — no commentary before or after, no markdown code fences, no preamble.
 `;
+
+export const ORG_NAME_BAN = `## ABSOLUTE CONSTRAINT — NO STATISTICS WITHOUT DATA
+
+The article body must contain ZERO numeric statistics, percentages, market figures, monetary amounts, or specific timelines UNLESS the exact figure appears verbatim in the firm_context block above.
+
+This includes:
+- Named attributions: "Propertymark data shows 40%..." — BLOCKED
+- Anonymous attributions: "market data shows...", "analysis indicates...", "sales data suggests...", "Cardiff market analysis shows..." — BLOCKED (anonymous attribution is still fabrication)
+- Specific timelines: "8-12 weeks", "15 days faster" — BLOCKED unless in firm_context
+- Specific counts: "87 properties", "5 accelerators" — BLOCKED unless in firm_context
+
+With no data in firm_context, write QUALITATIVELY with no numbers:
+- GOOD: "Overpriced properties take noticeably longer to sell."
+- GOOD: "Most residential transactions complete within a few months."
+- GOOD: "Accurately priced homes tend to attract more interest."
+- BAD: "Properties sell 40% faster when priced correctly." (invented figure)
+- BAD: "Chain complications account for approximately 15% of delays." (invented figure)
+- BAD: "Cardiff market analysis shows spring generates more enquiries." (anonymous attribution)
+
+Do NOT emit [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens in the article body. If data is missing, write the section qualitatively without it. Missing data keys are tracked separately as metadata — the article must read as a complete, polished piece with no visible gaps.
+
+Organisation names (Land Registry, Propertymark, NAEA, ARLA, RICS, TPO, Rightmove, Zoopla, SRA, ICAEW, FCA, HMRC, ONS, etc.) may be mentioned for qualitative context ("SRA-regulated firm", "Propertymark-registered agent") but NEVER alongside a statistic not in firm_context.
+
+This constraint is enforced by TWO automated detectors after generation. Drafts containing fabricated statistics or placeholder tokens in the body are automatically rejected.`;
