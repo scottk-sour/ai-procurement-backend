@@ -155,18 +155,16 @@ router.post('/:id/firm-approve', async (req, res) => {
       return res.status(400).json({ success: false, error: `Cannot firm-approve from status "${approval.status}"` });
     }
 
-    const allContent = [
-      approval.draftPayload?.body || '',
-      approval.draftPayload?.linkedInText || '',
-      approval.draftPayload?.facebookText || '',
-    ].join('\n');
-    const remaining = countAllPlaceholders(allContent);
+    const gaps = approval.draftPayload?.dataGaps
+      ?? approval.metadata?.dataGaps
+      ?? [];
+    const remaining = Array.isArray(gaps) ? gaps.length : 0;
 
     if (remaining > 0) {
       return res.status(400).json({
         success: false,
-        error: `${remaining} placeholder(s) remaining. Fill all placeholders before approving.`,
-        remainingPlaceholders: remaining,
+        error: `Cannot approve: ${remaining} field(s) still need your input.`,
+        remaining,
       });
     }
 

@@ -164,21 +164,36 @@ describe('Firm-data save-back + firm-approve', () => {
     expect(res.status).toBe(403);
   });
 
-  it('firm-approve with placeholders remaining returns 400', async () => {
-    mockApproval();
+  it('firm-approve with dataGaps remaining returns 400', async () => {
+    mockApproval({
+      draftPayload: {
+        body: 'Qualitative content with no inline placeholders.',
+        linkedInText: '',
+        facebookText: '',
+        dataGaps: [
+          { key: 'fullManagementFeePercent', label: 'Full management fee %' },
+          { key: 'brokerFee', label: 'Broker fee' },
+        ],
+      },
+    });
 
     const res = await request(app, 'POST', `/api/vendor/approvals/${APPROVAL_A}/firm-approve`, {
       headers: { 'x-test-vendor-id': String(VENDOR_A) },
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('placeholder');
-    expect(res.body.remainingPlaceholders).toBeGreaterThan(0);
+    expect(res.body.error).toContain('2 field(s) still need your input');
+    expect(res.body.remaining).toBe(2);
   });
 
-  it('firm-approve with zero placeholders sets firm_completed', async () => {
+  it('firm-approve with empty dataGaps sets firm_completed', async () => {
     mockApproval({
-      draftPayload: { body: 'Clean content with no placeholders.', linkedInText: '', facebookText: '' },
+      draftPayload: {
+        body: 'Qualitative content with no gaps remaining.',
+        linkedInText: '',
+        facebookText: '',
+        dataGaps: [],
+      },
     });
 
     const res = await request(app, 'POST', `/api/vendor/approvals/${APPROVAL_A}/firm-approve`, {
@@ -188,6 +203,52 @@ describe('Firm-data save-back + firm-approve', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('firm_completed');
     expect(res.body.firmApprovedAt).toBeDefined();
+  });
+
+  it('firm-approve with absent dataGaps (legacy draft) sets firm_completed', async () => {
+    mockApproval({
+      draftPayload: {
+        body: 'Legacy draft with no dataGaps field at all.',
+        linkedInText: '',
+        facebookText: '',
+      },
+    });
+
+    const res = await request(app, 'POST', `/api/vendor/approvals/${APPROVAL_A}/firm-approve`, {
+      headers: { 'x-test-vendor-id': String(VENDOR_A) },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('firm_completed');
+  });
+
+  it('firm-approve succeeds after firm-data fills the last remaining gap', async () => {
+    const approval = mockApproval({
+      draftPayload: {
+        body: 'Content about fees.',
+        linkedInText: '',
+        facebookText: '',
+        dataGaps: [{ key: 'fullManagementFeePercent', label: 'Full management fee %' }],
+      },
+    });
+    mockVendor();
+
+    // Fill the last gap via firm-data
+    const fillRes = await request(app, 'POST', `/api/vendor/approvals/${APPROVAL_A}/firm-data`, {
+      headers: { 'x-test-vendor-id': String(VENDOR_A) },
+      body: { key: 'fullManagementFeePercent', value: '10' },
+    });
+    expect(fillRes.status).toBe(200);
+
+    // dataGaps should now be empty after the filter in firm-data handler
+    expect(approval.draftPayload.dataGaps).toEqual([]);
+
+    // Now firm-approve should pass
+    const approveRes = await request(app, 'POST', `/api/vendor/approvals/${APPROVAL_A}/firm-approve`, {
+      headers: { 'x-test-vendor-id': String(VENDOR_A) },
+    });
+    expect(approveRes.status).toBe(200);
+    expect(approveRes.body.status).toBe('firm_completed');
   });
 
   it('admin can approve from firm_completed status', () => {
