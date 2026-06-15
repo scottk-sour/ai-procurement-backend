@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto'; // ADDED: ES modules import
 
 const validServices = ['CCTV', 'Photocopiers', 'IT', 'Telecoms', 'Security', 'Software',
+  'IT Services', 'Security Systems', 'Business Software',
   'Solicitors', 'Accountants', 'Mortgage Advisors', 'Estate Agents'];
 
 const vendorSchema = new mongoose.Schema({
