@@ -1,3 +1,5 @@
+import { SONNET_MODEL } from '../../lib/config/models.js';
+
 export async function auditClaims(vendor, anthropicClient, openaiClient) {
   const queries = [
     `What does ${vendor.company} specialise in?`,
@@ -82,7 +84,7 @@ function extractSpecialisations(text, vertical) {
 
 async function queryAnthropic(client, prompt) {
   try {
-    const resp = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 200, messages: [{ role: 'user', content: prompt }] });
+    const resp = await client.messages.create({ model: SONNET_MODEL, max_tokens: 200, messages: [{ role: 'user', content: prompt }] });
     return resp.content[0]?.text || '';
   } catch (e) { console.error('Claim audit Anthropic error:', e.message); return ''; }
 }

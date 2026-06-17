@@ -105,6 +105,8 @@ const {
   MONTHLY_COST_CAP_USD,
 } = await import('../../services/writerAgent.js');
 
+const { SONNET_MODEL } = await import('../../lib/config/models.js');
+
 const { default: AgentRun } = await import('../../models/AgentRun.js');
 
 // ─── Helpers ───────────────────────────────────────────────────
@@ -250,7 +252,7 @@ describe('Writer Agent', () => {
           costEstimateUSD: expect.any(Number),
           inputTokens: 4000,
           outputTokens: 3500,
-          model: 'claude-sonnet-4-20250514',
+          model: SONNET_MODEL,
         }),
       }));
     });
@@ -271,7 +273,7 @@ describe('Writer Agent', () => {
             costEstimateUSD: expect.any(Number),
             inputTokens: 4000,
             outputTokens: 3500,
-            model: 'claude-sonnet-4-20250514',
+            model: SONNET_MODEL,
           }),
           relatedApprovalIds: expect.any(Array),
         }),
