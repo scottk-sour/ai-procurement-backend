@@ -22,6 +22,7 @@ import {
   isDualScoringEnabled,
 } from './scoring.js';
 import { mapScoreBreakdown } from './publicAeoReportBuilder.js';
+import { SONNET_MODEL } from '../lib/config/models.js';
 
 // ─── Category labels (human-readable) ────────────────────────────────────────
 
@@ -590,7 +591,7 @@ async function generateWithClaude(userPrompt) {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         resp = await anthropic.messages.create({
-          model: 'claude-sonnet-4-20250514',
+          model: SONNET_MODEL,
           max_tokens: 4096,
           tools: searchTools,
           messages,

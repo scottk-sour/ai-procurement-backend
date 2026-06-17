@@ -1,3 +1,5 @@
+import { SONNET_MODEL } from '../../lib/config/models.js';
+
 export async function generateBoardSummary(anthropicClient, data) {
   const prompt = `You are writing the Board Summary section of an AI Visibility Intelligence Report for a UK SME. Write ONE paragraph (3-4 sentences) following these rules:
 
@@ -33,7 +35,7 @@ Use UK English. No marketing language. No bullet points. One paragraph.`;
 
   try {
     const response = await anthropicClient.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: SONNET_MODEL,
       max_tokens: 400,
       messages: [{ role: 'user', content: prompt }],
     });

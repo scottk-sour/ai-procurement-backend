@@ -13,6 +13,7 @@ import { reviewDraftForFabrication } from '../services/contentPlanner/fabricatio
 import { detectPossibleFabrication, buildCtaForVendor } from '../services/contentPlanner/writerGuards.js';
 import { FIRM_DATA_KEYS } from '../services/writerAgent/firmDataKeys.js';
 import { countAllPlaceholders } from '../services/writerAgent/parsePlaceholders.js';
+import { SONNET_MODEL } from '../lib/config/models.js';
 
 const router = express.Router();
 
@@ -342,7 +343,7 @@ router.post('/:vendorId/posts/generate', vendorAuth, async (req, res) => {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: SONNET_MODEL,
       max_tokens: 4000,
       temperature: 0.7,
       system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,

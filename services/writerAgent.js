@@ -11,12 +11,14 @@ import { createApproval } from './approvalQueue.js';
 import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
 import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
 
+import { SONNET_MODEL } from '../lib/config/models.js';
+
 const SONNET_INPUT_COST_PER_M = 3.00;
 const SONNET_OUTPUT_COST_PER_M = 15.00;
 const MONTHLY_COST_CAP_USD = 75;
 // 3 articles/week × ~4.33 weeks = max 14/month. Matches Pro tier promise in tendorai-what-you-get.pdf.
 const MONTHLY_PER_VENDOR_CAP = 14;
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = SONNET_MODEL;
 
 const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
 
