@@ -259,7 +259,7 @@ export const sendAeoReportEmail = async (email, reportData) => {
       competitors: reportData.competitors || [],
       gaps: reportData.gaps || [],
     }),
-    text: `Your AI Visibility Report for ${displayName} is ready. Score: ${reportData.score}/100. We asked 6 AI platforms who they recommend for ${categoryLabel} in ${reportData.city}. See why AI recommends your competitors: ${reportData.reportUrl}`
+    text: `Your AI Visibility Report for ${displayName} is ready. Score: ${reportData.score}/100. We asked 6 AI platforms who they recommend as ${/^[aeiou]/i.test(categoryLabel) ? 'an' : 'a'} ${categoryLabel} in ${reportData.city}. See why AI recommends your competitors: ${reportData.reportUrl}`
   });
 };
 

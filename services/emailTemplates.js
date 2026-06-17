@@ -446,7 +446,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
               <!-- The question -->
               <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 12px;">We asked six AI assistants &mdash; including ChatGPT, Gemini and Perplexity &mdash; the same question potential clients increasingly ask:</p>
               <div style="background:#f0f4f8;border-left:4px solid #1A56A0;border-radius:0 6px 6px 0;padding:14px 18px;margin:0 0 24px;">
-                <p style="margin:0;color:#1f2937;font-size:15px;font-style:italic;line-height:1.5;">&ldquo;Who are the best ${categoryLabel} in ${city}?&rdquo;</p>
+                <p style="margin:0;color:#1f2937;font-size:15px;font-style:italic;line-height:1.5;">&ldquo;Who are the best ${categoryLabel.endsWith('s') ? categoryLabel : categoryLabel + 's'} in ${city}?&rdquo;</p>
               </div>
 
               <!-- Mention result + competitors -->
@@ -511,7 +511,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
               </div>
 
               <!-- P.S. -->
-              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:16px 0 0;font-style:italic;">P.S. Three ${categoryLabel.toLowerCase()} firms in ${city} claimed their profiles this week. If helpful, I&rsquo;m also happy to send the exact prompts we used to test the AI platforms.</p>
+              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:16px 0 0;font-style:italic;">P.S. Three ${categoryLabel.toLowerCase().endsWith('s') ? categoryLabel.toLowerCase() : categoryLabel.toLowerCase() + 's'} in ${city} claimed their profiles this week. If helpful, I&rsquo;m also happy to send the exact prompts we used to test the AI platforms.</p>
 
             </td>
           </tr>

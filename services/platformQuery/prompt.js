@@ -7,12 +7,13 @@ import {
   isSameFirm,
   normalizeCompanyName,
 } from './nameMatch.js';
+import { aOrAn } from '../aeoReportGenerator.js';
 
 /**
  * Build the prompt sent to each AI platform.
  */
 export function buildPrompt({ companyName, categoryLabel, city }) {
-  return `You are helping a potential customer find a ${categoryLabel} in ${city}, UK.
+  return `You are helping a potential customer find ${aOrAn(categoryLabel)} in ${city}, UK.
 
 Your task: Name up to 5 real, specific businesses that provide ${categoryLabel} services in or near ${city}.
 

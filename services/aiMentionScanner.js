@@ -6,6 +6,7 @@ import Review from '../models/Review.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import { sendEmail } from './emailService.js';
+import { aOrAn } from './aeoReportGenerator.js';
 import AgentRun from '../models/AgentRun.js';
 
 // Map vendorType to readable label and prompt templates
@@ -307,7 +308,7 @@ async function sendMentionNotificationEmail(vendor, platformLabel, categoryLabel
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #1a1a2e;">Hi ${vendor.name || vendor.company},</h2>
-        <p>Good news — this week when we asked ${platformLabel} to recommend a ${categoryLabel} in ${vendor.location?.city || 'your area'}, they recommended <strong>${vendor.company}</strong>.</p>
+        <p>Good news — this week when we asked ${platformLabel} to recommend ${aOrAn(categoryLabel)} in ${vendor.location?.city || 'your area'}, they recommended <strong>${vendor.company}</strong>.</p>
         <p>Here's what ${platformLabel} said:</p>
         <blockquote style="border-left: 3px solid #6366f1; padding: 10px 16px; background: #f8f7ff; margin: 16px 0; color: #333; font-style: italic;">
           "${snippet || 'Your firm was mentioned in the AI response.'}"
@@ -328,7 +329,7 @@ async function sendMentionNotificationEmail(vendor, platformLabel, categoryLabel
         <p style="color: #999; font-size: 12px;">P.S. Share this with your team — being recommended by AI is worth shouting about.</p>
       </div>
     `,
-    text: `Hi ${vendor.name || vendor.company}, good news — ${platformLabel} recommended ${vendor.company} this week when asked for a ${categoryLabel} in ${vendor.location?.city || 'your area'}. Your AI Visibility Score: ${score}/100. View your dashboard: ${dashboardUrl}`,
+    text: `Hi ${vendor.name || vendor.company}, good news — ${platformLabel} recommended ${vendor.company} this week when asked for ${aOrAn(categoryLabel)} in ${vendor.location?.city || 'your area'}. Your AI Visibility Score: ${score}/100. View your dashboard: ${dashboardUrl}`,
   });
 }
 

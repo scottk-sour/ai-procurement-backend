@@ -23,6 +23,12 @@ import {
 } from './scoring.js';
 import { mapScoreBreakdown } from './publicAeoReportBuilder.js';
 
+// ─── a/an helper ─────────────────────────────────────────────────────────────
+
+export function aOrAn(noun) {
+  return /^[aeiou]/i.test(noun) ? `an ${noun}` : `a ${noun}`;
+}
+
 // ─── Category labels (human-readable) ────────────────────────────────────────
 
 const CATEGORY_LABELS = {
@@ -50,21 +56,21 @@ const CATEGORY_LABELS = {
   'vat-services': 'VAT services accountant',
   'financial-planning': 'financial planning accountant',
   // Mortgage advisors
-  'residential-mortgages': 'Residential Mortgages',
-  'buy-to-let': 'Buy-to-Let Mortgages',
-  'remortgage': 'Remortgage',
-  'first-time-buyer': 'First-Time Buyer Mortgages',
-  'equity-release': 'Equity Release',
-  'commercial-mortgages': 'Commercial Mortgages',
-  'protection-insurance': 'Protection Insurance',
+  'residential-mortgages': 'residential mortgage adviser',
+  'buy-to-let': 'buy-to-let mortgage adviser',
+  'remortgage': 'remortgage adviser',
+  'first-time-buyer': 'first-time buyer mortgage adviser',
+  'equity-release': 'equity release adviser',
+  'commercial-mortgages': 'commercial mortgage adviser',
+  'protection-insurance': 'protection insurance adviser',
   // Estate agents
-  'sales': 'Property Sales',
-  'lettings': 'Lettings',
-  'property-management': 'Property Management',
-  'block-management': 'Block Management',
-  'auctions': 'Property Auctions',
-  'commercial-property': 'Commercial Property',
-  'inventory': 'Inventory Services',
+  'sales': 'estate agent',
+  'lettings': 'letting agent',
+  'property-management': 'property management agent',
+  'block-management': 'block management agent',
+  'auctions': 'property auction specialist',
+  'commercial-property': 'commercial property agent',
+  'inventory': 'inventory services provider',
 };
 
 // ─── Category → Vendor service field mapping ─────────────────────────────────
