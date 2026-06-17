@@ -59,6 +59,43 @@ function isEstateCategory(cat) {
  * estate cats    -> 'agency' / 'agencies' / 'agents' / 'clients'
  * default        -> 'company' / 'companies' / 'suppliers' / 'buyers'
  */
+const CATEGORY_LABELS_PDF = {
+  copiers: 'Photocopiers & Managed Print',
+  telecoms: 'Business Telecoms & VoIP',
+  cctv: 'CCTV & Security Systems',
+  it: 'IT Support & Managed Services',
+  conveyancing: 'Conveyancing Solicitor',
+  'family-law': 'Family Law Solicitor',
+  'criminal-law': 'Criminal Law Solicitor',
+  'commercial-law': 'Commercial Law Solicitor',
+  'employment-law': 'Employment Law Solicitor',
+  'wills-and-probate': 'Wills & Probate Solicitor',
+  immigration: 'Immigration Solicitor',
+  'personal-injury': 'Personal Injury Solicitor',
+  'tax-advisory': 'Tax Advisory Accountant',
+  'audit-assurance': 'Audit & Assurance Accountant',
+  bookkeeping: 'Bookkeeping Accountant',
+  payroll: 'Payroll Services Accountant',
+  'corporate-finance': 'Corporate Finance Accountant',
+  'business-advisory': 'Business Advisory Accountant',
+  'vat-services': 'VAT Services Accountant',
+  'financial-planning': 'Financial Planning Accountant',
+  'residential-mortgages': 'Residential Mortgage Adviser',
+  'buy-to-let': 'Buy-to-Let Mortgage Adviser',
+  remortgage: 'Remortgage Adviser',
+  'first-time-buyer': 'First-Time Buyer Mortgage Adviser',
+  'equity-release': 'Equity Release Adviser',
+  'commercial-mortgages': 'Commercial Mortgage Adviser',
+  'protection-insurance': 'Protection Insurance Adviser',
+  sales: 'Estate Agent',
+  lettings: 'Letting Agent',
+  'property-management': 'Property Management Agent',
+  'block-management': 'Block Management Agent',
+  auctions: 'Property Auction Specialist',
+  'commercial-property': 'Commercial Property Agent',
+  inventory: 'Inventory Services Provider',
+};
+
 function entityTerms(category) {
   if (isMortgageCategory(category)) {
     return { singular: 'firm', plural: 'firms', professional: 'mortgage advisors', customer: 'clients' };
@@ -295,47 +332,7 @@ function drawCoverPage(ctx, report) {
   page.drawText(companyNameStr, { x: cx - nameW / 2, y, size: 22, font: bold, color: DARK });
 
   y -= 25;
-  let categoryLabel = {
-    // Office equipment
-    copiers: 'Photocopiers & Managed Print',
-    telecoms: 'Business Telecoms & VoIP',
-    cctv: 'CCTV & Security Systems',
-    it: 'IT Support & Managed Services',
-    // Solicitors
-    conveyancing: 'Conveyancing',
-    'family-law': 'Family Law',
-    'criminal-law': 'Criminal Law',
-    'commercial-law': 'Commercial Law',
-    'employment-law': 'Employment Law',
-    'wills-and-probate': 'Wills & Probate',
-    immigration: 'Immigration',
-    'personal-injury': 'Personal Injury',
-    // Accountants
-    'tax-advisory': 'Tax Advisory',
-    'audit-assurance': 'Audit & Assurance',
-    bookkeeping: 'Bookkeeping',
-    payroll: 'Payroll Services',
-    'corporate-finance': 'Corporate Finance',
-    'business-advisory': 'Business Advisory',
-    'vat-services': 'VAT Services',
-    'financial-planning': 'Financial Planning',
-    // Mortgage advisors
-    'residential-mortgages': 'Residential Mortgages',
-    'buy-to-let': 'Buy-to-Let Mortgages',
-    remortgage: 'Remortgage',
-    'first-time-buyer': 'First-Time Buyer Mortgages',
-    'equity-release': 'Equity Release',
-    'commercial-mortgages': 'Commercial Mortgages',
-    'protection-insurance': 'Protection Insurance',
-    // Estate agents
-    sales: 'Property Sales',
-    lettings: 'Lettings',
-    'property-management': 'Property Management',
-    'block-management': 'Block Management',
-    auctions: 'Property Auctions',
-    'commercial-property': 'Commercial Property',
-    inventory: 'Inventory Services',
-  }[report.category] || report.category;
+  let categoryLabel = CATEGORY_LABELS_PDF[report.category] || report.category;
   if (report.category === 'other' && report.customIndustry) categoryLabel = report.customIndustry;
   const catCity = `${categoryLabel} — ${report.city}`;
   const catCityW = font.widthOfTextAtSize(catCity, 12);
@@ -352,7 +349,7 @@ function drawCoverPage(ctx, report) {
   y -= 25;
   const subhead = report.aiMentioned
     ? `You appear at position ${report.aiPosition || '?'}, but ${report.competitors?.length || 0} competitors rank ahead or alongside you.`
-    : `When ${terms.customer} ask AI for ${categoryLabel.toLowerCase()} ${terms.professional} in ${report.city}, you don't appear. Here's who does.`;
+    : `When ${terms.customer} ask AI for ${/^[aeiou]/i.test(categoryLabel) ? 'an' : 'a'} ${categoryLabel.toLowerCase()} in ${report.city}, you don't appear. Here's who does.`;
   drawWrappedText(page, subhead, MARGIN + 20, y, font, 11, GREY, CONTENT_W - 40, 16);
 
   // Key stats bar at bottom
@@ -563,9 +560,10 @@ function drawCompetitorsPage(ctx, report) {
 
   y -= 20;
   const terms = entityTerms(report.category);
+  const compCatLabel = CATEGORY_LABELS_PDF[report.category] || report.category;
   const introText = report.aiMentioned
-    ? `When ${terms.customer} ask AI for ${report.category} ${terms.professional} in ${report.city}, these ${terms.plural} appear alongside or ahead of you:`
-    : `When ${terms.customer} ask AI for ${report.category} ${terms.professional} in ${report.city}, these are the ${terms.plural} AI recommends instead of you:`;
+    ? `When ${terms.customer} ask AI for ${/^[aeiou]/i.test(compCatLabel) ? 'an' : 'a'} ${compCatLabel.toLowerCase()} in ${report.city}, these ${terms.plural} appear alongside or ahead of you:`
+    : `When ${terms.customer} ask AI for ${/^[aeiou]/i.test(compCatLabel) ? 'an' : 'a'} ${compCatLabel.toLowerCase()} in ${report.city}, these are the ${terms.plural} AI recommends instead of you:`;
   y = drawWrappedText(page, introText, MARGIN, y, font, 11, GREY, CONTENT_W, 16);
   y -= 15;
 
