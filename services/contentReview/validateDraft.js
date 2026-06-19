@@ -33,11 +33,12 @@ function rulePlaceholderRegNumber(text) {
 function ruleUnverifiedRegNumber(text, firm) {
   const prof = profileFor(firm.vendorType);
   if (!prof) return [];
-  const m = text.match(/\b(?:membership|registration)\s*number\s*[:#]?\s*(\d{4,8})\b/i);
+  const re = new RegExp(`\\b(?:${esc(prof.regulator)}|membership)\\s+(?:registration\\s+)?(?:number|no\\.?)\\s*[:#]?\\s*(\\d{4,8})\\b`, 'i');
+  const m = text.match(re);
   if (!m) return [];
   const onFile = firm[prof.numberField] || (firm.firmData && firm.firmData[prof.numberField]);
-  if (!onFile) return [{ severity: 'block', code: 'UNVERIFIED_REG_NUMBER', message: 'Draft states a registration number but none is on file.' }];
-  if (String(onFile) !== m[1]) return [{ severity: 'block', code: 'REG_NUMBER_MISMATCH', message: `Draft states ${m[1]}; on file is ${onFile}.` }];
+  if (!onFile) return [{ severity: 'block', code: 'UNVERIFIED_REG_NUMBER', message: `Draft states a ${prof.regulator} number but none is on file.` }];
+  if (String(onFile) !== m[1]) return [{ severity: 'block', code: 'REG_NUMBER_MISMATCH', message: `Draft states ${prof.regulator} number ${m[1]}; on file is ${onFile}.` }];
   return [];
 }
 
@@ -45,9 +46,10 @@ function ruleForeignRegulator(text, firm) {
   const prof = profileFor(firm.vendorType);
   if (!prof) return [];
   const out = [];
+  const selfRef = "(?:we are|we're|our firm is|our practice is|this firm is|the firm is)\\s+(?:authorised and\\s+)?(?:regulated|registered|authorised)\\s+(?:by|with)\\s+(?:the\\s+)?";
   for (const bad of prof.foreign) {
-    if (new RegExp(`\\bregulated by[^.]*\\b${esc(bad)}\\b`, 'i').test(text)) {
-      out.push({ severity: 'block', code: 'WRONG_REGULATOR', message: `Draft attributes regulation to ${bad}; this firm's regulator is ${prof.regulator}.` });
+    if (new RegExp(`${selfRef}${esc(bad)}\\b`, 'i').test(text)) {
+      out.push({ severity: 'block', code: 'WRONG_REGULATOR', message: `Draft says the firm itself is regulated by ${bad}; this firm's regulator is ${prof.regulator}.` });
     }
   }
   return out;

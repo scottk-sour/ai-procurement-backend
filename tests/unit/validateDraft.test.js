@@ -65,12 +65,33 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'PLACEHOLDER_REG_NUMBER')).toBe(true);
   });
 
-  it('blocks accountant described as regulated by the SRA', () => {
+  it('blocks accountant claiming self-regulation by the SRA', () => {
     const firm = { vendorType: 'accountant' };
     const text = 'We are regulated by the SRA and provide audit services.';
     const result = validateDraft(text, firm);
     expect(result.ok).toBe(false);
     expect(result.blocks.some(b => b.code === 'WRONG_REGULATOR')).toBe(true);
+  });
+
+  it('does NOT block estate-agent mentioning SRA for a third party', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'Your conveyancing solicitor, who is regulated by the SRA, will handle the legal transfer.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_REGULATOR')).toBe(false);
+  });
+
+  it('does NOT block estate-agent mentioning a company registration number', () => {
+    const firm = { vendorType: 'estate-agent', propertymarkNumber: 'P12345' };
+    const text = 'We are a limited company, company registration number 16521860, registered in England and Wales.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'UNVERIFIED_REG_NUMBER')).toBe(false);
+  });
+
+  it('does NOT block mortgage-advisor mentioning RICS-regulated surveyor', () => {
+    const firm = { vendorType: 'mortgage-advisor' };
+    const text = 'We recommend you use an RICS-regulated surveyor for your home buyer report.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_REGULATOR')).toBe(false);
   });
 
   it('warns on Welsh firm using assured shorthold tenancy', () => {
