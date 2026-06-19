@@ -1,6 +1,8 @@
 import Vendor from '../../models/Vendor.js';
 import FirmFacts from '../../models/FirmFacts.js';
 import { isFilled as isFirmFactFilled } from '../../models/FirmFacts.js';
+import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
+import { buildGroundTruthBlock } from '../contentReview/groundTruth.js';
 
 function cleanUrl(value) {
   if (typeof value !== 'string') return value;
@@ -255,6 +257,19 @@ export async function getFirmContext(vendorId) {
     }
   }
 
+  const { regime } = resolveJurisdiction(vendor);
+  ctx._rawFirmForGate = {
+    vendorType: vendor.vendorType,
+    location: vendor.location,
+    postcode: vendor.location?.postcode || vendor.contactInfo?.postcode,
+    sraNumber: vendor.sraNumber,
+    icaewFirmNumber: vendor.icaewFirmNumber,
+    fcaNumber: vendor.fcaNumber,
+    propertymarkNumber: vendor.propertymarkNumber,
+    firmData: vendor.firmData,
+  };
+  ctx.taxRegime = regime ? { country: regime.country, taxName: regime.taxName, taxAbbrev: regime.taxAbbrev, authority: regime.authority } : null;
+
   return ctx;
 }
 
@@ -280,11 +295,14 @@ Write in this firm's voice. Tone: ${brand.toneOfVoice || 'professional UK Englis
 </brand_identity>`
     : '';
 
+  const groundTruth = buildGroundTruthBlock(firmContext._rawFirmForGate || {});
+
   return `<firm_context>
 The following facts are verified from this firm's record in the TendorAI database.
 
 ${JSON.stringify(firmContext, null, 2)}
 
 <data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>${brandSection}
+${groundTruth}
 </firm_context>`;
 }

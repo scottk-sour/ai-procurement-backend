@@ -229,3 +229,11 @@ export async function getApprovalById(approvalId) {
     .populate('decidedBy', 'name email')
     .lean();
 }
+
+export async function latestRejectionReason(vendorId, itemType = 'content_draft') {
+  const last = await ApprovalQueue.findOne({ vendorId, itemType, status: 'rejected' })
+    .sort({ decidedAt: -1, createdAt: -1 })
+    .select('decisionReason')
+    .lean();
+  return last?.decisionReason || null;
+}

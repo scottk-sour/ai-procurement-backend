@@ -7,9 +7,12 @@ import { reviewDraftForFabrication } from './contentPlanner/fabricationReview.js
 import { countAllPlaceholders as countPlaceholders } from './writerAgent/parsePlaceholders.js';
 import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
-import { createApproval } from './approvalQueue.js';
+import { createApproval, latestRejectionReason } from './approvalQueue.js';
 import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
 import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
+import { localiseNamedEntities } from './contentReview/groundTruth.js';
+import { validateDraft } from './contentReview/validateDraft.js';
+import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
 
 const SONNET_INPUT_COST_PER_M = 3.00;
 const SONNET_OUTPUT_COST_PER_M = 15.00;
@@ -188,6 +191,11 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     }
   }
 
+  const { regime: _regime } = resolveJurisdiction(firmContext?._rawFirmForGate || {});
+  if (pillarSpec && pillarSpec.namedEntities) {
+    pillarSpec.namedEntities = localiseNamedEntities(pillarSpec.namedEntities, _regime);
+  }
+
   const cta = buildCtaForVendor(vendor);
   const userPrompt = buildUserPrompt({
     topic: topicTitle,
@@ -207,16 +215,22 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   // Strip unfilled template patterns from the prompt so the model never sees
   // raw {N}, {X}, {specialism} tokens and tries to invent values for them.
   // Also strip any primaryDataHook line that still contains unfilled templates.
-  const cleanedPrompt = userPrompt
+  let cleanedPrompt = userPrompt
     .replace(/Primary data hook[^\n]*\{[NXa-z]+\}[^\n]*/gi, '')
     .replace(/\{N\}/g, '[number]')
     .replace(/\{X\}/g, '[amount]')
     .replace(/\{[a-z_-]+\}/gi, '[detail]');
 
+  const priorRejection = await latestRejectionReason(vendorId).catch(() => null);
+  if (priorRejection) {
+    cleanedPrompt += `\n\n## PRIOR REJECTION — a previous draft for this firm was rejected:\n${priorRejection}\nDo not repeat those mistakes.`;
+  }
+
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
   let response;
   try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 4000,
@@ -495,7 +509,57 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
   const fabricationReview = llmReview;
 
-  // ── Both checks passed — create approval ──
+  // ── Jurisdiction + regulatory gate (deterministic, runs alongside fabrication guards) ──
+
+  const firmForGate = firmContext?._rawFirmForGate || {};
+  let gate = validateDraft(draftBody, firmForGate);
+
+  if (!gate.ok) {
+    const corrections = gate.blocks.map(b => `- ${b.message}`).join('\n');
+    console.log(`${logPrefix} ${vendor.company}: jurisdiction gate failed (${gate.blocks.map(b => b.code).join(',')}), attempting corrective retry`);
+    try {
+      const retryUserPrompt = `${cleanedPrompt}\n\n## CORRECTIONS — a previous attempt was rejected for:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
+      const retryResp = await anthropic.messages.create({
+        model: MODEL, max_tokens: 4000, temperature: 0.7,
+        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+        messages: [{ role: 'user', content: retryUserPrompt }],
+      });
+      const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      const retryJson = retryText.match(/\{[\s\S]*\}/);
+      if (retryJson) {
+        const retryParsed = JSON.parse(retryJson[0]);
+        draftBody = retryParsed.body || draftBody;
+      }
+      gate = validateDraft(draftBody, firmForGate);
+    } catch (retryErr) {
+      console.error(`${logPrefix} ${vendor.company}: corrective retry failed:`, retryErr.message);
+    }
+  }
+
+  if (!gate.ok) {
+    const rejectReason = '[auto-gate] ' + gate.blocks.map(b => `${b.code}: ${b.message}`).join(' | ');
+    const rejectedApproval = await createApproval({
+      vendorId, agentName: 'writer', itemType: 'content_draft',
+      title: `Draft: ${parsed.title}`,
+      draftPayload: { title: parsed.title, body: draftBody, linkedInText: draftLinkedIn, facebookText: draftFacebook },
+      metadata: { agentRunId: agentRun._id, costEstimateUSD, model: MODEL },
+      source: 'auto_gate',
+    });
+    rejectedApproval.status = 'rejected';
+    rejectedApproval.decidedAt = new Date();
+    rejectedApproval.decisionReason = rejectReason;
+    await rejectedApproval.save();
+
+    await completeRun(agentRun._id, {
+      summary: `Draft "${parsed.title}" AUTO-REJECTED: ${gate.blocks.map(b => b.code).join(', ')}`,
+      artifacts: { pillarId: next.pillarId, topicIndex: next.topicIndex, lastPillar: next.pillarId, lastTopicIndex: next.topicIndex, postsDrafted: 0, blockedReason: 'auto_gate', gateViolations: gate.blocks, costEstimateUSD, model: MODEL },
+      metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
+    });
+    console.warn(`${logPrefix} Draft auto-rejected after retry for vendor ${vendorId}: ${gate.blocks.map(b => b.code).join(',')}`);
+    return { autoRejected: true, vendorId: String(vendorId), violations: gate.blocks };
+  }
+
+  // ── All checks passed — create approval ──
 
   const approval = await createApproval({
     vendorId,
@@ -539,6 +603,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       qualityScore: fabricationReview.qualityScore,
       dataGaps: dataGaps.length > 0 ? dataGaps : undefined,
       ...(repaired ? { repaired: true, repairedViolations, deletedSentences } : {}),
+      ...(gate.warnings.length ? { gateWarnings: gate.warnings.map(w => w.code) } : {}),
       ...(dryRun ? { dryRun: true } : {}),
     },
     source: 'writer-agent-cron',
