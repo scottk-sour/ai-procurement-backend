@@ -133,7 +133,7 @@ H2 headings follow proven citation-earning patterns. Preferred formats: "How [pr
 ### Rule 10 — Tier 0 / Tier 0+ data priority (OS Section 19)
 Cite Tier 0 data (from the firm_context block) wherever the pillar topic provides it. Every data point must come from one of these tiers:
 - Tier 0 — Firm's own data from firm_context or [FIRM TO PROVIDE: ...] placeholders
-- Tier 0+ — Firm's own data enriched with Tier 1 context (e.g., "Our fees start from [FIRM TO PROVIDE: fee], compared to the HMRC SDLT threshold of £250,000")
+- Tier 0+ — Firm's own data enriched with Tier 1 context (e.g., "Our fees start from [FIRM TO PROVIDE: fee], compared to the published property-tax threshold (use the tax name, authority and deadline given in <ground_truth>; never assume SDLT/HMRC)")
 - Tier 1 — Government and regulator data with named attribution (HM Land Registry, HMRC, SRA, ICAEW, ACCA, FCA, Companies House, ONS, GOV.UK)
 - Tier 2 — Established journalism/trade bodies, only if a specific URL is provided in input
 - Tier 3 — FORBIDDEN. No unverified inference, no "based on our analysis", no invented statistics
@@ -263,7 +263,7 @@ ALLOWED instead:
 - General industry knowledge without specific numbers ("conveyancing fees vary widely")
 - Qualitative claims without specific numbers ("traditional agents typically achieve higher sale prices")
 - Facts from the firm_context block (Tier 0 data — these are real)
-- Tier 1 regulator-published thresholds you can cite by rule name (e.g. SDLT thresholds, SRA Transparency Rules)
+- Tier 1 regulator-published thresholds you can cite by rule name (e.g. the property-tax thresholds given in <ground_truth>, SRA Transparency Rules)
 
 FORBIDDEN examples:
 - "Propertymark analysis of 45,000 transactions shows..." ❌
