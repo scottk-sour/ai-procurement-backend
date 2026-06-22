@@ -1,5 +1,6 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
+import { factsFor } from '../../lib/config/jurisdictionFacts.js';
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -55,13 +56,45 @@ function ruleForeignRegulator(text, firm) {
   return out;
 }
 
-function ruleWelshLettingTerms(text, firm) {
+function ruleLettingJurisdiction(text, firm) {
+  const out = [];
+  const rows = factsFor(firm.vendorType, 'letting');
+  if (rows.length === 0) return out;
+
   const { regime } = resolveJurisdiction(firm);
-  if (!regime || regime.country !== 'Wales') return [];
-  const eng = /\b(assured shorthold tenancy|section 21|section 8|tenancy agreement)\b/i;
-  return eng.test(text)
-    ? [{ severity: 'warn', code: 'ENGLISH_LETTING_TERMS_IN_WALES', message: 'Welsh firm: draft uses English letting terms. Wales uses occupation contracts / contract-holders / Rent Smart Wales.' }]
-    : [];
+  if (!regime || regime.country !== 'Wales') return out;
+
+  for (const row of rows) {
+    const forbidden = row.forbiddenInWales;
+    if (!forbidden) continue;
+    for (const term of forbidden) {
+      if (new RegExp(`\\b${esc(term)}\\b`, 'i').test(text)) {
+        const correct = row.wales?.canonical || '(see jurisdictionFacts.js)';
+        out.push({
+          severity: 'block',
+          code: 'WRONG_LETTING_JURISDICTION',
+          message: `Firm is in Wales; draft uses "${term}" (${row.id}). Correct: ${correct}.`,
+        });
+      }
+    }
+
+    if (row.requiredInWales) {
+      const lettingSignals = /\b(landlord|tenant|tenancy|letting|rent|deposit|eviction|possession|occupat)/i;
+      if (lettingSignals.test(text)) {
+        for (const req of row.requiredInWales) {
+          if (!new RegExp(`\\b${esc(req)}\\b`, 'i').test(text)) {
+            out.push({
+              severity: 'block',
+              code: 'MISSING_REQUIRED_LETTING_TERM',
+              message: `Welsh letting content must mention "${req}" but it is absent.`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return out;
 }
 
 function ruleAdviceLanguage(text, firm) {
@@ -80,7 +113,7 @@ function ruleDeprecatedSchema(text) {
 }
 
 const RULES = [ruleJurisdiction, rulePlaceholderRegNumber, ruleUnverifiedRegNumber,
-  ruleForeignRegulator, ruleWelshLettingTerms, ruleAdviceLanguage, ruleDeprecatedSchema];
+  ruleForeignRegulator, ruleLettingJurisdiction, ruleAdviceLanguage, ruleDeprecatedSchema];
 
 export function validateDraft(draftText, firm = {}) {
   const findings = RULES.flatMap(r => r(draftText || '', firm));

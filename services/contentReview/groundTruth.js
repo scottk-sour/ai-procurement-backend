@@ -1,5 +1,6 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
+import { factsFor } from '../../lib/config/jurisdictionFacts.js';
 
 export function localiseNamedEntities(entities, regime) {
   if (!Array.isArray(entities)) return entities;
@@ -40,6 +41,20 @@ export function buildGroundTruthBlock(firm = {}) {
       ? `- Registration number: ${num} (use exactly this; never any other).`
       : '- No verified registration number on file. State NO registration or membership number.');
     L.push(`- Do NOT describe this firm as regulated by: ${prof.foreign.join(', ')}.`);
+  }
+
+  const lettingRows = factsFor(firm.vendorType, 'letting');
+  if (lettingRows.length > 0 && regime) {
+    const isWales = regime.country === 'Wales';
+    if (isWales) {
+      L.push('LETTING LAW (WALES):');
+      for (const row of lettingRows) {
+        if (row.wales?.canonical) L.push(`- ${row.id}: use "${row.wales.canonical}".`);
+        if (row.forbiddenInWales?.length) L.push(`  NEVER use: ${row.forbiddenInWales.join(', ')}.`);
+        if (row.requiredInWales?.length) L.push(`  MUST mention: ${row.requiredInWales.join(', ')}.`);
+        if (row.englandOnly) L.push(`  "${row.id}" does NOT apply in Wales — omit entirely.`);
+      }
+    }
   }
 
   L.push('FIRM STATISTICS: state only numbers present in firm_context. Any sales count, years in business, completion time, fee, or percentage about THIS firm not in firm_context MUST be omitted.');
