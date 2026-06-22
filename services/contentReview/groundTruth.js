@@ -57,10 +57,11 @@ export function buildGroundTruthBlock(firm = {}) {
     }
   }
 
-  if (regime && regime.country === 'Wales') {
-    const allRows = factsFor(firm.vendorType);
-    const hasUnverifiedGap = allRows.length > 0 && allRows.some(r => !isRowVerified(r));
-    if (hasUnverifiedGap) {
+  if (regime?.country === 'Wales') {
+    const domain = firm.draftDomain || null;
+    const covered = domain !== null
+      && factsFor(firm.vendorType, domain).some(isRowVerified);
+    if (!covered) {
       L.push('JURISDICTION FALLBACK: this firm is in Wales. For this topic we have no verified Welsh-vs-England legal data. Do NOT state England-specific statutes, Act names, notice periods, or procedures. Keep legal references general and tell the reader to confirm the current Welsh position with the relevant Welsh authority. Never assume English law applies in Wales.');
     }
   }

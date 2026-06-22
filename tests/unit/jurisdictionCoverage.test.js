@@ -2,45 +2,53 @@ import { describe, it, expect } from 'vitest';
 import { buildGroundTruthBlock } from '../../services/contentReview/groundTruth.js';
 import { isAllowedUrl } from '../../scripts/jurisdiction-research.js';
 
-describe('groundTruth — jurisdiction fallback safety valve', () => {
+describe('groundTruth — domain-aware jurisdiction fallback', () => {
 
-  it('injects fallback for Welsh firm with unverified rows', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
-    const block = buildGroundTruthBlock(firm);
-    expect(block).toContain('JURISDICTION FALLBACK');
-    expect(block).toContain('this firm is in Wales');
-    expect(block).toContain('Never assume English law applies in Wales');
-  });
-
-  it('includes normal letting teaching for Welsh firm with letting rows', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+  it('Welsh estate-agent, draftDomain letting, rows verified => teaching present, fallback ABSENT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'letting' };
     const block = buildGroundTruthBlock(firm);
     expect(block).toContain('LETTING LAW (WALES)');
     expect(block).toContain('occupation contract');
-  });
-
-  it('does NOT inject fallback for English firm', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' } };
-    const block = buildGroundTruthBlock(firm);
     expect(block).not.toContain('JURISDICTION FALLBACK');
   });
 
-  it('does NOT inject fallback for firm with no jurisdiction', () => {
-    const firm = { vendorType: 'estate-agent' };
+  it('Welsh estate-agent, draftDomain wills-probate (no rows) => fallback PRESENT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'wills-probate' };
     const block = buildGroundTruthBlock(firm);
-    expect(block).not.toContain('JURISDICTION FALLBACK');
+    expect(block).toContain('JURISDICTION FALLBACK');
+    expect(block).toContain('Never assume English law applies in Wales');
   });
 
-  it('Welsh solicitor gets fallback (letting rows have unverified items)', () => {
-    const firm = { vendorType: 'solicitor', location: { postcode: 'SA1 1AA' } };
+  it('Welsh estate-agent, draftDomain null => fallback PRESENT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: null };
     const block = buildGroundTruthBlock(firm);
     expect(block).toContain('JURISDICTION FALLBACK');
   });
 
-  it('Welsh accountant gets NO fallback (no letting/property rows)', () => {
-    const firm = { vendorType: 'accountant', location: { postcode: 'CF10 1FA' } };
+  it('English firm any domain => fallback ABSENT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' }, draftDomain: 'letting' };
     const block = buildGroundTruthBlock(firm);
     expect(block).not.toContain('JURISDICTION FALLBACK');
+  });
+
+  it('Welsh accountant, draftDomain property => no property teaching, fallback PRESENT', () => {
+    const firm = { vendorType: 'accountant', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
+    const block = buildGroundTruthBlock(firm);
+    expect(block).not.toContain('PROPERTY TAX: this firm operates in Wales');
+    expect(block).toContain('JURISDICTION FALLBACK');
+  });
+
+  it('Welsh estate-agent, draftDomain property, row verified => fallback ABSENT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
+    const block = buildGroundTruthBlock(firm);
+    expect(block).toContain('PROPERTY TAX: this firm operates in Wales');
+    expect(block).not.toContain('JURISDICTION FALLBACK');
+  });
+
+  it('includes letting teaching for Welsh firm regardless of draftDomain', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
+    const block = buildGroundTruthBlock(firm);
+    expect(block).toContain('LETTING LAW (WALES)');
   });
 });
 
