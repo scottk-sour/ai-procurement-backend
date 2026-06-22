@@ -1,26 +1,59 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
+import { factsFor } from '../../lib/config/jurisdictionFacts.js';
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function ruleJurisdiction(text, firm) {
+function ruleJurisdictionFacts(text, firm) {
   const out = [];
-  const prof = profileFor(firm.vendorType);
-  if (!prof || !prof.touchesPropertyTax) return out;
+  const rows = factsFor(firm.vendorType);
+  if (rows.length === 0) return out;
+
   const { regime } = resolveJurisdiction(firm);
-  const taxMention = /\b(SDLT|LTT|LBTT|stamp duty|land transaction tax|land and buildings transaction tax|HMRC|welsh revenue|revenue scotland)\b/i;
+  const country = regime?.country;
+  const isWales = country === 'Wales';
+  const isEngland = country === 'England';
+  const isScotland = country === 'Scotland';
+
   if (!regime) {
-    if (taxMention.test(text)) out.push({ severity: 'block', code: 'TAX_REGIME_UNCONFIRMED', message: 'Tax content present but firm jurisdiction is unconfirmed.' });
+    const anyTaxMention = /\b(SDLT|LTT|LBTT|stamp duty|land transaction tax|land and buildings transaction tax|HMRC|welsh revenue|revenue scotland|assured shorthold tenancy|AST|occupation contract|Section 21|Section 173|Rent Smart Wales)\b/i;
+    if (anyTaxMention.test(text)) {
+      out.push({ severity: 'block', code: 'TAX_REGIME_UNCONFIRMED', message: 'Jurisdiction-specific content present but firm jurisdiction is unconfirmed.' });
+    }
     return out;
   }
-  for (const term of regime.forbiddenTerms) {
-    if (new RegExp(`\\b${esc(term)}\\b`, 'i').test(text)) {
-      out.push({
-        severity: 'block', code: 'WRONG_TAX_JURISDICTION',
-        message: `Firm is in ${regime.country}; draft uses "${term}". Correct: ${regime.taxName} (${regime.taxAbbrev}) / ${regime.authority}.`,
-      });
+
+  for (const row of rows) {
+    const forbidden = isWales ? row.forbiddenInWales
+      : isScotland ? row.forbiddenInScotland
+      : isEngland ? row.forbiddenInEngland
+      : null;
+    if (!forbidden) continue;
+    for (const term of forbidden) {
+      if (new RegExp(`\\b${esc(term)}\\b`, 'i').test(text)) {
+        const local = isWales ? row.wales : isScotland ? row.scotland : row.england;
+        const correct = local?.canonical || '(check jurisdictionFacts.js)';
+        const severity = row.domain === 'letting' ? 'warn' : 'block';
+        out.push({
+          severity,
+          code: severity === 'block' ? 'WRONG_TAX_JURISDICTION' : 'WRONG_LETTING_JURISDICTION',
+          message: `Firm is in ${country}; draft uses "${term}" (${row.id}). Correct: ${correct}.`,
+        });
+      }
+    }
+
+    if (isWales && row.englandOnly) {
+      const engTerms = row.england?.canonical;
+      if (engTerms && new RegExp(`\\b${esc(engTerms.split(' ')[0])}\\b`, 'i').test(text)) {
+        out.push({
+          severity: 'warn',
+          code: 'ENGLAND_ONLY_CONCEPT_IN_WALES',
+          message: `"${row.id}" does not apply in Wales — draft references it.`,
+        });
+      }
     }
   }
+
   return out;
 }
 
@@ -55,15 +88,6 @@ function ruleForeignRegulator(text, firm) {
   return out;
 }
 
-function ruleWelshLettingTerms(text, firm) {
-  const { regime } = resolveJurisdiction(firm);
-  if (!regime || regime.country !== 'Wales') return [];
-  const eng = /\b(assured shorthold tenancy|section 21|section 8|tenancy agreement)\b/i;
-  return eng.test(text)
-    ? [{ severity: 'warn', code: 'ENGLISH_LETTING_TERMS_IN_WALES', message: 'Welsh firm: draft uses English letting terms. Wales uses occupation contracts / contract-holders / Rent Smart Wales.' }]
-    : [];
-}
-
 function ruleAdviceLanguage(text, firm) {
   const prof = profileFor(firm.vendorType);
   if (!prof) return [];
@@ -79,8 +103,8 @@ function ruleDeprecatedSchema(text) {
     : [];
 }
 
-const RULES = [ruleJurisdiction, rulePlaceholderRegNumber, ruleUnverifiedRegNumber,
-  ruleForeignRegulator, ruleWelshLettingTerms, ruleAdviceLanguage, ruleDeprecatedSchema];
+const RULES = [ruleJurisdictionFacts, rulePlaceholderRegNumber, ruleUnverifiedRegNumber,
+  ruleForeignRegulator, ruleAdviceLanguage, ruleDeprecatedSchema];
 
 export function validateDraft(draftText, firm = {}) {
   const findings = RULES.flatMap(r => r(draftText || '', firm));

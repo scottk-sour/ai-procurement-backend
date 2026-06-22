@@ -1,5 +1,6 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
+import { factsFor, isRowVerified } from '../../lib/config/jurisdictionFacts.js';
 
 export function localiseNamedEntities(entities, regime) {
   if (!Array.isArray(entities)) return entities;
@@ -16,20 +17,42 @@ export function localiseNamedEntities(entities, regime) {
 export function buildGroundTruthBlock(firm = {}) {
   const { regime, reason } = resolveJurisdiction(firm);
   const prof = profileFor(firm.vendorType);
+  const country = regime?.country;
+  const isWales = country === 'Wales';
+  const isEngland = country === 'England';
+  const isScotland = country === 'Scotland';
+
   const L = [
     '<ground_truth>',
     'Use ONLY these facts. Never infer or illustrate with example numbers. Omit anything not given here.',
   ];
 
-  if (prof && prof.touchesPropertyTax) {
-    if (regime) {
-      L.push(`PROPERTY TAX: this firm operates in ${regime.country}. Use "${regime.taxName}" (${regime.taxAbbrev}), paid to ${regime.authority}.`);
+  const rows = factsFor(firm.vendorType);
+
+  if (!regime && rows.length > 0) {
+    L.push(`JURISDICTION: UNCONFIRMED (${reason}). Do NOT mention any property tax, tax authority, filing deadline, tenancy legislation, or jurisdiction-specific terms.`);
+  }
+
+  for (const row of rows) {
+    if (!regime) break;
+    if (!isRowVerified(row)) continue;
+
+    const local = isWales ? row.wales : isScotland ? row.scotland : isEngland ? row.england : null;
+    if (!local) continue;
+
+    if (row.id === 'property_tax' && prof?.touchesPropertyTax) {
+      L.push(`PROPERTY TAX: this firm operates in ${country}. Use "${local.canonical}", paid to ${local.authority}.`);
       L.push(`- Filing deadline: ${regime.filingDeadlineDays} days from completion.`);
       L.push(`- First-time buyer relief: ${regime.firstTimeBuyerRelief ? 'exists' : 'DOES NOT EXIST — do not mention it'}.`);
-      L.push(`- NEVER use any of: ${regime.forbiddenTerms.join(', ')}.`);
+      const forbidden = isWales ? row.forbiddenInWales : isScotland ? row.forbiddenInScotland : row.forbiddenInEngland;
+      if (forbidden?.length) L.push(`- NEVER use any of: ${forbidden.join(', ')}.`);
       L.push('- Do NOT state a specific tax threshold figure; say "the published threshold".');
     } else {
-      L.push(`PROPERTY TAX: jurisdiction UNCONFIRMED (${reason}). Do NOT mention any property tax, tax authority, filing deadline, or first-time buyer relief.`);
+      L.push(`${row.id.toUpperCase().replace(/_/g, ' ')}: in ${country}, use "${local.canonical}".`);
+      const forbidden = isWales ? row.forbiddenInWales : isScotland ? row.forbiddenInScotland : row.forbiddenInEngland;
+      if (forbidden?.length) L.push(`- NEVER use any of: ${forbidden.join(', ')}.`);
+      if (isWales && row.requiredInWales?.length) L.push(`- MUST mention: ${row.requiredInWales.join(', ')}.`);
+      if (row.englandOnly && isWales) L.push('- This concept does NOT apply in Wales — omit entirely.');
     }
   }
 

@@ -94,12 +94,36 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'WRONG_REGULATOR')).toBe(false);
   });
 
-  it('warns on Welsh firm using assured shorthold tenancy', () => {
+  it('warns on Welsh firm using assured shorthold tenancy (letting jurisdiction)', () => {
     const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
     const text = 'Tenants sign an assured shorthold tenancy before moving in.';
     const result = validateDraft(text, firm);
     expect(result.ok).toBe(true);
-    expect(result.warnings.some(w => w.code === 'ENGLISH_LETTING_TERMS_IN_WALES')).toBe(true);
+    expect(result.warnings.some(w => w.code === 'WRONG_LETTING_JURISDICTION')).toBe(true);
+  });
+
+  it('warns on Welsh firm using Section 21', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'NP20 1AA' } };
+    const text = 'Landlords can issue a Section 21 notice to regain possession.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some(w => w.code === 'WRONG_LETTING_JURISDICTION' && w.message.includes('Section 21'))).toBe(true);
+  });
+
+  it('warns on Welsh firm referencing Tenant Fees Act 2019 (England)', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'Under the Tenant Fees Act 2019, agents cannot charge tenants for referencing.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some(w => w.code === 'WRONG_LETTING_JURISDICTION' && w.message.includes('tenant_fees'))).toBe(true);
+  });
+
+  it('allows English firm using AST and Section 21', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' } };
+    const text = 'Tenants sign an assured shorthold tenancy and landlords may use Section 21 to recover possession.';
+    const result = validateDraft(text, firm);
+    const lettingWarnings = result.warnings.filter(w => w.code === 'WRONG_LETTING_JURISDICTION');
+    expect(lettingWarnings).toHaveLength(0);
   });
 
   it('warns on mortgage-advisor using advice-shaped language', () => {
