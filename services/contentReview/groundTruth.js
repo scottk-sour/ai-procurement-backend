@@ -1,6 +1,6 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
-import { factsFor } from '../../lib/config/jurisdictionFacts.js';
+import { factsFor, isRowVerified } from '../../lib/config/jurisdictionFacts.js';
 
 export function localiseNamedEntities(entities, regime) {
   if (!Array.isArray(entities)) return entities;
@@ -54,6 +54,14 @@ export function buildGroundTruthBlock(firm = {}) {
         if (row.requiredInWales?.length) L.push(`  MUST mention: ${row.requiredInWales.join(', ')}.`);
         if (row.englandOnly) L.push(`  "${row.id}" does NOT apply in Wales — omit entirely.`);
       }
+    }
+  }
+
+  if (regime && regime.country === 'Wales') {
+    const allRows = factsFor(firm.vendorType);
+    const hasUnverifiedGap = allRows.length > 0 && allRows.some(r => !isRowVerified(r));
+    if (hasUnverifiedGap) {
+      L.push('JURISDICTION FALLBACK: this firm is in Wales. For this topic we have no verified Welsh-vs-England legal data. Do NOT state England-specific statutes, Act names, notice periods, or procedures. Keep legal references general and tell the reader to confirm the current Welsh position with the relevant Welsh authority. Never assume English law applies in Wales.');
     }
   }
 
