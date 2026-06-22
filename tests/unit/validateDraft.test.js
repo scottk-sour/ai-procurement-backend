@@ -94,12 +94,45 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'WRONG_REGULATOR')).toBe(false);
   });
 
-  it('warns on Welsh firm using assured shorthold tenancy', () => {
+  it('blocks Welsh estate-agent draft with AST + Section 21', () => {
     const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
-    const text = 'Tenants sign an assured shorthold tenancy before moving in.';
+    const text = 'Tenants sign an assured shorthold tenancy. Landlords can issue a Section 21 notice.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(false);
+    expect(result.blocks.some(b => b.code === 'WRONG_LETTING_JURISDICTION' && b.message.includes('assured shorthold tenancy'))).toBe(true);
+    expect(result.blocks.some(b => b.code === 'WRONG_LETTING_JURISDICTION' && b.message.includes('Section 21'))).toBe(true);
+  });
+
+  it('blocks Welsh estate-agent letting draft missing Rent Smart Wales', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'Every landlord in Wales must register. Tenancy deposits are protected under law.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(false);
+    expect(result.blocks.some(b => b.code === 'MISSING_REQUIRED_LETTING_TERM' && b.message.includes('Rent Smart Wales'))).toBe(true);
+  });
+
+  it('allows Welsh estate-agent draft using correct Welsh letting terms', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'Under the Renting Homes (Wales) Act 2016, landlords issue occupation contracts to contract-holders. Landlords must use Section 173 notices. All landlords must register with Rent Smart Wales.';
+    const result = validateDraft(text, firm);
+    const lettingBlocks = result.blocks.filter(b => b.code === 'WRONG_LETTING_JURISDICTION' || b.code === 'MISSING_REQUIRED_LETTING_TERM');
+    expect(lettingBlocks).toHaveLength(0);
+  });
+
+  it('allows English estate-agent draft with AST + Section 21 (regression)', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' } };
+    const text = 'Tenants sign an assured shorthold tenancy. Landlords can issue a Section 21 notice.';
+    const result = validateDraft(text, firm);
+    const lettingBlocks = result.blocks.filter(b => b.code === 'WRONG_LETTING_JURISDICTION');
+    expect(lettingBlocks).toHaveLength(0);
+  });
+
+  it('does NOT block Welsh accountant mentioning HMRC (regression)', () => {
+    const firm = { vendorType: 'accountant', location: { postcode: 'CF10 1FA' } };
+    const text = 'You must file your self-assessment tax return with HMRC by 31 January.';
     const result = validateDraft(text, firm);
     expect(result.ok).toBe(true);
-    expect(result.warnings.some(w => w.code === 'ENGLISH_LETTING_TERMS_IN_WALES')).toBe(true);
+    expect(result.blocks).toHaveLength(0);
   });
 
   it('warns on mortgage-advisor using advice-shaped language', () => {
