@@ -2,53 +2,43 @@ import { describe, it, expect } from 'vitest';
 import { buildGroundTruthBlock } from '../../services/contentReview/groundTruth.js';
 import { isAllowedUrl } from '../../scripts/jurisdiction-research.js';
 
-describe('groundTruth — domain-aware jurisdiction fallback', () => {
+describe('groundTruth — jurisdiction fallback', () => {
 
-  it('Welsh estate-agent, draftDomain letting, rows verified => teaching present, fallback ABSENT', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'letting' };
+  it('Welsh estate-agent => teaching present, fallback ABSENT (has rows)', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
     const block = buildGroundTruthBlock(firm);
     expect(block).toContain('LETTING LAW (WALES)');
     expect(block).toContain('occupation contract');
     expect(block).not.toContain('JURISDICTION FALLBACK');
   });
 
-  it('Welsh estate-agent, draftDomain wills-probate (no rows) => fallback PRESENT', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'wills-probate' };
+  it('Welsh solicitor => teaching present, fallback ABSENT (has rows)', () => {
+    const firm = { vendorType: 'solicitor', location: { postcode: 'SA1 1AA' } };
     const block = buildGroundTruthBlock(firm);
+    expect(block).toContain('LETTING LAW (WALES)');
+    expect(block).not.toContain('JURISDICTION FALLBACK');
+  });
+
+  it('Welsh accountant => no teaching, fallback PRESENT (no rows)', () => {
+    const firm = { vendorType: 'accountant', location: { postcode: 'CF10 1FA' } };
+    const block = buildGroundTruthBlock(firm);
+    expect(block).not.toContain('LETTING LAW (WALES)');
     expect(block).toContain('JURISDICTION FALLBACK');
     expect(block).toContain('Never assume English law applies in Wales');
   });
 
-  it('Welsh estate-agent, draftDomain null => fallback PRESENT', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: null };
+  it('English estate-agent => no teaching, no fallback', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' } };
     const block = buildGroundTruthBlock(firm);
-    expect(block).toContain('JURISDICTION FALLBACK');
-  });
-
-  it('English firm any domain => fallback ABSENT', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'BS1 1AA' }, draftDomain: 'letting' };
-    const block = buildGroundTruthBlock(firm);
+    expect(block).not.toContain('LETTING LAW (WALES)');
     expect(block).not.toContain('JURISDICTION FALLBACK');
   });
 
-  it('Welsh accountant, draftDomain property => no property teaching, fallback PRESENT', () => {
-    const firm = { vendorType: 'accountant', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
+  it('no jurisdiction => no teaching, no fallback', () => {
+    const firm = { vendorType: 'estate-agent' };
     const block = buildGroundTruthBlock(firm);
-    expect(block).not.toContain('PROPERTY TAX: this firm operates in Wales');
-    expect(block).toContain('JURISDICTION FALLBACK');
-  });
-
-  it('Welsh estate-agent, draftDomain property, row verified => fallback ABSENT', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
-    const block = buildGroundTruthBlock(firm);
-    expect(block).toContain('PROPERTY TAX: this firm operates in Wales');
+    expect(block).not.toContain('LETTING LAW (WALES)');
     expect(block).not.toContain('JURISDICTION FALLBACK');
-  });
-
-  it('includes letting teaching for Welsh firm regardless of draftDomain', () => {
-    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' }, draftDomain: 'property' };
-    const block = buildGroundTruthBlock(firm);
-    expect(block).toContain('LETTING LAW (WALES)');
   });
 });
 

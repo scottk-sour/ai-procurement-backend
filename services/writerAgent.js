@@ -13,7 +13,6 @@ import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
 import { localiseNamedEntities } from './contentReview/groundTruth.js';
 import { validateDraft } from './contentReview/validateDraft.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
-import { domainForPillar } from '../lib/config/jurisdictionFacts.js';
 
 import { SONNET_MODEL } from '../lib/config/models.js';
 
@@ -182,9 +181,6 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   } catch (err) {
     await failRun(agentRun._id, { failureReason: `firm_context_fetch_failed: ${err.message}` });
     return { success: false, error: 'firm_context_fetch_failed', vendorId: String(vendorId) };
-  }
-  if (firmContext?._rawFirmForGate) {
-    firmContext._rawFirmForGate.draftDomain = domainForPillar(next.pillarId || next.topic?.id);
   }
   const firmContextBlock = renderFirmContextBlock(firmContext);
 
