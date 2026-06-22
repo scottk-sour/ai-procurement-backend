@@ -69,30 +69,43 @@ describe('jurisdiction-research — URL allow-list', () => {
   });
 });
 
-describe('jurisdiction-research — result handling', () => {
-  it('diverges:false produces no proposed row file', async () => {
+describe('jurisdiction-research — result handling (three-way verdict)', () => {
+  it('IDENTICAL verdict produces report entry, no proposed row', async () => {
     const { writeReport } = await import('../../scripts/jurisdiction-research.js');
     const fs = await import('fs');
-    const path = await import('path');
 
-    const identical = [{ topic: 'wills-probate', quote: 'The Wills Act 1837 applies to England and Wales', url: 'https://www.legislation.gov.uk/ukpga/Will7/1/26' }];
-    const diverging = [];
+    const identical = [{ topic: 'Wills and probate', quote: 'The Wills Act 1837 applies to England and Wales', url: 'https://www.legislation.gov.uk/ukpga/Will7/1/26' }];
 
-    const reportPath = writeReport('solicitor-test', diverging, identical);
+    const reportPath = writeReport('solicitor-test', [], identical, []);
     const content = fs.readFileSync(reportPath, 'utf8');
 
-    expect(content).toContain('## IDENTICAL (no row needed)');
-    expect(content).toContain('wills-probate');
+    expect(content).toContain('## IDENTICAL');
+    expect(content).toContain('Wills and probate');
     expect(content).toContain('The Wills Act 1837 applies to England and Wales');
     expect(content).not.toContain('## DIVERGES (proposed rows)\n\n###');
 
     fs.unlinkSync(reportPath);
   });
 
-  it('diverges:true produces a valid proposed row file', async () => {
+  it('UNKNOWN verdict produces report entry in UNKNOWN section', async () => {
+    const { writeReport } = await import('../../scripts/jurisdiction-research.js');
+    const fs = await import('fs');
+
+    const unknown = [{ topic: 'Dispute resolution', reason: 'No usable official sources fetched' }];
+
+    const reportPath = writeReport('solicitor-test-unk', [], [], unknown);
+    const content = fs.readFileSync(reportPath, 'utf8');
+
+    expect(content).toContain('## UNKNOWN');
+    expect(content).toContain('Dispute resolution');
+    expect(content).toContain('No usable official sources fetched');
+
+    fs.unlinkSync(reportPath);
+  });
+
+  it('DIVERGES verdict produces a valid proposed row file', async () => {
     const { writeProposedRow, writeReport } = await import('../../scripts/jurisdiction-research.js');
     const fs = await import('fs');
-    const path = await import('path');
 
     const row = {
       id: 'test_divergence',
@@ -114,13 +127,29 @@ describe('jurisdiction-research — result handling', () => {
     expect(content).toContain('test_divergence');
     expect(content).toContain('Renting Homes (Wales) Act 2016');
 
-    const diverging = [{ topic: 'test-topic', quote: 'occupation contracts', url: 'https://www.legislation.gov.uk/anaw/2016/1', rowFile: 'test_divergence.proposed.js' }];
-    const reportPath = writeReport('solicitor-test2', diverging, []);
+    const diverging = [{ topic: 'Residential tenancy', quote: 'occupation contracts', url: 'https://www.legislation.gov.uk/anaw/2016/1', rowFile: 'test_divergence.proposed.js' }];
+    const reportPath = writeReport('solicitor-test2', diverging, [], []);
     const reportContent = fs.readFileSync(reportPath, 'utf8');
     expect(reportContent).toContain('## DIVERGES (proposed rows)');
-    expect(reportContent).toContain('test-topic');
+    expect(reportContent).toContain('Residential tenancy');
 
     fs.unlinkSync(rowPath);
+    fs.unlinkSync(reportPath);
+  });
+
+  it('empty sources default to UNKNOWN, never IDENTICAL', async () => {
+    const { writeReport } = await import('../../scripts/jurisdiction-research.js');
+    const fs = await import('fs');
+
+    const unknown = [{ topic: 'Immigration law', reason: 'No usable official sources fetched' }];
+    const reportPath = writeReport('solicitor-test3', [], [], unknown);
+    const content = fs.readFileSync(reportPath, 'utf8');
+
+    expect(content).toContain('## UNKNOWN');
+    expect(content).toContain('Immigration law');
+    expect(content).toContain('## IDENTICAL');
+    expect(content).toContain('_None confirmed._');
+
     fs.unlinkSync(reportPath);
   });
 });
