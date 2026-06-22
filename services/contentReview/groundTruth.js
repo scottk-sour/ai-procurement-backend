@@ -57,6 +57,13 @@ export function buildGroundTruthBlock(firm = {}) {
     }
   }
 
+  if (regime?.country === 'Wales') {
+    const allRows = factsFor(firm.vendorType);
+    if (allRows.length === 0) {
+      L.push('JURISDICTION FALLBACK: this firm is in Wales. For this topic we have no verified Welsh-vs-England legal data. Do NOT state England-specific statutes, Act names, notice periods, or procedures. Keep legal references general and tell the reader to confirm the current Welsh position with the relevant Welsh authority. Never assume English law applies in Wales.');
+    }
+  }
+
   L.push('FIRM STATISTICS: state only numbers present in firm_context. Any sales count, years in business, completion time, fee, or percentage about THIS firm not in firm_context MUST be omitted.');
   L.push('</ground_truth>');
   return L.join('\n');
