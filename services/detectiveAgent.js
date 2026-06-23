@@ -27,6 +27,7 @@ export async function runDetectiveForVendor(vendorId) {
 
   const scans = await AIMentionScan.find({
     vendorId, scanDate: { $gte: weekStart }, platform: { $ne: null },
+    aiModel: { $nin: ['claude-haiku'] },
   }).lean();
 
   if (scans.length === 0) {
