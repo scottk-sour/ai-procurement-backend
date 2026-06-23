@@ -114,21 +114,23 @@ export function isValidBusinessName(name) {
  * bailing out at the strict substring check the way the old implementation
  * did.
  */
-function isPositiveMention(text, companyName) {
+function isPositiveMention(text, companyName, websiteUrl = null) {
   const textLower = text.toLowerCase();
   const companyNorm = normalizeCompanyName(companyName);
   if (!companyNorm) return false;
 
-  // Find the mention position in the lower-cased original text so the
-  // "100 chars before" negation window operates on real characters. We try
-  // the normalized name first, then fall back to the raw lowercased name for
-  // cases where normalization stripped something the text kept verbatim.
   let idx = textLower.indexOf(companyNorm);
   if (idx === -1) {
     const rawLower = String(companyName).toLowerCase().trim();
     if (rawLower) idx = textLower.indexOf(rawLower);
   }
-  if (idx === -1) return true;
+  if (idx === -1) {
+    if (websiteUrl) {
+      const domain = websiteUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+      if (domain && textLower.includes(domain)) return true;
+    }
+    return false;
+  }
 
   const before = textLower.substring(Math.max(0, idx - 100), idx);
 
@@ -182,6 +184,20 @@ export function parsePlatformResponse(responseText, companyName, opts = {}) {
     };
   }
 
+  const lowerResponse = response.toLowerCase();
+
+  // Explicit refusal phrases — always mentioned:false regardless of name fragments
+  const refusalPhrases = [
+    'i don\'t have reliable', 'i should be honest',
+    'no_businesses_found', 'cannot confidently',
+    'check google', 'knowledge has a cutoff',
+    'i\'m not able to provide', 'i cannot guarantee the accuracy',
+    'i don\'t have access to real-time', 'i cannot browse',
+  ];
+  if (refusalPhrases.some(p => lowerResponse.includes(p))) {
+    return { mentioned: false, position: null, snippet: '', competitors: [] };
+  }
+
   // Handle if AI ignored instructions and gave generic advice anyway
   const adviceSignals = [
     'i recommend checking', 'i suggest looking', 'i would advise',
@@ -190,8 +206,6 @@ export function parsePlatformResponse(responseText, companyName, opts = {}) {
     'i don\'t have specific', 'i cannot provide specific',
     'i\'m not aware of specific', 'i don\'t have information about specific',
   ];
-
-  const lowerResponse = response.toLowerCase();
   const isGenericAdvice = adviceSignals.some(signal => lowerResponse.includes(signal));
 
   if (isGenericAdvice && !isCompanyMentioned(response, companyName, websiteUrl)) {
@@ -211,7 +225,7 @@ export function parsePlatformResponse(responseText, companyName, opts = {}) {
   // Then run the existing negation-context sentiment check to filter out
   // "I could not find X" style false positives.
   const rawMentioned = isCompanyMentioned(text, companyName, websiteUrl);
-  const mentioned = rawMentioned ? isPositiveMention(text, companyName) : false;
+  const mentioned = rawMentioned ? isPositiveMention(text, companyName, websiteUrl) : false;
 
   // Try to determine position from explicitly numbered lists only.
   // We only assign position when the company appears in a clear "1. Name" or "1) Name"
