@@ -348,9 +348,9 @@ async function saveScoreHistory(vendor, weekStarting) {
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const [mentions30d, mentionsThisWeek, mentionsLastWeek] = await Promise.all([
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: thirtyDaysAgo } }),
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: sevenDaysAgo } }),
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, scanDate: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: thirtyDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: sevenDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
     ]);
 
     const reviewData = await Review.aggregate([
