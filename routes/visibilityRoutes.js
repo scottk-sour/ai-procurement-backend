@@ -63,16 +63,19 @@ async function getMentionData(vendorId) {
   const [mentionsThisWeek, mentionsLastWeek, totalMentions30d, positionAgg] = await Promise.all([
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: thirtyDaysAgo },
     }).catch(() => 0),
 
@@ -81,6 +84,7 @@ async function getMentionData(vendorId) {
         $match: {
           vendorId: new mongoose.Types.ObjectId(vendorId),
           mentioned: true,
+          aiModel: { $nin: ['claude-haiku'] },
           scanDate: { $gte: thirtyDaysAgo },
         },
       },

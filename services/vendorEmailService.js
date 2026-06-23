@@ -106,16 +106,19 @@ async function getWeeklyMentionData(vendorId) {
   const [mentionsThisWeek, mentionsLastWeek, totalMentions30d, competitorAgg] = await Promise.all([
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
+      aiModel: { $nin: ['claude-haiku'] },
       scanDate: { $gte: thirtyDaysAgo },
     }).catch(() => 0),
 
@@ -124,6 +127,7 @@ async function getWeeklyMentionData(vendorId) {
       {
         $match: {
           vendorId: vendorObjectId,
+          aiModel: { $nin: ['claude-haiku'] },
           scanDate: { $gte: thisWeekStart },
         },
       },
