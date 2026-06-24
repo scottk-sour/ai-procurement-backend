@@ -29,21 +29,19 @@ function ruleJurisdiction(text, firm) {
 function rulePlaceholderRegNumber(text, firm) {
   if (isDemoFirm(firm)) return [];
 
-  const out = [];
-
   if (/\b(?:membership|registration|reg\.?|SRA|FCA|ICAEW|Propertymark)\s*(?:number|no\.?|id)?\s*[:#]?\s*(?:12345|123456|1234|00000|99999|11111|XXXXX)\b/i.test(text)) {
-    out.push({ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration number detected.' });
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration number detected.' }];
   }
 
   if (/\b(?:PM|SRA|FCA|FRN|ICAEW|RICS|REG)[-\s](?:DEMO|TEST|SAMPLE|PLACEHOLDER|EXAMPLE)\b/i.test(text)) {
-    out.push({ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' });
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' }];
   }
 
   if (/\b(?:DEMO|TEST|SAMPLE|PLACEHOLDER)[-\s]\d{1,6}\b/i.test(text)) {
-    out.push({ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' });
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' }];
   }
 
-  return out;
+  return [];
 }
 
 function ruleUnverifiedRegNumber(text, firm) {

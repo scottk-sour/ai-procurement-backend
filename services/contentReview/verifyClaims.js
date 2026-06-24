@@ -18,6 +18,13 @@ const VERIFY_SYSTEM = `You are a UK legal fact-checker. For each claim, search t
 
 Return JSON only: { "results": [{ "id": "c1", "verdict": "verified"|"contradicted"|"unverifiable", "correction": null|string, "source": null|string }] }`;
 
+function extractJson(text) {
+  const stripped = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  const match = stripped.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('no JSON object in response');
+  return JSON.parse(match[0]);
+}
+
 export async function verifyClaims({ draftText, vertical }) {
   let anthropic;
   try {
@@ -37,8 +44,7 @@ export async function verifyClaims({ draftText, vertical }) {
       messages: [{ role: 'user', content: `Vertical: ${vertical}\n\nDraft:\n${draftText}` }],
     });
     const raw = extractResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const parsed = extractJson(raw);
     claims = parsed.claims || [];
   } catch (err) {
     return { verdict: 'fail', error: `Claim extraction failed: ${err.message}`, claims: [], results: [] };
@@ -66,9 +72,8 @@ export async function verifyClaims({ draftText, vertical }) {
         content: `Verify these legal/regulatory claims against official UK sources.\n\nClaims:\n${claims.map(c => `${c.id}: ${c.text}`).join('\n')}`,
       }],
     });
-    const textBlocks = verifyResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const cleaned = textBlocks.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const raw = verifyResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const parsed = extractJson(raw);
     results = parsed.results || [];
   } catch (err) {
     return { verdict: 'fail', error: `Claim verification failed: ${err.message}`, claims, results: [] };

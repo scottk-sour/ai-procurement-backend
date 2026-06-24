@@ -569,6 +569,13 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const MAX_CLAIM_REWRITES = 2;
 
   for (let claimPass = 0; claimPass < MAX_CLAIM_REWRITES; claimPass++) {
+    const currentCost = await getPlatformCostThisMonth();
+    if (currentCost + costEstimateUSD > MONTHLY_COST_CAP_USD) {
+      console.log(`${logPrefix} ${vendor.company}: cost cap would be exceeded ($${(currentCost + costEstimateUSD).toFixed(2)}), skipping claim rewrite`);
+      needsClaimReview = true;
+      break;
+    }
+
     claimVerification = await verifyClaims({ draftText: draftBody, vertical: vendor.vendorType });
     if (claimVerification.verdict === 'pass') break;
 
