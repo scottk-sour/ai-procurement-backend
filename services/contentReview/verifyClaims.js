@@ -11,12 +11,15 @@ const ALLOWED_DOMAINS = [
 
 const EXTRACT_SYSTEM = `You are a legal-claim extractor. Read the draft and extract ONLY legal, regulatory, and statutory claims — statements about what the law requires, what regulators mandate, what Acts say, what schemes are compulsory, what deadlines apply. Do NOT extract firm-data claims (fees, years in business, team size). Return JSON only: { "claims": [{ "id": "c1", "text": "the exact claim sentence" }] }. Max 12 claims. If there are no legal/regulatory claims, return { "claims": [] }.`;
 
-const VERIFY_SYSTEM = `You are a UK legal fact-checker. For each claim, search the allowed domains and determine:
+const VERIFY_SYSTEM = `You are a UK legal fact-checker. For each claim, search the allowed domains and determine one of four verdicts:
 - "verified": an official source confirms the claim is correct.
-- "contradicted": an official source shows the claim is wrong. Provide the correction and source URL.
+- "contradicted": an official source shows the claim is MATERIALLY WRONG or MISLEADING — it would lead a reader to a false belief about the law, the wrong Act/regulator, a non-existent requirement, or a wrong obligation. Provide the correction and source URL.
+- "imprecise": the claim is broadly correct and would NOT mislead a reader, but is loosely worded — e.g. simplifies a mechanism, omits a narrow exception, or attributes a requirement to the right area of law without perfect statutory precision. Provide the more precise wording and source URL. This is NOT a failure.
 - "unverifiable": no official source found, or the claim is too vague to verify.
 
-Return JSON only: { "results": [{ "id": "c1", "verdict": "verified"|"contradicted"|"unverifiable", "correction": null|string, "source": null|string }] }`;
+A claim is "contradicted" only if acting on it would be wrong. If it is directionally right and not misleading, it is at most "imprecise".
+
+Return JSON only: { "results": [{ "id": "c1", "verdict": "verified"|"contradicted"|"imprecise"|"unverifiable", "correction": null|string, "source": null|string }] }`;
 
 function extractJson(text) {
   const stripped = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -86,6 +89,7 @@ export async function verifyClaims({ draftText, vertical }) {
     return { ...c, ...r };
   });
 
+  // 'imprecise' and 'verified' pass; only 'contradicted' and 'unverifiable' fail
   const hasFailure = reconciled.some(r => r.verdict === 'contradicted' || r.verdict === 'unverifiable');
 
   return {
