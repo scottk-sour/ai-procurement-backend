@@ -1,6 +1,7 @@
 import { resolveJurisdiction } from '../../lib/config/jurisdictions.js';
 import { profileFor } from '../../lib/config/industryProfiles.js';
-import { factsFor } from '../../lib/config/jurisdictionFacts.js';
+import { factsFor, isRowVerified } from '../../lib/config/jurisdictionFacts.js';
+import { isDemoFirm } from '../../lib/config/demoVendors.js';
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -25,10 +26,22 @@ function ruleJurisdiction(text, firm) {
   return out;
 }
 
-function rulePlaceholderRegNumber(text) {
-  return /\b(?:membership|registration|reg\.?|SRA|FCA|ICAEW|Propertymark)\s*(?:number|no\.?|id)?\s*[:#]?\s*(?:12345|123456|1234|00000|99999|11111|XXXXX)\b/i.test(text)
-    ? [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration number detected.' }]
-    : [];
+function rulePlaceholderRegNumber(text, firm) {
+  if (isDemoFirm(firm)) return [];
+
+  if (/\b(?:membership|registration|reg\.?|SRA|FCA|ICAEW|Propertymark)\s*(?:number|no\.?|id)?\s*[:#]?\s*(?:12345|123456|1234|00000|99999|11111|XXXXX)\b/i.test(text)) {
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration number detected.' }];
+  }
+
+  if (/\b(?:PM|SRA|FCA|FRN|ICAEW|RICS|REG)[-\s](?:DEMO|TEST|SAMPLE|PLACEHOLDER|EXAMPLE)\b/i.test(text)) {
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' }];
+  }
+
+  if (/\b(?:DEMO|TEST|SAMPLE|PLACEHOLDER)[-\s]\d{1,6}\b/i.test(text)) {
+    return [{ severity: 'block', code: 'PLACEHOLDER_REG_NUMBER', message: 'Placeholder registration token detected.' }];
+  }
+
+  return [];
 }
 
 function ruleUnverifiedRegNumber(text, firm) {
@@ -97,6 +110,50 @@ function ruleLettingJurisdiction(text, firm) {
   return out;
 }
 
+function ruleStatuteCitation(text, firm) {
+  const out = [];
+  const rows = factsFor(firm.vendorType, 'statute');
+  for (const row of rows) {
+    if (!isRowVerified(row)) continue;
+    if (!row.claimSignals || !row.wrongActs) continue;
+    const hasSignal = row.claimSignals.some(s => new RegExp(`\\b${esc(s)}\\b`, 'i').test(text));
+    if (!hasSignal) continue;
+    for (const wrong of row.wrongActs) {
+      if (new RegExp(`\\b${esc(wrong)}\\b`, 'i').test(text)) {
+        out.push({
+          severity: 'block',
+          code: 'WRONG_STATUTE_CITATION',
+          message: `Draft cites "${wrong}" in a redress context. The correct statute is ${row.correctAct}.`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function ruleVoluntaryBodyOverclaim(text, firm) {
+  if (firm.vendorType !== 'estate-agent') return [];
+  if (/\b(?:regulated qualification|statutory qualification|legally required qualification|mandatory qualification|not a self[-\s]?awarded)\b/i.test(text)) {
+    return [{ severity: 'block', code: 'VOLUNTARY_BODY_OVERCLAIM', message: 'Propertymark membership is voluntary, not a regulated or statutory qualification. Reword to avoid implying it is mandatory or government-regulated.' }];
+  }
+  return [];
+}
+
+function ruleCredentialExclusivity(text, firm) {
+  if (firm.vendorType !== 'estate-agent') return [];
+  const cmpPhrases = /\b(?:client money protection|CMP)\b/i;
+  const exclusivity = /\b(?:only|unique to|exclusive to|removes that risk|the only way|sole provider of)\b/i;
+  if (!cmpPhrases.test(text)) return [];
+  const cmpMatch = text.match(cmpPhrases);
+  if (!cmpMatch) return [];
+  const idx = cmpMatch.index;
+  const window = text.substring(Math.max(0, idx - 60), Math.min(text.length, idx + 80));
+  if (exclusivity.test(window) || /\bPropertymark['']?s?\s+(?:mandatory|compulsory|required)\s+(?:CMP|client money)\b/i.test(text)) {
+    return [{ severity: 'warn', code: 'CREDENTIAL_EXCLUSIVITY_FRAMING', message: 'CMP/redress framed as Propertymark-exclusive. CMP is available from multiple providers; redress scheme membership is required by law for all agents.' }];
+  }
+  return [];
+}
+
 function ruleAdviceLanguage(text, firm) {
   const prof = profileFor(firm.vendorType);
   if (!prof) return [];
@@ -113,7 +170,9 @@ function ruleDeprecatedSchema(text) {
 }
 
 const RULES = [ruleJurisdiction, rulePlaceholderRegNumber, ruleUnverifiedRegNumber,
-  ruleForeignRegulator, ruleLettingJurisdiction, ruleAdviceLanguage, ruleDeprecatedSchema];
+  ruleForeignRegulator, ruleLettingJurisdiction, ruleStatuteCitation,
+  ruleVoluntaryBodyOverclaim, ruleCredentialExclusivity,
+  ruleAdviceLanguage, ruleDeprecatedSchema];
 
 export function validateDraft(draftText, firm = {}) {
   const findings = RULES.flatMap(r => r(draftText || '', firm));

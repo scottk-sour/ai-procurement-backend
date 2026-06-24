@@ -149,4 +149,91 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     const result = validateDraft(text, firm);
     expect(result.ok).toBe(true);
   });
+
+  // ── WRONG_STATUTE_CITATION ────────────────────────────────
+
+  it('blocks redress claim citing Estate Agents Act 1979', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'All estate agents must belong to a redress scheme under the Estate Agents Act 1979.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(false);
+    expect(result.blocks.some(b => b.code === 'WRONG_STATUTE_CITATION')).toBe(true);
+  });
+
+  it('does NOT block redress claim citing CEAR 2007', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'All estate agents must belong to a redress scheme under the Consumers, Estate Agents and Redress Act 2007.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_STATUTE_CITATION')).toBe(false);
+  });
+
+  // ── PLACEHOLDER_REG_NUMBER with token patterns ──────────
+
+  it('blocks PM-DEMO-001 for non-demo estate-agent', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'Our Propertymark number is PM-DEMO-001.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(false);
+    expect(result.blocks.some(b => b.code === 'PLACEHOLDER_REG_NUMBER')).toBe(true);
+  });
+
+  it('does NOT block PM-DEMO-001 for demo firm', () => {
+    const firm = { vendorType: 'estate-agent', isDemoVendor: true };
+    const text = 'Our Propertymark number is PM-DEMO-001.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'PLACEHOLDER_REG_NUMBER')).toBe(false);
+  });
+
+  // ── False-positive guards for placeholder rule ──────────
+
+  it('does NOT block "book a free demo" for non-demo firm', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const result = validateDraft('Book a free demo today.', firm);
+    expect(result.ok).toBe(true);
+  });
+
+  it('does NOT block "2024 demo" for non-demo firm', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const result = validateDraft('Our 2024 demo of the new portal.', firm);
+    expect(result.ok).toBe(true);
+  });
+
+  it('does NOT block "test results" for non-demo firm', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const result = validateDraft('Test results showed strong demand.', firm);
+    expect(result.ok).toBe(true);
+  });
+
+  it('does NOT block "sample properties" for non-demo firm', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const result = validateDraft('Sample properties available to view.', firm);
+    expect(result.ok).toBe(true);
+  });
+
+  // ── VOLUNTARY_BODY_OVERCLAIM ──────────────────────────────
+
+  it('blocks VOLUNTARY_BODY_OVERCLAIM for estate-agent', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'Propertymark is a regulated qualification that proves your agent meets high standards.';
+    const result = validateDraft(text, firm);
+    expect(result.ok).toBe(false);
+    expect(result.blocks.some(b => b.code === 'VOLUNTARY_BODY_OVERCLAIM')).toBe(true);
+  });
+
+  it('does NOT fire VOLUNTARY_BODY_OVERCLAIM for solicitor', () => {
+    const firm = { vendorType: 'solicitor' };
+    const text = 'This is a regulated qualification that proves your solicitor meets high standards.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'VOLUNTARY_BODY_OVERCLAIM')).toBe(false);
+  });
+
+  // ── CREDENTIAL_EXCLUSIVITY_FRAMING ────────────────────────
+
+  it('warns CREDENTIAL_EXCLUSIVITY_FRAMING (not block)', () => {
+    const firm = { vendorType: 'estate-agent' };
+    const text = 'Propertymark is the only provider of client money protection, which removes that risk for landlords.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'CREDENTIAL_EXCLUSIVITY_FRAMING')).toBe(false);
+    expect(result.warnings.some(w => w.code === 'CREDENTIAL_EXCLUSIVITY_FRAMING')).toBe(true);
+  });
 });

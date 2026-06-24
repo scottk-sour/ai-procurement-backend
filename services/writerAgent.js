@@ -12,6 +12,7 @@ import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/w
 import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
 import { localiseNamedEntities } from './contentReview/groundTruth.js';
 import { validateDraft } from './contentReview/validateDraft.js';
+import { verifyClaims } from './contentReview/verifyClaims.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
 
 import { SONNET_MODEL } from '../lib/config/models.js';
@@ -561,6 +562,58 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     return { autoRejected: true, vendorId: String(vendorId), violations: gate.blocks };
   }
 
+  // ── Layer 2: source-verifying claim check ──
+
+  let claimVerification = { verdict: 'pass', claims: [], results: [] };
+  let needsClaimReview = false;
+  const MAX_CLAIM_REWRITES = 2;
+
+  for (let claimPass = 0; claimPass < MAX_CLAIM_REWRITES; claimPass++) {
+    const currentCost = await getPlatformCostThisMonth();
+    if (currentCost + costEstimateUSD > MONTHLY_COST_CAP_USD) {
+      console.log(`${logPrefix} ${vendor.company}: cost cap would be exceeded ($${(currentCost + costEstimateUSD).toFixed(2)}), skipping claim rewrite`);
+      needsClaimReview = true;
+      break;
+    }
+
+    claimVerification = await verifyClaims({ draftText: draftBody, vertical: vendor.vendorType });
+    if (claimVerification.verdict === 'pass') break;
+
+    const contradicted = claimVerification.results.filter(r => r.verdict === 'contradicted' || r.verdict === 'unverifiable');
+    if (contradicted.length === 0) break;
+
+    const corrections = contradicted.map(c => `- Claim "${c.text}": ${c.verdict}${c.correction ? ' — ' + c.correction : ''}`).join('\n');
+    console.log(`${logPrefix} ${vendor.company}: claim verification failed (pass ${claimPass + 1}/${MAX_CLAIM_REWRITES}), rewriting`);
+
+    try {
+      const retryUserPrompt = `${cleanedPrompt}\n\n## CLAIM CORRECTIONS — a previous draft had these issues:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
+      const retryResp = await anthropic.messages.create({
+        model: MODEL, max_tokens: 4000, temperature: 0.7,
+        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+        messages: [{ role: 'user', content: retryUserPrompt }],
+      });
+      const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      const retryJson = retryText.match(/\{[\s\S]*\}/);
+      if (retryJson) {
+        const retryParsed = JSON.parse(retryJson[0]);
+        draftBody = retryParsed.body || draftBody;
+      }
+      gate = validateDraft(draftBody, firmForGate);
+      if (!gate.ok) {
+        console.log(`${logPrefix} ${vendor.company}: rewrite reintroduced gate violation, stopping`);
+        break;
+      }
+    } catch (retryErr) {
+      console.error(`${logPrefix} ${vendor.company}: claim rewrite failed:`, retryErr.message);
+      break;
+    }
+  }
+
+  if (claimVerification.verdict !== 'pass') {
+    needsClaimReview = true;
+    console.log(`${logPrefix} ${vendor.company}: claim verification did not pass — flagging for review`);
+  }
+
   // ── All checks passed — create approval ──
 
   const approval = await createApproval({
@@ -607,6 +660,8 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       ...(repaired ? { repaired: true, repairedViolations, deletedSentences } : {}),
       ...(gate.warnings.length ? { gateWarnings: gate.warnings.map(w => w.code) } : {}),
       ...(dryRun ? { dryRun: true } : {}),
+      claimVerification: claimVerification.verdict !== 'pass' ? claimVerification : undefined,
+      needsClaimReview: needsClaimReview || undefined,
     },
     source: 'writer-agent-cron',
   });
