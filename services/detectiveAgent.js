@@ -1,6 +1,7 @@
 import Vendor from '../models/Vendor.js';
 import AgentRun from '../models/AgentRun.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 import AeoReport from '../models/AeoReport.js';
 import VendorProduct from '../models/VendorProduct.js';
 import { filterRealCompetitors } from './reporter/filterRealCompetitors.js';
@@ -27,7 +28,7 @@ export async function runDetectiveForVendor(vendorId) {
 
   const scans = await AIMentionScan.find({
     vendorId, scanDate: { $gte: weekStart }, platform: { $ne: null },
-    aiModel: { $nin: ['claude-haiku'] },
+    aiModel: { $in: BROWSING_PLATFORMS },
   }).lean();
 
   if (scans.length === 0) {

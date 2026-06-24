@@ -3,8 +3,7 @@
  *
  * 7 categories, 100 points total. Tier ceilings:
  *   Free vendor, fully active:       ~40/100
- *   Pro £299, fully active:           ~75/100
- *   Pro £299, fully active:          ~95/100
+ *   Pro (£299/mo), fully active:     ~100/100
  *   Nobody hits 100 without doing everything.
  */
 
@@ -13,9 +12,11 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   const rawTier = vendor.tier || vendor.account?.tier || 'free';
   const tierMapping = {
     'free': 'listed', 'listed': 'listed',
+    'pro': 'verified',
     'basic': 'visible', 'visible': 'visible', 'bronze': 'visible', 'standard': 'visible',
     'managed': 'verified', 'verified': 'verified', 'silver': 'verified',
     'gold': 'verified', 'enterprise': 'verified', 'platinum': 'verified',
+    'starter': 'visible',
   };
   const tier = tierMapping[rawTier.toLowerCase()] || 'listed';
   const isVerified = tier === 'verified';

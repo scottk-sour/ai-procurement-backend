@@ -7,6 +7,7 @@ import { queryAllPlatforms } from './platformQuery/index.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
 import { sendEmail } from './emailService.js';
 import { aOrAn } from './aeoReportGenerator.js';
+import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 import AgentRun from '../models/AgentRun.js';
 
 // Map vendorType to readable label and prompt templates
@@ -348,9 +349,9 @@ async function saveScoreHistory(vendor, weekStarting) {
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const [mentions30d, mentionsThisWeek, mentionsLastWeek] = await Promise.all([
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: thirtyDaysAgo } }),
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: sevenDaysAgo } }),
-      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $nin: ['claude-haiku'] }, scanDate: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $in: BROWSING_PLATFORMS }, scanDate: { $gte: thirtyDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $in: BROWSING_PLATFORMS }, scanDate: { $gte: sevenDaysAgo } }),
+      AIMentionScan.countDocuments({ vendorId: vendor._id, mentioned: true, aiModel: { $in: BROWSING_PLATFORMS }, scanDate: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
     ]);
 
     const reviewData = await Review.aggregate([
