@@ -7,6 +7,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import vendorAuth from '../middleware/vendorAuth.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
+import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 import Vendor from '../models/Vendor.js';
 import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
@@ -63,19 +64,19 @@ async function getMentionData(vendorId) {
   const [mentionsThisWeek, mentionsLastWeek, totalMentions30d, positionAgg] = await Promise.all([
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: thirtyDaysAgo },
     }).catch(() => 0),
 
@@ -84,7 +85,7 @@ async function getMentionData(vendorId) {
         $match: {
           vendorId: new mongoose.Types.ObjectId(vendorId),
           mentioned: true,
-          aiModel: { $nin: ['claude-haiku'] },
+          aiModel: { $in: BROWSING_PLATFORMS },
           scanDate: { $gte: thirtyDaysAgo },
         },
       },

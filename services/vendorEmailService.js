@@ -12,6 +12,7 @@ import VendorProduct from '../models/VendorProduct.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Review from '../models/Review.js';
 import { calculateVisibilityScore } from '../utils/visibilityScore.js';
+import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 import { sendEmail } from './emailService.js';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.tendorai.com';
@@ -106,19 +107,19 @@ async function getWeeklyMentionData(vendorId) {
   const [mentionsThisWeek, mentionsLastWeek, totalMentions30d, competitorAgg] = await Promise.all([
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
     }).catch(() => 0),
 
     AIMentionScan.countDocuments({
       vendorId, mentioned: true,
-      aiModel: { $nin: ['claude-haiku'] },
+      aiModel: { $in: BROWSING_PLATFORMS },
       scanDate: { $gte: thirtyDaysAgo },
     }).catch(() => 0),
 
@@ -127,7 +128,7 @@ async function getWeeklyMentionData(vendorId) {
       {
         $match: {
           vendorId: vendorObjectId,
-          aiModel: { $nin: ['claude-haiku'] },
+          aiModel: { $in: BROWSING_PLATFORMS },
           scanDate: { $gte: thisWeekStart },
         },
       },
