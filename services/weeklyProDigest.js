@@ -1,6 +1,7 @@
 import Vendor from '../models/Vendor.js';
 import AeoReport from '../models/AeoReport.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import { getBrowsingFilter } from '../lib/data/vendorMentions.js';
 import AgentRun from '../models/AgentRun.js';
 import DirectoryListing from '../models/DirectoryListing.js';
 import ApprovalQueue from '../models/ApprovalQueue.js';
@@ -68,9 +69,11 @@ async function buildScoreSection(vendorId, weekStarting) {
 
 async function buildCitationsSection(vendorId, weekStarting, ending) {
   try {
+    // DEPRECATED — kept for backward compat, filtered for safety
     const scans = await AIMentionScan.find({
       vendorId,
       scanDate: { $gte: weekStarting, $lte: ending },
+      ...getBrowsingFilter(),
     }).lean();
 
     const okScans = scans.filter(s => s.status !== 'error' && s.status !== 'timeout');
@@ -220,10 +223,12 @@ async function buildNeedsAttention(vendorId) {
 
 async function buildCompetitorMoves(vendorId, weekStarting, ending) {
   try {
+    // DEPRECATED — kept for backward compat, filtered for safety
     const scans = await AIMentionScan.find({
       vendorId,
       scanDate: { $gte: weekStarting, $lte: ending },
       mentioned: false,
+      ...getBrowsingFilter(),
     }).lean();
 
     const moves = [];

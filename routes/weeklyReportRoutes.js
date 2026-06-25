@@ -3,6 +3,7 @@ import vendorAuth from '../middleware/vendorAuth.js';
 import WeeklyReport from '../models/WeeklyReport.js';
 import AgentRun from '../models/AgentRun.js';
 import AIMentionScan from '../models/AIMentionScan.js';
+import { getBrowsingFilter } from '../lib/data/vendorMentions.js';
 import DirectoryListing from '../models/DirectoryListing.js';
 
 const router = express.Router();
@@ -137,6 +138,7 @@ router.get('/:weekStarting/citations', async (req, res) => {
       vendorId: req.vendorId,
       scanDate: { $gte: ws, $lte: weekEnd },
       mentioned: true,
+      ...getBrowsingFilter(),
     }).lean();
 
     const citations = scans.map(s => ({

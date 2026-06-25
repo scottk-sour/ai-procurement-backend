@@ -6,6 +6,7 @@ import AIMentionScan from '../../models/AIMentionScan.js';
 import { titleCaseCompanyName } from './textFormatters.js';
 import { filterRealCompetitors } from './filterRealCompetitors.js';
 import { isSameFirm } from '../platformQuery/nameMatch.js';
+import { vendorHasRealScans as _vendorHasRealScans, getBrowsingFilter } from '../../lib/data/vendorMentions.js';
 
 function slugifyUpper(text) {
   return (text || 'UNKNOWN')
@@ -35,11 +36,7 @@ function endOfWeek(date) {
  * Returns { hasRealScans, scanCount }.
  */
 export async function vendorHasRealScans(vendorId) {
-  const count = await AIMentionScan.countDocuments({
-    vendorId,
-    $or: [{ status: 'ok' }, { status: { $exists: false } }],
-  });
-  return { hasRealScans: count > 0, scanCount: count };
+  return _vendorHasRealScans(vendorId);
 }
 
 export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDate) {
@@ -54,11 +51,12 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
     WeeklyReport.find({ vendorId, weekStartDate: { $lt: weekStartDate } }).sort({ weekStartDate: -1 }).limit(8).lean(),
   ]);
 
-  // Real scan data for this week
+  // Real scan data for this week — browsing platforms only
   const weekScans = await AIMentionScan.find({
     vendorId,
     scanDate: { $gte: weekStartDate, $lte: weekEnd },
     $or: [{ status: 'ok' }, { status: { $exists: false } }],
+    ...getBrowsingFilter(),
   }).lean();
 
   // SECTION 1: Score header — built from real recon data only
