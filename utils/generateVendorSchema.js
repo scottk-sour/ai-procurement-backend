@@ -4,6 +4,17 @@
  */
 
 import UK_POSTCODE_AREA_MAP from './ukPostcodeAreaMap.js';
+import { isDemoFirm } from '../lib/config/demoVendors.js';
+
+const PLACEHOLDER_PATTERN = /^(TBC|pending|n\/?a|tbd|unknown|-+|PM-DEMO.*|SRA-TEST.*|FCA-TEST.*|DEMO-\d+|TEST-\d+|SAMPLE.*|PLACEHOLDER.*|EXAMPLE.*|00000|12345|123456|99999|11111|XXXXX)$/i;
+
+function isCredentialPublishable(vendor, numberValue) {
+  if (isDemoFirm(vendor)) return true;
+  if (!numberValue || typeof numberValue !== 'string') return false;
+  const trimmed = numberValue.trim();
+  if (!trimmed) return false;
+  return !PLACEHOLDER_PATTERN.test(trimmed);
+}
 
 const VENDOR_TYPE_MAP = {
   solicitor: 'LegalService',
@@ -106,7 +117,7 @@ function buildAreaServed(vendor) {
 function buildIdentifiers(vendor) {
   const identifiers = [];
 
-  if (vendor.sraNumber) {
+  if (isCredentialPublishable(vendor, vendor.sraNumber)) {
     identifiers.push({
       '@type': 'PropertyValue',
       name: 'SRA Number',
@@ -114,7 +125,7 @@ function buildIdentifiers(vendor) {
       value: vendor.sraNumber,
     });
   }
-  if (vendor.fcaNumber) {
+  if (isCredentialPublishable(vendor, vendor.fcaNumber)) {
     identifiers.push({
       '@type': 'PropertyValue',
       name: 'FCA Number',
@@ -122,7 +133,7 @@ function buildIdentifiers(vendor) {
       value: vendor.fcaNumber,
     });
   }
-  if (vendor.icaewFirmNumber) {
+  if (isCredentialPublishable(vendor, vendor.icaewFirmNumber)) {
     identifiers.push({
       '@type': 'PropertyValue',
       name: 'ICAEW Firm Number',
@@ -130,7 +141,7 @@ function buildIdentifiers(vendor) {
       value: vendor.icaewFirmNumber,
     });
   }
-  if (vendor.propertymarkNumber) {
+  if (isCredentialPublishable(vendor, vendor.propertymarkNumber)) {
     identifiers.push({
       '@type': 'PropertyValue',
       name: 'Propertymark Number',
@@ -148,9 +159,8 @@ function buildIdentifiers(vendor) {
     });
   }
 
-  // TendorAI Verified identifier
-  const tier = vendor.tier || vendor.account?.tier || 'free';
-  if (tier === 'verified') {
+  const isActuallyVerified = isDemoFirm(vendor) || vendor.account?.verificationStatus === 'verified';
+  if (isActuallyVerified) {
     identifiers.push({
       '@type': 'PropertyValue',
       name: 'TendorAI Verified',
@@ -168,7 +178,7 @@ function buildIdentifiers(vendor) {
 function buildCredentials(vendor) {
   const credentials = [];
 
-  if (vendor.sraNumber) {
+  if (isCredentialPublishable(vendor, vendor.sraNumber)) {
     credentials.push({
       '@type': 'EducationalOccupationalCredential',
       credentialCategory: 'regulatory',
@@ -181,7 +191,7 @@ function buildCredentials(vendor) {
       identifier: vendor.sraNumber,
     });
   }
-  if (vendor.fcaNumber) {
+  if (isCredentialPublishable(vendor, vendor.fcaNumber)) {
     credentials.push({
       '@type': 'EducationalOccupationalCredential',
       credentialCategory: 'regulatory',
@@ -194,7 +204,7 @@ function buildCredentials(vendor) {
       identifier: vendor.fcaNumber,
     });
   }
-  if (vendor.icaewFirmNumber) {
+  if (isCredentialPublishable(vendor, vendor.icaewFirmNumber)) {
     credentials.push({
       '@type': 'EducationalOccupationalCredential',
       credentialCategory: 'regulatory',
@@ -207,7 +217,7 @@ function buildCredentials(vendor) {
       identifier: vendor.icaewFirmNumber,
     });
   }
-  if (vendor.propertymarkNumber) {
+  if (isCredentialPublishable(vendor, vendor.propertymarkNumber)) {
     credentials.push({
       '@type': 'EducationalOccupationalCredential',
       credentialCategory: 'regulatory',
