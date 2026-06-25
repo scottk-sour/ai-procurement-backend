@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import vendorAuth from '../middleware/vendorAuth.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import Vendor from '../models/Vendor.js';
+import { getBrowsingFilter } from '../lib/data/vendorMentions.js';
 
 const router = express.Router();
 
@@ -37,16 +38,17 @@ router.get('/summary', vendorAuth, async (req, res) => {
     thirtyDaysAgo.setDate(now.getDate() - 30);
 
     // All-time mentions count
+    const bf = getBrowsingFilter();
     const [totalMentions, thisWeekData, lastWeekData] = await Promise.all([
-      AIMentionScan.countDocuments({ vendorId, mentioned: true }),
+      AIMentionScan.countDocuments({ vendorId, mentioned: true, ...bf }),
       AIMentionScan.countDocuments({
         vendorId,
-        mentioned: true,
+        mentioned: true, ...bf,
         scanDate: { $gte: thisWeekStart },
       }),
       AIMentionScan.countDocuments({
         vendorId,
-        mentioned: true,
+        mentioned: true, ...bf,
         scanDate: { $gte: lastWeekStart, $lt: thisWeekStart },
       }),
     ]);
@@ -68,10 +70,10 @@ router.get('/summary', vendorAuth, async (req, res) => {
     if (paid) {
       // Mention rate (last 30 days) — exclude error/timeout records from denominator
       const [totalPrompts, mentionedPrompts] = await Promise.all([
-        AIMentionScan.countDocuments({ vendorId, scanDate: { $gte: thirtyDaysAgo }, $or: [{ status: 'ok' }, { status: { $exists: false } }] }),
+        AIMentionScan.countDocuments({ vendorId, scanDate: { $gte: thirtyDaysAgo }, ...bf, $or: [{ status: 'ok' }, { status: { $exists: false } }] }),
         AIMentionScan.countDocuments({
           vendorId,
-          mentioned: true,
+          mentioned: true, ...bf,
           scanDate: { $gte: thirtyDaysAgo },
         }),
       ]);
@@ -82,7 +84,7 @@ router.get('/summary', vendorAuth, async (req, res) => {
       // Latest mentions (last 10 where mentioned=true)
       response.latestMentions = await AIMentionScan.find({
         vendorId,
-        mentioned: true,
+        mentioned: true, ...bf,
       })
         .sort({ scanDate: -1 })
         .limit(10)
@@ -97,7 +99,7 @@ router.get('/summary', vendorAuth, async (req, res) => {
         {
           $match: {
             vendorId: new mongoose.Types.ObjectId(vendorId),
-            mentioned: true,
+            mentioned: true, ...bf,
             scanDate: { $gte: twelveWeeksAgo },
           },
         },
@@ -122,7 +124,7 @@ router.get('/summary', vendorAuth, async (req, res) => {
         {
           $match: {
             vendorId: new mongoose.Types.ObjectId(vendorId),
-            mentioned: true,
+            mentioned: true, ...bf,
             scanDate: { $gte: thirtyDaysAgo },
           },
         },
@@ -188,7 +190,7 @@ router.get('/competitors', vendorAuth, async (req, res) => {
             $match: {
               category,
               location: { $regex: new RegExp(location, 'i') },
-              mentioned: true,
+              mentioned: true, ...bf,
               scanDate: { $gte: thirtyDaysAgo },
             },
           },
@@ -245,6 +247,7 @@ router.get('/competitors', vendorAuth, async (req, res) => {
     let vendorRank = null;
     let vendorMentionCount = 0;
 
+    const bf2 = getBrowsingFilter();
     if (category && location) {
       // Get all vendors in same category+location ranked by AI mention count
       const allVendorMentions = await AIMentionScan.aggregate([
@@ -252,7 +255,7 @@ router.get('/competitors', vendorAuth, async (req, res) => {
           $match: {
             category,
             location: { $regex: new RegExp(location, 'i') },
-            mentioned: true,
+            mentioned: true, ...bf2,
             scanDate: { $gte: thirtyDaysAgo },
           },
         },

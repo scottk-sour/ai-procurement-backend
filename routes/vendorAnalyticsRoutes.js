@@ -6,6 +6,7 @@ import VendorAnalytics from '../models/VendorAnalytics.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import vendorAuth from '../middleware/vendorAuth.js';
 import crypto from 'crypto';
+import { getBrowsingFilter } from '../lib/data/vendorMentions.js';
 
 const router = express.Router();
 
@@ -321,6 +322,7 @@ router.get('/vendor/:vendorId', async (req, res) => {
         $match: {
           vendorId: oid,
           mentioned: true,
+          ...getBrowsingFilter(),
           scanDate: { $gte: startDate },
         },
       },
