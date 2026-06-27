@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateDraft } from '../../services/contentReview/validateDraft.js';
 
-describe('validateDraft — jurisdiction + regulatory gate', () => {
+describe('validateDraft - jurisdiction + regulatory gate', () => {
 
   it('blocks Welsh estate-agent draft using SDLT', () => {
     const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
@@ -21,7 +21,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
 
   it('blocks Welsh firm mentioning first-time buyer relief', () => {
     const firm = { vendorType: 'solicitor', location: { postcode: 'SA1 1AA' } };
-    const text = 'First-time buyer relief means you pay no tax on the first £425,000.';
+    const text = 'First-time buyer relief means you pay no tax on the first 425,000.';
     const result = validateDraft(text, firm);
     expect(result.ok).toBe(false);
     expect(result.blocks.some(b => b.code === 'WRONG_TAX_JURISDICTION')).toBe(true);
@@ -150,7 +150,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.ok).toBe(true);
   });
 
-  // ── WRONG_STATUTE_CITATION ────────────────────────────────
+  // -- WRONG_STATUTE_CITATION --------------------------------
 
   it('blocks redress claim citing Estate Agents Act 1979', () => {
     const firm = { vendorType: 'estate-agent' };
@@ -167,7 +167,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'WRONG_STATUTE_CITATION')).toBe(false);
   });
 
-  // ── PLACEHOLDER_REG_NUMBER with token patterns ──────────
+  // -- PLACEHOLDER_REG_NUMBER with token patterns ----------
 
   it('blocks PM-DEMO-001 for non-demo estate-agent', () => {
     const firm = { vendorType: 'estate-agent' };
@@ -184,7 +184,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'PLACEHOLDER_REG_NUMBER')).toBe(false);
   });
 
-  // ── False-positive guards for placeholder rule ──────────
+  // -- False-positive guards for placeholder rule ----------
 
   it('does NOT block "book a free demo" for non-demo firm', () => {
     const firm = { vendorType: 'estate-agent' };
@@ -210,7 +210,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.ok).toBe(true);
   });
 
-  // ── VOLUNTARY_BODY_OVERCLAIM ──────────────────────────────
+  // -- VOLUNTARY_BODY_OVERCLAIM ------------------------------
 
   it('blocks VOLUNTARY_BODY_OVERCLAIM for estate-agent', () => {
     const firm = { vendorType: 'estate-agent' };
@@ -227,7 +227,7 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'VOLUNTARY_BODY_OVERCLAIM')).toBe(false);
   });
 
-  // ── CREDENTIAL_EXCLUSIVITY_FRAMING ────────────────────────
+  // -- CREDENTIAL_EXCLUSIVITY_FRAMING ------------------------
 
   it('warns CREDENTIAL_EXCLUSIVITY_FRAMING (not block)', () => {
     const firm = { vendorType: 'estate-agent' };
@@ -236,4 +236,28 @@ describe('validateDraft — jurisdiction + regulatory gate', () => {
     expect(result.blocks.some(b => b.code === 'CREDENTIAL_EXCLUSIVITY_FRAMING')).toBe(false);
     expect(result.warnings.some(w => w.code === 'CREDENTIAL_EXCLUSIVITY_FRAMING')).toBe(true);
   });
+
+  // -- Contrast-aware jurisdiction (regression: correct content naming the English term) --
+  it('does NOT block Welsh tenant-fees content that contrasts the English Act', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'Permitted fees are governed by the Renting Homes (Fees etc.) (Wales) Act 2019 - not the Tenant Fees Act 2019, which applies in England only. Agents must register with Rent Smart Wales.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_LETTING_JURISDICTION')).toBe(false);
+    expect(result.warnings.some(w => w.code === 'LETTING_JURISDICTION_CONTRAST_REVIEW')).toBe(true);
+  });
+
+  it('does NOT block Welsh tax content that contrasts SDLT', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'Wales attracts Land Transaction Tax (LTT) via the Welsh Revenue Authority, not SDLT, which applies in England.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_TAX_JURISDICTION')).toBe(false);
+  });
+
+  it('still blocks genuine Welsh tax error with no correct-regime context', () => {
+    const firm = { vendorType: 'estate-agent', location: { postcode: 'CF10 1FA' } };
+    const text = 'You will pay Stamp Duty Land Tax (SDLT) to HMRC on completion of your Cardiff purchase.';
+    const result = validateDraft(text, firm);
+    expect(result.blocks.some(b => b.code === 'WRONG_TAX_JURISDICTION')).toBe(true);
+  });
+
 });
