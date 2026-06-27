@@ -64,6 +64,22 @@ export function buildGroundTruthBlock(firm = {}) {
     }
   }
 
+  const statuteRows = factsFor(firm.vendorType, 'statute');
+  if (statuteRows.length > 0) {
+    L.push('STATUTE CITATIONS:');
+    for (const row of statuteRows) {
+      if (row.correctAct) {
+        L.push(`- For ${row.id.replace(/_/g, ' ')}: the correct statute is "${row.correctAct}".`);
+      }
+      if (Array.isArray(row.wrongActs) && row.wrongActs.length) {
+        L.push(`  Do NOT attribute this to: ${row.wrongActs.join(', ')}.`);
+      }
+      if (row.note) {
+        L.push(`  Note: ${row.note}`);
+      }
+    }
+  }
+
   L.push('FIRM STATISTICS: state only numbers present in firm_context. Any sales count, years in business, completion time, fee, or percentage about THIS firm not in firm_context MUST be omitted.');
   L.push('</ground_truth>');
   return L.join('\n');
