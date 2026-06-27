@@ -259,6 +259,9 @@ export async function getFirmContext(vendorId) {
 
   const { regime } = resolveJurisdiction(vendor);
   ctx._rawFirmForGate = {
+    _id: vendor._id,
+    isDemoVendor: vendor.isDemoVendor,
+    isDemoAccount: vendor.isDemoAccount,
     vendorType: vendor.vendorType,
     location: vendor.location,
     postcode: vendor.location?.postcode || vendor.contactInfo?.postcode,
