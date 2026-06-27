@@ -5,6 +5,29 @@ import { isDemoFirm } from '../../lib/config/demoVendors.js';
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const CONTRAST_MARKER = /\b(?:not|unlike|rather than|instead of|whereas|as opposed to|by contrast|in contrast|differs? from|does ?n[o']?t apply|do ?n[o']?t apply|no longer applies?|applies?(?: only)? in england|england only|in england\b|english law|under english law)\b/i;
+
+function hasContrastNear(text, idx, span = 110) {
+  const window = text.substring(Math.max(0, idx - span), Math.min(text.length, idx + span));
+  return CONTRAST_MARKER.test(window);
+}
+
+function anyPresent(text, signals) {
+  const t = (text || '').toLowerCase();
+  return signals.some(s => s && t.includes(String(s).toLowerCase()));
+}
+
+function lettingWelshSignals(row) {
+  const w = row.wales || {};
+  return [
+    w.canonical, w.occupantTerm, w.noticeProvision,
+    ...(row.requiredInWales || []),
+    'Renting Homes (Wales) Act', 'Renting Homes (Fees', 'occupation contract',
+    'contract-holder', 'Rent Smart Wales', 'Section 173', '(Wales) Act 2016',
+    '(Wales) Act 2019',
+  ].filter(Boolean);
+}
+
 function ruleJurisdiction(text, firm) {
   const out = [];
   const prof = profileFor(firm.vendorType);
@@ -15,11 +38,21 @@ function ruleJurisdiction(text, firm) {
     if (taxMention.test(text)) out.push({ severity: 'block', code: 'TAX_REGIME_UNCONFIRMED', message: 'Tax content present but firm jurisdiction is unconfirmed.' });
     return out;
   }
+  const correctSignals = [regime.taxName, regime.taxAbbrev, regime.authority, regime.authorityAbbrev].filter(Boolean);
+  const jurisdictionAware = anyPresent(text, correctSignals);
   for (const term of regime.forbiddenTerms) {
-    if (new RegExp(`\\b${esc(term)}\\b`, 'i').test(text)) {
+    const m = new RegExp(`\\b${esc(term)}\\b`, 'i').exec(text);
+    if (!m) continue;
+    const aware = jurisdictionAware || hasContrastNear(text, m.index);
+    if (aware) {
+      out.push({
+        severity: 'warn', code: 'TAX_JURISDICTION_CONTRAST_REVIEW',
+        message: `Draft names "${term}" but also references the correct ${regime.country} regime (${regime.taxName} / ${regime.authority}). Treated as a deliberate contrast and passed to claim verification rather than hard-blocked.`,
+      });
+    } else {
       out.push({
         severity: 'block', code: 'WRONG_TAX_JURISDICTION',
-        message: `Firm is in ${regime.country}; draft uses "${term}". Correct: ${regime.taxName} (${regime.taxAbbrev}) / ${regime.authority}.`,
+        message: `Firm is in ${regime.country}; draft uses "${term}" with no correct-regime context. Correct: ${regime.taxName} (${regime.taxAbbrev}) / ${regime.authority}.`,
       });
     }
   }
@@ -79,15 +112,26 @@ function ruleLettingJurisdiction(text, firm) {
 
   for (const row of rows) {
     const forbidden = row.forbiddenInWales;
-    if (!forbidden) continue;
-    for (const term of forbidden) {
-      if (new RegExp(`\\b${esc(term)}\\b`, 'i').test(text)) {
+    if (forbidden) {
+      const welshAware = anyPresent(text, lettingWelshSignals(row));
+      for (const term of forbidden) {
+        const m = new RegExp(`\\b${esc(term)}\\b`, 'i').exec(text);
+        if (!m) continue;
         const correct = row.wales?.canonical || '(see jurisdictionFacts.js)';
-        out.push({
-          severity: 'block',
-          code: 'WRONG_LETTING_JURISDICTION',
-          message: `Firm is in Wales; draft uses "${term}" (${row.id}). Correct: ${correct}.`,
-        });
+        const aware = welshAware || hasContrastNear(text, m.index);
+        if (aware) {
+          out.push({
+            severity: 'warn',
+            code: 'LETTING_JURISDICTION_CONTRAST_REVIEW',
+            message: `Draft names England-only term "${term}" (${row.id}) but also shows Welsh-law awareness (correct: ${correct}). Treated as a deliberate contrast and passed to claim verification rather than hard-blocked.`,
+          });
+        } else {
+          out.push({
+            severity: 'block',
+            code: 'WRONG_LETTING_JURISDICTION',
+            message: `Firm is in Wales; draft uses "${term}" (${row.id}) with no Welsh-law context. Correct: ${correct}.`,
+          });
+        }
       }
     }
 
@@ -118,8 +162,18 @@ function ruleStatuteCitation(text, firm) {
     if (!row.claimSignals || !row.wrongActs) continue;
     const hasSignal = row.claimSignals.some(s => new RegExp(`\\b${esc(s)}\\b`, 'i').test(text));
     if (!hasSignal) continue;
+    const correctPresent = row.correctAct ? anyPresent(text, [row.correctAct]) : false;
     for (const wrong of row.wrongActs) {
-      if (new RegExp(`\\b${esc(wrong)}\\b`, 'i').test(text)) {
+      const m = new RegExp(`\\b${esc(wrong)}\\b`, 'i').exec(text);
+      if (!m) continue;
+      const aware = correctPresent || hasContrastNear(text, m.index);
+      if (aware) {
+        out.push({
+          severity: 'warn',
+          code: 'STATUTE_CITATION_CONTRAST_REVIEW',
+          message: `Draft names "${wrong}" in a redress context but also cites the correct statute (${row.correctAct}). Treated as a deliberate contrast and passed to claim verification rather than hard-blocked.`,
+        });
+      } else {
         out.push({
           severity: 'block',
           code: 'WRONG_STATUTE_CITATION',
@@ -159,7 +213,7 @@ function ruleAdviceLanguage(text, firm) {
   if (!prof) return [];
   const advice = /\b(you should (?:choose|take|get|opt|apply)|we recommend you|you are entitled to|you qualify for|the best (?:mortgage|deal|product) for you)\b/i;
   return advice.test(text)
-    ? [{ severity: 'warn', code: 'ADVICE_SHAPED_LANGUAGE', message: 'Advice-shaped language detected — review for FCA/regulatory financial-promotion risk before publishing.' }]
+    ? [{ severity: 'warn', code: 'ADVICE_SHAPED_LANGUAGE', message: 'Advice-shaped language detected - review for FCA/regulatory financial-promotion risk before publishing.' }]
     : [];
 }
 
