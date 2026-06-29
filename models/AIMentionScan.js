@@ -26,7 +26,7 @@ const aiMentionScanSchema = new mongoose.Schema({
   category: { type: String, required: true },
   location: { type: String, required: true },
   responseSnippet: { type: String, maxlength: 500 },
-  source: { type: String, default: 'weekly_scan', enum: ['weekly_scan', 'live_test'] },
+  source: { type: String, default: 'weekly_scan', enum: ['weekly_scan', 'live_test', 'research_panel'] },
 }, {
   timestamps: false,
   collection: 'ai_mention_scans',
