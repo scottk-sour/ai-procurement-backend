@@ -1194,6 +1194,32 @@ function capitalize(str) {
 
 const VALID_VENDOR_TYPES = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'];
 
+const VENDOR_TYPE_CATEGORIES = {
+  'solicitor': new Set([
+    'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
+    'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
+  ]),
+  'accountant': new Set([
+    'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
+    'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
+  ]),
+  'mortgage-advisor': new Set([
+    'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
+    'equity-release', 'commercial-mortgages', 'protection-insurance',
+  ]),
+  'estate-agent': new Set([
+    'sales', 'lettings', 'property-management', 'block-management',
+    'auctions', 'commercial-property', 'inventory',
+  ]),
+};
+
+const FALLBACK_AVERAGES = {
+  'solicitor': 28,
+  'accountant': 26,
+  'mortgage-advisor': 24,
+  'estate-agent': 32,
+};
+
 const cityStatsCache = {};
 
 /**
