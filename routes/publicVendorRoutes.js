@@ -1195,18 +1195,12 @@ function capitalize(str) {
 
 const VALID_VENDOR_TYPES = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'];
 
-const FALLBACK_AVERAGES = {
-  'solicitor': 28,
-  'accountant': 26,
-  'mortgage-advisor': 24,
-  'estate-agent': 32,
-};
-
 const cityStatsCache = {};
 
 /**
  * GET /api/public/city-stats?city=cardiff&vendorType=solicitor
- * Return aggregated vendor counts and average AEO score for a city + vendor type
+ * Return aggregated vendor counts and average AEO score for a city + vendor type.
+ * When fewer than 5 reports exist, averageScore is null and insufficientData is true.
  */
 router.get('/city-stats', async (req, res) => {
   try {
@@ -1241,7 +1235,8 @@ router.get('/city-stats', async (req, res) => {
     // Average AEO score for this city + vendor type
     const categoriesForType = VENDOR_TYPE_CATEGORIES[vendorType];
     let averageScore = null;
-    let averageScoreIsEstimate = false;
+    let reportCount = 0;
+    let insufficientData = true;
 
     if (categoriesForType) {
       const agg = await AeoReport.aggregate([
@@ -1255,11 +1250,11 @@ router.get('/city-stats', async (req, res) => {
         { $group: { _id: null, avg: { $avg: '$score' }, count: { $sum: 1 } } },
       ]);
 
-      if (agg.length && agg[0].count >= 5) {
+      reportCount = agg.length ? agg[0].count : 0;
+
+      if (reportCount >= 5) {
         averageScore = Math.round(agg[0].avg);
-      } else {
-        averageScore = FALLBACK_AVERAGES[vendorType] || null;
-        averageScoreIsEstimate = averageScore !== null;
+        insufficientData = false;
       }
     }
 
@@ -1270,7 +1265,8 @@ router.get('/city-stats', async (req, res) => {
       claimedCount,
       paidCount,
       averageScore,
-      averageScoreIsEstimate,
+      reportCount,
+      insufficientData,
     };
 
     cityStatsCache[cacheKey] = { data, expiry: Date.now() + 24 * 60 * 60 * 1000 };
