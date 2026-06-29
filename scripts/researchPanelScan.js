@@ -69,7 +69,12 @@ async function main() {
             status: r.status === 'checked' ? 'ok' : (r.status || 'ok'),
             aiModel: PLATFORM_MODEL[platformKey],
             platform: platformKey,
-            competitorsMentioned: Array.isArray(r.competitors) ? r.competitors.slice(0, 20) : [],
+            competitorsMentioned: Array.isArray(r.competitors)
+              ? r.competitors
+                  .map(c => (typeof c === 'string' ? c : c?.name))
+                  .filter(Boolean)
+                  .slice(0, 20)
+              : [],
             category: categoryLabel,
             location: CITY,
             responseSnippet: (r.snippet || r.rawResponse || '').slice(0, 500),
