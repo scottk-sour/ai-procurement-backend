@@ -415,6 +415,13 @@ const ESTATE_AGENT_CATEGORIES = new Set([
   'auctions', 'commercial-property', 'inventory',
 ]);
 
+export const VENDOR_TYPE_CATEGORIES = {
+  'solicitor': SOLICITOR_CATEGORIES,
+  'accountant': ACCOUNTANT_CATEGORIES,
+  'mortgage-advisor': MORTGAGE_CATEGORIES,
+  'estate-agent': ESTATE_AGENT_CATEGORIES,
+};
+
 function getVendorType(category) {
   if (SOLICITOR_CATEGORIES.has(category)) return 'solicitor';
   if (ACCOUNTANT_CATEGORIES.has(category)) return 'accountant';

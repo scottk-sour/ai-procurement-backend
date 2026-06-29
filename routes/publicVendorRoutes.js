@@ -18,6 +18,7 @@ import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } f
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
+import { VENDOR_TYPE_CATEGORIES } from '../services/aeoReportGenerator.js';
 
 const router = express.Router();
 
@@ -1194,25 +1195,6 @@ function capitalize(str) {
 
 const VALID_VENDOR_TYPES = ['solicitor', 'accountant', 'mortgage-advisor', 'estate-agent'];
 
-const VENDOR_TYPE_CATEGORIES = {
-  'solicitor': new Set([
-    'conveyancing', 'family-law', 'criminal-law', 'commercial-law',
-    'employment-law', 'wills-and-probate', 'immigration', 'personal-injury',
-  ]),
-  'accountant': new Set([
-    'tax-advisory', 'audit-assurance', 'bookkeeping', 'payroll',
-    'corporate-finance', 'business-advisory', 'vat-services', 'financial-planning',
-  ]),
-  'mortgage-advisor': new Set([
-    'residential-mortgages', 'buy-to-let', 'remortgage', 'first-time-buyer',
-    'equity-release', 'commercial-mortgages', 'protection-insurance',
-  ]),
-  'estate-agent': new Set([
-    'sales', 'lettings', 'property-management', 'block-management',
-    'auctions', 'commercial-property', 'inventory',
-  ]),
-};
-
 const FALLBACK_AVERAGES = {
   'solicitor': 28,
   'accountant': 26,
@@ -1259,6 +1241,7 @@ router.get('/city-stats', async (req, res) => {
     // Average AEO score for this city + vendor type
     const categoriesForType = VENDOR_TYPE_CATEGORIES[vendorType];
     let averageScore = null;
+    let averageScoreIsEstimate = false;
 
     if (categoriesForType) {
       const agg = await AeoReport.aggregate([
@@ -1276,6 +1259,7 @@ router.get('/city-stats', async (req, res) => {
         averageScore = Math.round(agg[0].avg);
       } else {
         averageScore = FALLBACK_AVERAGES[vendorType] || null;
+        averageScoreIsEstimate = averageScore !== null;
       }
     }
 
@@ -1286,6 +1270,7 @@ router.get('/city-stats', async (req, res) => {
       claimedCount,
       paidCount,
       averageScore,
+      averageScoreIsEstimate,
     };
 
     cityStatsCache[cacheKey] = { data, expiry: Date.now() + 24 * 60 * 60 * 1000 };
