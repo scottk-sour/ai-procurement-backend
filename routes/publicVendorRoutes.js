@@ -18,6 +18,7 @@ import { calculateDistance, filterByDistance, getBoundingBox, formatDistance } f
 import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
+import { VENDOR_TYPE_CATEGORIES } from '../services/aeoReportGenerator.js';
 
 const router = express.Router();
 
@@ -1198,7 +1199,8 @@ const cityStatsCache = {};
 
 /**
  * GET /api/public/city-stats?city=cardiff&vendorType=solicitor
- * Return aggregated vendor counts and average AEO score for a city + vendor type
+ * Return aggregated vendor counts and average AEO score for a city + vendor type.
+ * When fewer than 5 reports exist, averageScore is null and insufficientData is true.
  */
 router.get('/city-stats', async (req, res) => {
   try {
@@ -1233,6 +1235,8 @@ router.get('/city-stats', async (req, res) => {
     // Average AEO score for this city + vendor type
     const categoriesForType = VENDOR_TYPE_CATEGORIES[vendorType];
     let averageScore = null;
+    let reportCount = 0;
+    let insufficientData = true;
 
     if (categoriesForType) {
       const agg = await AeoReport.aggregate([
@@ -1246,10 +1250,11 @@ router.get('/city-stats', async (req, res) => {
         { $group: { _id: null, avg: { $avg: '$score' }, count: { $sum: 1 } } },
       ]);
 
-      if (agg.length && agg[0].count >= 5) {
+      reportCount = agg.length ? agg[0].count : 0;
+
+      if (reportCount >= 5) {
         averageScore = Math.round(agg[0].avg);
-      } else {
-        averageScore = FALLBACK_AVERAGES[vendorType] || null;
+        insufficientData = false;
       }
     }
 
@@ -1260,6 +1265,8 @@ router.get('/city-stats', async (req, res) => {
       claimedCount,
       paidCount,
       averageScore,
+      reportCount,
+      insufficientData,
     };
 
     cityStatsCache[cacheKey] = { data, expiry: Date.now() + 24 * 60 * 60 * 1000 };
