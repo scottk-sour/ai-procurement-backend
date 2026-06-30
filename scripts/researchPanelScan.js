@@ -15,13 +15,20 @@ import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 import { querySinglePlatform } from '../services/platformQuery/index.js';
 import { buildPrompt } from '../services/platformQuery/prompt.js';
 
-const CITY = 'Cardiff';
-const CATEGORY_PROMPTS = [
-  'conveyancing solicitor',
-  'commercial solicitor',
-  'family law solicitor',
-  'wills and probate solicitor',
-];
+function argVal(flag, def) {
+  const i = process.argv.indexOf(flag);
+  return i > -1 ? process.argv[i + 1] : def;
+}
+const CITY = argVal('--city', 'Cardiff');
+const promptsArg = argVal('--prompts', null);
+const CATEGORY_PROMPTS = promptsArg
+  ? promptsArg.split('|').map(s => s.trim()).filter(Boolean)
+  : [
+      'conveyancing solicitor',
+      'commercial solicitor',
+      'family law solicitor',
+      'wills and probate solicitor',
+    ];
 // Real model per platform — never leave aiModel as the claude-haiku default.
 const PLATFORM_MODEL = {
   perplexity: 'sonar',
