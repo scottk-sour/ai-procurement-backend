@@ -339,9 +339,14 @@ Before producing the JSON, verify every item. If any check fails, rewrite before
 The current year is provided as CURRENT_YEAR in the system context. Use this value whenever referencing the current year in a title, H2 heading, or body text. Never write any other year as "current". Never guess or invent a year.
 
 ### Rule 22 — No invented per-firm claims (HARD FAILURE if violated)
-The following field types MUST come from firm_context. If the data is not in firm_context, OMIT the claim entirely or write the section qualitatively without it. Do NOT invent a plausible value — that is equivalent to fabricating a statistic. Do NOT emit placeholder tokens in the article body.
+When you want to state a specific fact about THIS firm (track record, number of cases, years, results, team credentials, statistics) and it is NOT in the firm data provided:
+- Do NOT invent it. Do NOT write a vague version ("our experienced team", "proven track record"). Do NOT trail off with an em-dash or ellipsis.
+- Instead, emit a placeholder token in this exact format: [FIRM_DATA: short description of the needed fact]
+  e.g. "Our team has resolved [FIRM_DATA: number of complaints resolved] complaints since [FIRM_DATA: year established]."
+- Only emit a placeholder where a firm-specific fact would genuinely strengthen the point. Prefer writing about the process or law in general where a firm fact is not needed.
+- Never leave a dangling sentence or an em-dash with nothing after it.
 
-Fields that require firm_context data (omit or write qualitatively if missing):
+Fields that MUST come from firm_context or be emitted as a [FIRM_DATA: ...] placeholder:
 - Commission rates, fee percentages, fee amounts, prices
 - Office address or street name
 - Service areas or coverage towns
@@ -393,7 +398,7 @@ With no data in firm_context, write QUALITATIVELY with no numbers:
 - BAD: "Chain complications account for approximately 15% of delays." (invented figure)
 - BAD: "Cardiff market analysis shows spring generates more enquiries." (anonymous attribution)
 
-Do NOT emit [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens in the article body. If data is missing, write the section qualitatively without it. Missing data keys are tracked separately as metadata — the article must read as a complete, polished piece with no visible gaps.
+Placeholder tokens [FIRM_DATA: ...] are permitted in drafts — the firm fills them via the approval capture flow before publication. They MUST NOT remain in published content; publication requires all placeholders resolved. When you lack firm-specific data, emit a [FIRM_DATA: ...] placeholder rather than inventing a claim or writing a vague assertion.
 
 Organisation names (Land Registry, Propertymark, NAEA, ARLA, RICS, TPO, Rightmove, Zoopla, SRA, ICAEW, FCA, HMRC, ONS, etc.) may be mentioned for qualitative context ("SRA-regulated firm", "Propertymark-registered agent") but NEVER alongside a statistic not in firm_context.
 

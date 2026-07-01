@@ -37,7 +37,7 @@ Do NOT flag:
 - GENERIC third-person category statements with no figure and no firm attribution: "solicitors regulated by the SRA must…", "Propertymark-registered agents are required to…"
 - But DO flag if the firm claims ITS OWN membership/registration/qualification/accreditation ("we are Propertymark-registered", "our NAEA-qualified staff") and this is NOT confirmed in firm_context — add it to firmClaimsNotInContext
 - Regulatory rules/thresholds that are public law: SDLT bands, stamp duty rates
-- [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens (these are intentional, though they should not appear in the body)
+- [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens — these are intentional honest gap markers, the opposite of fabrication. Never flag them.
 
 FIRM CLAIMS NOT IN CONTEXT — flag any firm-specific performance claim (sales counts, fee amounts, team sizes, accreditations, awards, specific service areas) stated as fact that is NOT in firm_context.
 
