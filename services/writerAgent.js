@@ -15,6 +15,7 @@ import { validateDraft } from './contentReview/validateDraft.js';
 import { verifyClaims } from './contentReview/verifyClaims.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
 import { profileFor } from '../lib/config/industryProfiles.js';
+import { extractFirstJsonObject } from './contentReview/jsonExtract.js';
 
 import { SONNET_MODEL } from '../lib/config/models.js';
 
@@ -529,10 +530,12 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         messages: [{ role: 'user', content: retryUserPrompt }],
       });
       const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const retryJson = retryText.match(/\{[\s\S]*\}/);
-      if (retryJson) {
-        const retryParsed = JSON.parse(retryJson[0]);
+      const retryObj = extractFirstJsonObject(retryText);
+      if (retryObj) {
+        const retryParsed = JSON.parse(retryObj);
         draftBody = retryParsed.body || draftBody;
+      } else {
+        console.warn(`${logPrefix} ${vendor.company}: gate retry returned no parseable JSON, keeping prior draft`);
       }
       gate = validateDraft(draftBody, firmForGate);
     } catch (retryErr) {
@@ -569,7 +572,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const firmRegulator = profileFor(vendor.vendorType)?.regulatorFull || null;
 
   let claimVerification = { status: 'not_run', issues: [], meta: {} };
-  const MAX_CLAIM_REWRITES = 2;
+  const MAX_CLAIM_REWRITES = 3;
 
   for (let claimPass = 0; claimPass < MAX_CLAIM_REWRITES; claimPass++) {
     const currentCost = await getPlatformCostThisMonth();
@@ -593,30 +596,35 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     const failedIssues = claimVerification.issues || [];
     if (failedIssues.length === 0) break;
 
-    const corrections = failedIssues.map(i => `- ${i.sentence}: ${i.reason}${i.repair ? ' Fix: ' + i.repair : ''}`).join('\n');
-    console.log(`${logPrefix} ${vendor.company}: legal check failed (pass ${claimPass + 1}/${MAX_CLAIM_REWRITES}), rewriting`);
+    console.log(`${logPrefix} ${vendor.company}: legal check failed (pass ${claimPass + 1}/${MAX_CLAIM_REWRITES}), applying surgical repairs`);
 
-    try {
-      const retryUserPrompt = `${cleanedPrompt}\n\n## LEGAL CORRECTIONS — a previous draft had these issues:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
-      const retryResp = await anthropic.messages.create({
-        model: MODEL, max_tokens: 4000, temperature: 0.7,
-        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
-        messages: [{ role: 'user', content: retryUserPrompt }],
-      });
-      const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const retryJson = retryText.match(/\{[\s\S]*\}/);
-      if (retryJson) {
-        const retryParsed = JSON.parse(retryJson[0]);
-        draftBody = retryParsed.body || draftBody;
+    const { repaired, unresolved } = applyRepairs(draftBody, failedIssues);
+    draftBody = repaired;
+
+    if (unresolved.length > 0) {
+      console.log(`${logPrefix} ${vendor.company}: ${unresolved.length} issue(s) could not be surgically repaired, attempting targeted LLM rewrite`);
+      try {
+        const unresolvedInstructions = unresolved.map(i => `- Replace: "${i.sentence}" → With: "${i.repair || '(remove this sentence entirely)'}"`).join('\n');
+        const targetedResp = await anthropic.messages.create({
+          model: MODEL, max_tokens: 4000, temperature: 0,
+          system: 'You are an editor. You will receive an article and a list of specific sentences to replace. Replace ONLY those sentences with the provided replacements. Output every other sentence byte-for-byte unchanged. Return the full article as JSON: { "body": "..." }',
+          messages: [{ role: 'user', content: `ARTICLE:\n${draftBody}\n\nREPLACEMENTS:\n${unresolvedInstructions}` }],
+        });
+        const targetedText = targetedResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+        const targetedObj = extractFirstJsonObject(targetedText);
+        if (targetedObj) {
+          const targetedParsed = JSON.parse(targetedObj);
+          draftBody = targetedParsed.body || draftBody;
+        }
+      } catch (targetedErr) {
+        console.error(`${logPrefix} ${vendor.company}: targeted rewrite failed:`, targetedErr.message);
       }
-      gate = validateDraft(draftBody, firmForGate);
-      if (!gate.ok) {
-        console.log(`${logPrefix} ${vendor.company}: rewrite reintroduced gate violation, stopping`);
-        break;
-      }
-    } catch (retryErr) {
-      console.error(`${logPrefix} ${vendor.company}: claim rewrite failed:`, retryErr.message);
-      break;
+    }
+
+    gate = validateDraft(draftBody, firmForGate);
+    if (!gate.ok) {
+      console.log(`${logPrefix} ${vendor.company}: repair introduced gate violation (${gate.blocks.map(b => b.code).join(',')}), continuing loop`);
+      continue;
     }
   }
 
@@ -734,6 +742,44 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     vendorId: String(vendorId),
     ...(dryRun ? { dryRun: true } : {}),
   };
+}
+
+function normaliseSentence(s) {
+  return (s || '').trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ');
+}
+
+function applyRepairs(body, issues) {
+  let repaired = body;
+  const unresolved = [];
+
+  for (const issue of issues) {
+    if (!issue.sentence) { unresolved.push(issue); continue; }
+
+    const needle = normaliseSentence(issue.sentence);
+    const normBody = normaliseSentence(repaired);
+    const idx = normBody.indexOf(needle);
+
+    if (idx === -1) {
+      unresolved.push(issue);
+      continue;
+    }
+
+    const originalStart = repaired.length > normBody.length ? idx : idx;
+    const originalSentence = repaired.substring(originalStart, originalStart + issue.sentence.length);
+    const actualNeedle = repaired.includes(issue.sentence) ? issue.sentence : originalSentence;
+
+    if (issue.verdict === 'firm-unverified' && (!issue.repair || issue.repair.toLowerCase().includes('remove'))) {
+      repaired = repaired.replace(actualNeedle, '');
+    } else if (issue.repair) {
+      repaired = repaired.replace(actualNeedle, issue.repair);
+    } else {
+      unresolved.push(issue);
+      continue;
+    }
+  }
+
+  repaired = repaired.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
+  return { repaired, unresolved };
 }
 
 function buildClaimFailureReport(issues, firmName) {
