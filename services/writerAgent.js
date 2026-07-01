@@ -401,34 +401,20 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       .filter(Boolean);
 
     for (const excerpt of excerpts) {
-      // Try exact substring match first, then progressively shorter prefixes
       let found = false;
       for (const field of ['body', 'linkedIn', 'facebook']) {
         const src = field === 'body' ? draftBody : field === 'linkedIn' ? draftLinkedIn : draftFacebook;
         if (!src) continue;
 
-        // Find the sentence containing this excerpt
-        const idx = src.indexOf(excerpt);
-        const fuzzyIdx = idx === -1 && excerpt.length > 30 ? src.indexOf(excerpt.substring(0, 30)) : idx;
-        const matchIdx = idx !== -1 ? idx : fuzzyIdx;
-
-        if (matchIdx !== -1) {
-          // Find sentence boundaries around the match
-          const before = src.lastIndexOf('.', matchIdx);
-          const sentStart = before === -1 ? 0 : before + 1;
-          const after = src.indexOf('.', matchIdx + 10);
-          const sentEnd = after === -1 ? src.length : after + 1;
-          const sentence = src.slice(sentStart, sentEnd).trim();
-
-          if (sentence.length > 5) {
-            const updated = src.replace(sentence, '');
-            if (field === 'body') draftBody = updated;
-            else if (field === 'linkedIn') draftLinkedIn = updated;
-            else draftFacebook = updated;
-            deletedSentences.push(sentence.substring(0, 200));
-            found = true;
-            break;
-          }
+        const located = locateExcerptInText(src, excerpt);
+        if (located && located.length > 5) {
+          const updated = src.replace(located, '');
+          if (field === 'body') draftBody = updated;
+          else if (field === 'linkedIn') draftLinkedIn = updated;
+          else draftFacebook = updated;
+          deletedSentences.push(located.substring(0, 200));
+          found = true;
+          break;
         }
       }
       if (!found) {
@@ -796,6 +782,32 @@ function findSentenceInDraft(draft, issueSentence) {
   return null;
 }
 
+function extractDistinctiveTokens(sentence) {
+  return (sentence || '').split(/\s+/).filter(w => w.length > 4 && /[A-Z]{2,}/.test(w));
+}
+
+function replaceAllOccurrences(body, located, replacement, issue) {
+  let result = body.replace(located, replacement);
+  const wrongTokens = extractDistinctiveTokens(issue.sentence).filter(t => !extractDistinctiveTokens(issue.repair || '').includes(t));
+  if (wrongTokens.length > 0 && issue.repair) {
+    const repairTokens = extractDistinctiveTokens(issue.repair);
+    const sentences = splitSentences(result);
+    for (const sent of sentences) {
+      const hasWrong = wrongTokens.some(t => sent.includes(t));
+      const alreadyFixed = repairTokens.some(t => sent.includes(t));
+      if (hasWrong && !alreadyFixed) {
+        for (const wt of wrongTokens) {
+          const correctToken = repairTokens.find(rt => rt.length >= wt.length - 2 && rt.length <= wt.length + 2);
+          if (correctToken && sent.includes(wt)) {
+            result = result.replace(sent, sent.replace(new RegExp(wt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), correctToken));
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
 function applyRepairs(body, issues) {
   let repaired = body;
   const unresolved = [];
@@ -811,9 +823,9 @@ function applyRepairs(body, issues) {
     }
 
     if (issue.verdict === 'firm-unverified' && (!issue.repair || issue.repair.toLowerCase().includes('remove'))) {
-      repaired = repaired.replace(located, '');
+      repaired = replaceAllOccurrences(repaired, located, '', issue);
     } else if (issue.repair) {
-      repaired = repaired.replace(located, issue.repair);
+      repaired = replaceAllOccurrences(repaired, located, issue.repair, issue);
     } else {
       unresolved.push(issue);
       continue;
@@ -822,6 +834,12 @@ function applyRepairs(body, issues) {
 
   repaired = repaired.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
   return { repaired, unresolved };
+}
+
+function locateExcerptInText(text, excerpt) {
+  if (text.includes(excerpt)) return excerpt;
+  const sent = findSentenceInDraft(text, excerpt);
+  return sent;
 }
 
 function buildClaimFailureReport(issues, firmName) {

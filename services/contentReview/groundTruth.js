@@ -95,7 +95,7 @@ export function buildJurisdictionRulesBlock(vendorType, country) {
   const isEngland = country === 'England';
   const isScotland = country === 'Scotland';
 
-  const L = [`## JURISDICTION RULES — ${country} ${vendorType}`, `When writing for a ${country} ${vendorType} firm, you MUST follow these rules exactly.`];
+  const L = [`## JURISDICTION RULES — ${country} ${vendorType}`, `When writing for a ${country} ${vendorType} firm, you MUST follow these rules exactly.`, 'State each regulatory fact, body name, or statutory figure ONCE. Do not repeat the same fact in multiple sections — repetition risks inconsistency.'];
 
   for (const row of allRows) {
     const local = isWales ? row.wales : isScotland ? row.scotland : isEngland ? row.england : null;
