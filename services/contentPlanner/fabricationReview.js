@@ -32,7 +32,8 @@ Examples to FLAG:
 
 Do NOT flag:
 - Purely qualitative statements with no numbers: "overpriced properties take longer to sell"
-- Qualitative org mentions with no figure: "SRA-regulated firm", "Propertymark-registered"
+- GENERIC third-person category statements with no figure and no firm attribution: "solicitors regulated by the SRA must…", "Propertymark-registered agents are required to…"
+- But DO flag if the firm claims ITS OWN membership/registration/qualification/accreditation ("we are Propertymark-registered", "our NAEA-qualified staff") and this is NOT confirmed in firm_context — add it to firmClaimsNotInContext
 - Regulatory rules/thresholds that are public law: SDLT bands, stamp duty rates
 - [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens (these are intentional, though they should not appear in the body)
 
