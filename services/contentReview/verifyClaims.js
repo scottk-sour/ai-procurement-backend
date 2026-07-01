@@ -83,28 +83,40 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
   }
 
   let results;
-  try {
-    const verifyResp = await anthropic.messages.create({
-      model: SONNET_MODEL,
-      max_tokens: 3000,
-      temperature: 0,
-      system: buildVerifySystem(jurisdiction, regulator, firmFacts),
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 10,
-        allowed_domains: ALLOWED_DOMAINS,
-      }],
-      messages: [{
-        role: 'user',
-        content: `Verify these claims for a ${vertical} firm in ${jurisdiction}${regulator ? ` (regulated by ${regulator})` : ''}.\n\nClaims:\n${claims.map(c => `${c.id} [${c.type}]: ${c.text}`).join('\n')}`,
-      }],
-    });
-    const raw = verifyResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const parsed = extractJson(raw);
-    results = parsed.results || [];
-  } catch (err) {
-    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim verification failed: ${err.message}`, model: SONNET_MODEL, jurisdiction, regulator, executionMs: Date.now() - startMs, claimCount: claims.length } };
+  let verifyLastError;
+  for (let verifyAttempt = 0; verifyAttempt < 2; verifyAttempt++) {
+    try {
+      const verifyResp = await anthropic.messages.create({
+        model: SONNET_MODEL,
+        max_tokens: 3000,
+        temperature: 0,
+        system: buildVerifySystem(jurisdiction, regulator, firmFacts),
+        tools: [{
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 10,
+          allowed_domains: ALLOWED_DOMAINS,
+        }],
+        messages: [{
+          role: 'user',
+          content: `Verify these claims for a ${vertical} firm in ${jurisdiction}${regulator ? ` (regulated by ${regulator})` : ''}.\n\nClaims:\n${claims.map(c => `${c.id} [${c.type}]: ${c.text}`).join('\n')}`,
+        }],
+      });
+      const raw = verifyResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      const parsed = extractJson(raw);
+      results = parsed.results || [];
+      verifyLastError = null;
+      break;
+    } catch (err) {
+      verifyLastError = err;
+      if (verifyAttempt === 0) {
+        console.warn(`[verifyClaims] Attempt 1 failed (${err.message}), retrying after 1.5s`);
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+  }
+  if (verifyLastError) {
+    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim verification failed after 2 attempts: ${verifyLastError.message}`, model: SONNET_MODEL, jurisdiction, regulator, executionMs: Date.now() - startMs, claimCount: claims.length } };
   }
 
   const resultMap = new Map(results.map(r => [r.id, r]));
