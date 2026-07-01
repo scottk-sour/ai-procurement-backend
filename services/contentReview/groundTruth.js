@@ -84,3 +84,49 @@ export function buildGroundTruthBlock(firm = {}) {
   L.push('</ground_truth>');
   return L.join('\n');
 }
+
+export function buildJurisdictionRulesBlock(vendorType, country) {
+  if (!vendorType || !country) return '';
+
+  const allRows = factsFor(vendorType);
+  if (allRows.length === 0) return '';
+
+  const isWales = country === 'Wales';
+  const isEngland = country === 'England';
+  const isScotland = country === 'Scotland';
+
+  const L = [`## JURISDICTION RULES — ${country} ${vendorType}`, `When writing for a ${country} ${vendorType} firm, you MUST follow these rules exactly.`];
+
+  for (const row of allRows) {
+    const local = isWales ? row.wales : isScotland ? row.scotland : isEngland ? row.england : null;
+    if (!local) continue;
+
+    L.push('');
+    L.push(`### ${row.id.replace(/_/g, ' ').toUpperCase()}`);
+    if (local.canonical) L.push(`Use: "${local.canonical}"`);
+    if (local.occupantTerm) L.push(`Occupant term: "${local.occupantTerm}" (not "tenant")`);
+    if (local.noticeProvision) L.push(`Notice provision: ${local.noticeProvision}`);
+
+    const forbidden = isWales ? row.forbiddenInWales : isScotland ? row.forbiddenInScotland : row.forbiddenInEngland;
+    if (forbidden?.length) L.push(`NEVER use: ${forbidden.join(', ')}`);
+
+    if (isWales && row.requiredInWales?.length) {
+      L.push(`MUST appear when the topic touches ${row.domain || 'this area'}: ${row.requiredInWales.join(', ')}`);
+    }
+
+    if (row.englandOnly && isWales) L.push(`"${row.id.replace(/_/g, ' ')}" does NOT apply in ${country} — omit entirely.`);
+  }
+
+  const statuteRows = factsFor(vendorType, 'statute');
+  for (const row of statuteRows) {
+    if (row.correctAct) {
+      L.push('');
+      L.push(`### ${row.id.replace(/_/g, ' ').toUpperCase()}`);
+      L.push(`Correct statute: "${row.correctAct}"`);
+      if (row.wrongActs?.length) L.push(`Do NOT cite: ${row.wrongActs.join(', ')}`);
+      if (row.note) L.push(`Note: ${row.note}`);
+    }
+  }
+
+  return L.join('\n');
+}

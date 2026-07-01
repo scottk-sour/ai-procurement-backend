@@ -10,7 +10,7 @@ import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval, latestRejectionReason } from './approvalQueue.js';
 import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
 import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
-import { localiseNamedEntities } from './contentReview/groundTruth.js';
+import { localiseNamedEntities, buildJurisdictionRulesBlock } from './contentReview/groundTruth.js';
 import { validateDraft } from './contentReview/validateDraft.js';
 import { verifyClaims } from './contentReview/verifyClaims.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
@@ -234,13 +234,17 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const earlyJurisdiction = resolveJurisdiction(firmContext?._rawFirmForGate || {}).regime?.country || null;
+  const jurisdictionRules = buildJurisdictionRulesBlock(vendor.vendorType, earlyJurisdiction);
+  const writerSystemPrompt = `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${jurisdictionRules ? jurisdictionRules + '\n\n' : ''}${firmContextBlock}`;
+
   let response;
   try {
     response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 4000,
       temperature: 0.7,
-      system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+      system: writerSystemPrompt,
       messages: [{ role: 'user', content: cleanedPrompt }],
     });
   } catch (err) {
@@ -526,7 +530,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       const retryUserPrompt = `${cleanedPrompt}\n\n## CORRECTIONS — a previous attempt was rejected for:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
       const retryResp = await anthropic.messages.create({
         model: MODEL, max_tokens: 4000, temperature: 0.7,
-        system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
+        system: writerSystemPrompt,
         messages: [{ role: 'user', content: retryUserPrompt }],
       });
       const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
@@ -568,7 +572,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
   // ── Layer 2: source-verifying claim check ──
 
-  const firmJurisdiction = resolveJurisdiction(firmForGate).regime?.country || 'the UK';
+  const firmJurisdiction = earlyJurisdiction || 'the UK';
   const firmRegulator = profileFor(vendor.vendorType)?.regulatorFull || null;
 
   let claimVerification = { status: 'not_run', issues: [], meta: {} };
