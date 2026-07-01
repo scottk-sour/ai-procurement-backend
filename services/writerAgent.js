@@ -15,6 +15,7 @@ import { validateDraft } from './contentReview/validateDraft.js';
 import { verifyClaims } from './contentReview/verifyClaims.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
 import { profileFor } from '../lib/config/industryProfiles.js';
+import { extractFirstJsonObject } from './contentReview/jsonExtract.js';
 
 import { SONNET_MODEL } from '../lib/config/models.js';
 
@@ -529,10 +530,12 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         messages: [{ role: 'user', content: retryUserPrompt }],
       });
       const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const retryJson = retryText.match(/\{[\s\S]*\}/);
-      if (retryJson) {
-        const retryParsed = JSON.parse(retryJson[0]);
+      const retryObj = extractFirstJsonObject(retryText);
+      if (retryObj) {
+        const retryParsed = JSON.parse(retryObj);
         draftBody = retryParsed.body || draftBody;
+      } else {
+        console.warn(`${logPrefix} ${vendor.company}: gate retry returned no parseable JSON, keeping prior draft`);
       }
       gate = validateDraft(draftBody, firmForGate);
     } catch (retryErr) {
@@ -604,10 +607,12 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         messages: [{ role: 'user', content: retryUserPrompt }],
       });
       const retryText = retryResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const retryJson = retryText.match(/\{[\s\S]*\}/);
-      if (retryJson) {
-        const retryParsed = JSON.parse(retryJson[0]);
+      const retryObj = extractFirstJsonObject(retryText);
+      if (retryObj) {
+        const retryParsed = JSON.parse(retryObj);
         draftBody = retryParsed.body || draftBody;
+      } else {
+        console.warn(`${logPrefix} ${vendor.company}: legal retry returned no parseable JSON, keeping prior draft`);
       }
       gate = validateDraft(draftBody, firmForGate);
       if (!gate.ok) {
