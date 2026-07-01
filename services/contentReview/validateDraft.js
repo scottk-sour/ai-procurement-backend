@@ -223,9 +223,54 @@ function ruleDeprecatedSchema(text) {
     : [];
 }
 
+const MEMBERSHIP_BODIES = [
+  { re: 'NAEA(?:\\s+Propertymark)?', field: 'propertymarkNumber', label: 'NAEA / Propertymark' },
+  { re: 'ARLA(?:\\s+Propertymark)?', field: 'propertymarkNumber', label: 'ARLA / Propertymark' },
+  { re: 'Propertymark',              field: 'propertymarkNumber', label: 'Propertymark' },
+  { re: 'RICS',  field: 'ricsNumber',      label: 'RICS' },
+  { re: 'SRA',   field: 'sraNumber',       label: 'SRA' },
+  { re: 'ICAEW', field: 'icaewFirmNumber', label: 'ICAEW' },
+  { re: 'ACCA',  field: 'accaNumber',      label: 'ACCA' },
+  { re: 'FCA',   field: 'fcaNumber',       label: 'FCA' },
+];
+const MEMBERSHIP_PREDICATE = /\b(?:member|members|membership|registered|registration|qualified|qualification|accredited|accreditation|regulated|certified)\b/i;
+const MEMBERSHIP_FIRM_ATTRIB = /\b(?:we|we're|we are|our|us|the firm|this firm|our firm|the team|our team|our staff|the practice|our practice)\b/i;
+const MEMBERSHIP_SELF_PEOPLE = 'staff|team|advisers?|advisors?|surveyors?|valuers?|negotiators?|agents|solicitors?|accountants?|consultants?';
+
+function membershipFieldOnFile(firm, field) {
+  return firm[field] || (firm.firmData && (firm.firmData[field]?.value || firm.firmData[field]));
+}
+
+function ruleUnverifiedMembershipClaim(text, firm) {
+  const out = [];
+  const seen = new Set();
+  for (const body of MEMBERSHIP_BODIES) {
+    const bodyRe = new RegExp(`\\b(?:${body.re})\\b`, 'gi');
+    const construct1 = new RegExp(`(?:${body.re})[\\s-]?(?:qualified|registered|accredited|certified|regulated)\\s+(?:${MEMBERSHIP_SELF_PEOPLE})`, 'i');
+    const construct2 = new RegExp(`(?:${MEMBERSHIP_SELF_PEOPLE})\\s+(?:are|is|being)\\s+(?:${body.re})[\\s-]?(?:qualified|registered|accredited|certified)`, 'i');
+    let m;
+    while ((m = bodyRe.exec(text)) !== null) {
+      const idx = m.index;
+      const window = text.substring(Math.max(0, idx - 90), Math.min(text.length, idx + 110));
+      if (!MEMBERSHIP_PREDICATE.test(window)) continue;
+      if (membershipFieldOnFile(firm, body.field)) continue;
+      const firmAttributed = MEMBERSHIP_FIRM_ATTRIB.test(window);
+      const selfPeople = construct1.test(window) || construct2.test(window);
+      if (!firmAttributed && !selfPeople) continue;
+      const key = body.field + ':' + Math.round(idx / 50);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ severity: 'block', code: 'UNVERIFIED_MEMBERSHIP_CLAIM',
+        message: `Draft asserts ${body.label} membership/qualification for the firm, but no verified ${body.field} is on file. Add the verified number to the firm record or remove the claim.` });
+    }
+  }
+  return out;
+}
+
 const RULES = [ruleJurisdiction, rulePlaceholderRegNumber, ruleUnverifiedRegNumber,
   ruleForeignRegulator, ruleLettingJurisdiction, ruleStatuteCitation,
   ruleVoluntaryBodyOverclaim, ruleCredentialExclusivity,
+  ruleUnverifiedMembershipClaim,
   ruleAdviceLanguage, ruleDeprecatedSchema];
 
 export function validateDraft(draftText, firm = {}) {
