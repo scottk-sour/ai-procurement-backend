@@ -748,8 +748,52 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
   };
 }
 
-function normaliseSentence(s) {
-  return (s || '').trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, ' ');
+function normaliseForMatch(s) {
+  return (s || '').trim()
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/[.!?;:,]+$/, '');
+}
+
+function splitSentences(text) {
+  return text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 5);
+}
+
+function findSentenceInDraft(draft, issueSentence) {
+  if (draft.includes(issueSentence)) return issueSentence;
+
+  const normIssue = normaliseForMatch(issueSentence);
+  const sentences = splitSentences(draft);
+
+  for (const sent of sentences) {
+    if (normaliseForMatch(sent) === normIssue) return sent;
+  }
+
+  for (const sent of sentences) {
+    const normSent = normaliseForMatch(sent);
+    if (normSent.includes(normIssue) || normIssue.includes(normSent)) return sent;
+  }
+
+  const words = issueSentence.split(/\s+/).filter(w => w.length > 3);
+  const anchors = [];
+  for (let i = 0; i <= words.length - 4; i++) {
+    anchors.push(words.slice(i, i + 4).join(' '));
+  }
+  const rareTokens = words.filter(w => w.length > 5 && /[A-Z]{2,}|[a-z]{6,}/.test(w));
+
+  for (const sent of sentences) {
+    const normSent = normaliseForMatch(sent);
+    for (const anchor of anchors) {
+      if (normSent.includes(normaliseForMatch(anchor))) return sent;
+    }
+    for (const token of rareTokens) {
+      if (normSent.includes(token.toLowerCase())) return sent;
+    }
+  }
+
+  return null;
 }
 
 function applyRepairs(body, issues) {
@@ -759,23 +803,17 @@ function applyRepairs(body, issues) {
   for (const issue of issues) {
     if (!issue.sentence) { unresolved.push(issue); continue; }
 
-    const needle = normaliseSentence(issue.sentence);
-    const normBody = normaliseSentence(repaired);
-    const idx = normBody.indexOf(needle);
+    const located = findSentenceInDraft(repaired, issue.sentence);
 
-    if (idx === -1) {
+    if (!located) {
       unresolved.push(issue);
       continue;
     }
 
-    const originalStart = repaired.length > normBody.length ? idx : idx;
-    const originalSentence = repaired.substring(originalStart, originalStart + issue.sentence.length);
-    const actualNeedle = repaired.includes(issue.sentence) ? issue.sentence : originalSentence;
-
     if (issue.verdict === 'firm-unverified' && (!issue.repair || issue.repair.toLowerCase().includes('remove'))) {
-      repaired = repaired.replace(actualNeedle, '');
+      repaired = repaired.replace(located, '');
     } else if (issue.repair) {
-      repaired = repaired.replace(actualNeedle, issue.repair);
+      repaired = repaired.replace(located, issue.repair);
     } else {
       unresolved.push(issue);
       continue;
