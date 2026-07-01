@@ -1,4 +1,5 @@
 import { SONNET_MODEL } from '../../lib/config/models.js';
+import { extractFirstJsonObject } from './jsonExtract.js';
 
 const ALLOWED_DOMAINS = [
   'legislation.gov.uk', 'gov.uk', 'gov.wales', 'law.gov.wales',
@@ -41,10 +42,9 @@ Return JSON only: { "results": [{ "id": "c1", "verdict": "verified"|"contradicte
 }
 
 function extractJson(text) {
-  const stripped = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('no JSON object in response');
-  return JSON.parse(match[0]);
+  const obj = extractFirstJsonObject(text);
+  if (!obj) throw new Error('No complete JSON object in response');
+  return JSON.parse(obj);
 }
 
 export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK', regulator = null, firmFacts = null }) {

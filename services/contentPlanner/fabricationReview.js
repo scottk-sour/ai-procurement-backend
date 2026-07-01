@@ -1,3 +1,5 @@
+import { extractFirstJsonObject } from '../contentReview/jsonExtract.js';
+
 const REVIEW_MODEL = 'claude-haiku-4-5-20251001';
 
 const REVIEW_SYSTEM_PROMPT = `You are a factual accuracy reviewer for blog posts written by an AI writer agent on behalf of UK regulated professional services firms. Your job is to catch fabricated statistics and invented claims.
@@ -49,69 +51,79 @@ VERDICT: "fail" if ANY fabricatedAttributions, OR ANY firmClaimsNotInContext, OR
 
 Return ONLY the JSON object.`;
 
-export async function reviewDraftForFabrication({ draftText, firmContext, vertical }) {
-  if (!draftText) {
-    return { fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0, verdict: 'fail', error: 'empty draft' };
-  }
-
-  let response;
-  try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-    response = await client.messages.create({
-      model: REVIEW_MODEL,
-      max_tokens: 1500,
-      temperature: 0,
-      system: REVIEW_SYSTEM_PROMPT,
-      messages: [{
-        role: 'user',
-        content: `VERTICAL: ${vertical || 'unknown'}\n\nFIRM CONTEXT:\n${firmContext || '(none provided)'}\n\nDRAFT TO REVIEW:\n${draftText}`,
-      }],
-    });
-  } catch (err) {
-    console.error('[FabricationReview] API error:', err.message);
-    return {
-      fabricatedAttributions: [],
-      firmClaimsNotInContext: [],
-      qualityScore: 0,
-      verdict: 'fail',
-      error: `API error: ${err.message}`,
-    };
-  }
+async function callReviewOnce(client, draftText, firmContext, vertical) {
+  const response = await client.messages.create({
+    model: REVIEW_MODEL,
+    max_tokens: 3000,
+    temperature: 0,
+    system: REVIEW_SYSTEM_PROMPT,
+    messages: [{
+      role: 'user',
+      content: `VERTICAL: ${vertical || 'unknown'}\n\nFIRM CONTEXT:\n${firmContext || '(none provided)'}\n\nDRAFT TO REVIEW:\n${draftText}`,
+    }],
+  });
 
   const raw = response.content
     ?.filter(b => b.type === 'text')
     .map(b => b.text)
     .join('') || '';
 
+  const obj = extractFirstJsonObject(raw);
+  if (!obj) throw new Error('No complete JSON object in response');
+  return JSON.parse(obj);
+}
+
+export async function reviewDraftForFabrication({ draftText, firmContext, vertical }) {
+  if (!draftText) {
+    return { fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0, verdict: 'fail', error: 'empty draft', reviewRan: false };
+  }
+
+  let client;
   try {
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON object found in response');
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    const result = {
-      fabricatedAttributions: Array.isArray(parsed.fabricatedAttributions) ? parsed.fabricatedAttributions : [],
-      firmClaimsNotInContext: Array.isArray(parsed.firmClaimsNotInContext) ? parsed.firmClaimsNotInContext : [],
-      qualityScore: typeof parsed.qualityScore === 'number' ? parsed.qualityScore : 0,
-      verdict: parsed.verdict === 'pass' ? 'pass' : 'fail',
-    };
-
-    if (result.fabricatedAttributions.length > 0 || result.firmClaimsNotInContext.length > 0 || result.qualityScore < 8.5) {
-      result.verdict = 'fail';
-    }
-
-    return result;
+    const { default: Anthropic } = await import('@anthropic-ai/sdk');
+    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   } catch (err) {
-    console.error('[FabricationReview] Parse error:', err.message, 'Raw:', raw.substring(0, 200));
+    console.error('[FabricationReview] SDK init error:', err.message);
+    return { fabricatedAttributions: [], firmClaimsNotInContext: [], qualityScore: 0, verdict: 'fail', error: `SDK init: ${err.message}`, reviewRan: false };
+  }
+
+  let parsed;
+  let lastError;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      parsed = await callReviewOnce(client, draftText, firmContext, vertical);
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+      console.error(`[FabricationReview] Attempt ${attempt + 1} failed:`, err.message);
+    }
+  }
+
+  if (lastError || !parsed) {
+    console.error('[FabricationReview] Both attempts failed:', lastError?.message);
     return {
       fabricatedAttributions: [],
       firmClaimsNotInContext: [],
       qualityScore: 0,
       verdict: 'fail',
-      error: `Parse error: ${err.message}`,
+      error: `Review could not run after 2 attempts: ${lastError?.message}`,
+      reviewRan: false,
     };
   }
+
+  const result = {
+    fabricatedAttributions: Array.isArray(parsed.fabricatedAttributions) ? parsed.fabricatedAttributions : [],
+    firmClaimsNotInContext: Array.isArray(parsed.firmClaimsNotInContext) ? parsed.firmClaimsNotInContext : [],
+    qualityScore: typeof parsed.qualityScore === 'number' ? parsed.qualityScore : 0,
+    verdict: parsed.verdict === 'pass' ? 'pass' : 'fail',
+    reviewRan: true,
+  };
+
+  if (result.fabricatedAttributions.length > 0 || result.firmClaimsNotInContext.length > 0 || result.qualityScore < 8.5) {
+    result.verdict = 'fail';
+  }
+
+  return result;
 }
