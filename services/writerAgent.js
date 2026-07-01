@@ -23,7 +23,7 @@ const SONNET_INPUT_COST_PER_M = 3.00;
 const SONNET_OUTPUT_COST_PER_M = 15.00;
 const MONTHLY_COST_CAP_USD = 75;
 // 3 articles/week × ~4.33 weeks = max 14/month. Matches Pro tier promise in tendorai-what-you-get.pdf.
-const MONTHLY_PER_VENDOR_CAP = 14;
+const MONTHLY_PER_VENDOR_CAP = 100;
 const MODEL = SONNET_MODEL;
 
 const PRO_TIERS = new Set(['pro', 'managed', 'verified', 'enterprise']);
