@@ -14,6 +14,7 @@ import { localiseNamedEntities } from './contentReview/groundTruth.js';
 import { validateDraft } from './contentReview/validateDraft.js';
 import { verifyClaims } from './contentReview/verifyClaims.js';
 import { resolveJurisdiction } from '../lib/config/jurisdictions.js';
+import { profileFor } from '../lib/config/industryProfiles.js';
 
 import { SONNET_MODEL } from '../lib/config/models.js';
 
@@ -564,29 +565,39 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
   // ── Layer 2: source-verifying claim check ──
 
-  let claimVerification = { verdict: 'pass', claims: [], results: [] };
-  let needsClaimReview = false;
+  const firmJurisdiction = resolveJurisdiction(firmForGate).regime?.country || 'the UK';
+  const firmRegulator = profileFor(vendor.vendorType)?.regulatorFull || null;
+
+  let claimVerification = { status: 'not_run', issues: [], meta: {} };
   const MAX_CLAIM_REWRITES = 2;
 
   for (let claimPass = 0; claimPass < MAX_CLAIM_REWRITES; claimPass++) {
     const currentCost = await getPlatformCostThisMonth();
     if (currentCost + costEstimateUSD > MONTHLY_COST_CAP_USD) {
-      console.log(`${logPrefix} ${vendor.company}: cost cap would be exceeded ($${(currentCost + costEstimateUSD).toFixed(2)}), skipping claim rewrite`);
-      needsClaimReview = true;
+      console.log(`${logPrefix} ${vendor.company}: cost cap would be exceeded, skipping claim verification`);
+      claimVerification = { status: 'not_run', issues: [], meta: { guard: 'legal-review', error: 'cost_cap_exceeded' } };
       break;
     }
 
-    claimVerification = await verifyClaims({ draftText: draftBody, vertical: vendor.vendorType });
-    if (claimVerification.verdict === 'pass') break;
+    claimVerification = await verifyClaims({
+      draftText: draftBody,
+      vertical: vendor.vendorType,
+      jurisdiction: firmJurisdiction,
+      regulator: firmRegulator,
+      firmFacts: firmContextBlock,
+    });
 
-    const contradicted = claimVerification.results.filter(r => r.verdict === 'contradicted' || r.verdict === 'unverifiable');
-    if (contradicted.length === 0) break;
+    if (claimVerification.status === 'pass') break;
+    if (claimVerification.status === 'not_run' || claimVerification.status === 'error') break;
 
-    const corrections = contradicted.map(c => `- Claim "${c.text}": ${c.verdict}${c.correction ? ' — ' + c.correction : ''}`).join('\n');
-    console.log(`${logPrefix} ${vendor.company}: claim verification failed (pass ${claimPass + 1}/${MAX_CLAIM_REWRITES}), rewriting`);
+    const failedIssues = claimVerification.issues || [];
+    if (failedIssues.length === 0) break;
+
+    const corrections = failedIssues.map(i => `- ${i.sentence}: ${i.reason}${i.repair ? ' Fix: ' + i.repair : ''}`).join('\n');
+    console.log(`${logPrefix} ${vendor.company}: legal check failed (pass ${claimPass + 1}/${MAX_CLAIM_REWRITES}), rewriting`);
 
     try {
-      const retryUserPrompt = `${cleanedPrompt}\n\n## CLAIM CORRECTIONS — a previous draft had these issues:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
+      const retryUserPrompt = `${cleanedPrompt}\n\n## LEGAL CORRECTIONS — a previous draft had these issues:\n${corrections}\nRewrite the article fixing these. Do not reintroduce them.`;
       const retryResp = await anthropic.messages.create({
         model: MODEL, max_tokens: 4000, temperature: 0.7,
         system: `${SYSTEM_PROMPT_WRITER_V1_1}\n\nCURRENT_YEAR: ${new Date().getFullYear()}\n\n${ORG_NAME_BAN}\n\n${firmContextBlock}`,
@@ -609,9 +620,31 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     }
   }
 
-  if (claimVerification.verdict !== 'pass') {
-    needsClaimReview = true;
-    console.log(`${logPrefix} ${vendor.company}: claim verification did not pass — flagging for review`);
+  if (claimVerification.status !== 'pass') {
+    const failed = claimVerification.issues || [];
+    const reason = (claimVerification.status === 'not_run' || claimVerification.status === 'error')
+      ? `Legal verification did not complete (${claimVerification.status}${claimVerification.meta?.error ? ': ' + claimVerification.meta.error : ''}). Draft is NOT verified and cannot be auto-approved.`
+      : buildClaimFailureReport(failed, vendor.company);
+
+    const rejectedApproval = await createApproval({
+      vendorId, agentName: 'writer', itemType: 'content_draft',
+      title: `Draft: ${parsed.title}`,
+      draftPayload: { title: parsed.title, body: draftBody, linkedInText: draftLinkedIn, facebookText: draftFacebook },
+      metadata: { agentRunId: agentRun._id, costEstimateUSD, model: MODEL, claimVerification },
+      source: 'legal_check',
+    });
+    rejectedApproval.status = 'rejected';
+    rejectedApproval.decidedAt = new Date();
+    rejectedApproval.decisionReason = reason;
+    await rejectedApproval.save();
+
+    await completeRun(agentRun._id, {
+      summary: `Draft "${parsed.title}" REJECTED by legal check (${claimVerification.status}): ${failed.length} issue(s)`,
+      artifacts: { pillarId: next.pillarId, topicIndex: next.topicIndex, lastPillar: next.pillarId, lastTopicIndex: next.topicIndex, postsDrafted: 0, blockedReason: 'legal_check_' + claimVerification.status, claimVerification, costEstimateUSD, model: MODEL },
+      metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
+    });
+    console.warn(`${logPrefix} Draft rejected by legal check for vendor ${vendorId}: ${claimVerification.status}`);
+    return { success: false, blocked: true, reason: 'legal_check_' + claimVerification.status, vendorId: String(vendorId), costEstimateUSD };
   }
 
   // ── All checks passed — create approval ──
@@ -660,8 +693,7 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
       ...(repaired ? { repaired: true, repairedViolations, deletedSentences } : {}),
       ...(gate.warnings.length ? { gateWarnings: gate.warnings.map(w => w.code) } : {}),
       ...(dryRun ? { dryRun: true } : {}),
-      claimVerification: claimVerification.verdict !== 'pass' ? claimVerification : undefined,
-      needsClaimReview: needsClaimReview || undefined,
+      claimVerification: claimVerification.status !== 'pass' ? claimVerification : undefined,
     },
     source: 'writer-agent-cron',
   });
@@ -702,6 +734,19 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     vendorId: String(vendorId),
     ...(dryRun ? { dryRun: true } : {}),
   };
+}
+
+function buildClaimFailureReport(issues, firmName) {
+  const lines = [`Legal review failed for ${firmName}. ${issues.length} issue(s) found:\n`];
+  issues.forEach((issue, i) => {
+    lines.push(`${i + 1}. [${issue.severity.toUpperCase()}] "${issue.sentence}"`);
+    lines.push(`   Reason: ${issue.reason}`);
+    if (issue.repair) lines.push(`   Fix: ${issue.repair}`);
+    if (issue.officialSource) lines.push(`   Source: ${issue.officialSource}`);
+    lines.push('');
+  });
+  lines.push('Next actions: fix the issues above and regenerate, or manually verify each claim before approving.');
+  return lines.join('\n');
 }
 
 export { resolveNextTopic, isProTier, MONTHLY_COST_CAP_USD, MONTHLY_PER_VENDOR_CAP, SONNET_INPUT_COST_PER_M, SONNET_OUTPUT_COST_PER_M, ORG_NAME_BAN };
