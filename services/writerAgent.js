@@ -625,29 +625,41 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
   if (claimVerification.status !== 'pass') {
     const failed = claimVerification.issues || [];
+    const isFixable = claimVerification.status === 'fail' && failed.length > 0;
     const reason = (claimVerification.status === 'not_run' || claimVerification.status === 'error')
       ? `Legal verification did not complete (${claimVerification.status}${claimVerification.meta?.error ? ': ' + claimVerification.meta.error : ''}). Draft is NOT verified and cannot be auto-approved.`
       : buildClaimFailureReport(failed, vendor.company);
 
-    const rejectedApproval = await createApproval({
+    const suggestedFixes = isFixable
+      ? failed.map(i => ({ sentence: i.sentence, reason: i.reason, repair: i.repair, officialSource: i.officialSource, severity: i.severity }))
+      : undefined;
+
+    const legalApproval = await createApproval({
       vendorId, agentName: 'writer', itemType: 'content_draft',
       title: `Draft: ${parsed.title}`,
       draftPayload: { title: parsed.title, body: draftBody, linkedInText: draftLinkedIn, facebookText: draftFacebook },
-      metadata: { agentRunId: agentRun._id, costEstimateUSD, model: MODEL, claimVerification },
+      metadata: { agentRunId: agentRun._id, costEstimateUSD, model: MODEL, claimVerification, ...(suggestedFixes ? { suggestedFixes } : {}) },
       source: 'legal_check',
     });
-    rejectedApproval.status = 'rejected';
-    rejectedApproval.decidedAt = new Date();
-    rejectedApproval.decisionReason = reason;
-    await rejectedApproval.save();
 
+    if (isFixable) {
+      legalApproval.status = 'needs_review';
+      legalApproval.decisionReason = reason;
+    } else {
+      legalApproval.status = 'rejected';
+      legalApproval.decidedAt = new Date();
+      legalApproval.decisionReason = reason;
+    }
+    await legalApproval.save();
+
+    const summaryVerb = isFixable ? 'NEEDS REVIEW' : 'REJECTED';
     await completeRun(agentRun._id, {
-      summary: `Draft "${parsed.title}" REJECTED by legal check (${claimVerification.status}): ${failed.length} issue(s)`,
+      summary: `Draft "${parsed.title}" ${summaryVerb} by legal check (${claimVerification.status}): ${failed.length} issue(s)`,
       artifacts: { pillarId: next.pillarId, topicIndex: next.topicIndex, lastPillar: next.pillarId, lastTopicIndex: next.topicIndex, postsDrafted: 0, blockedReason: 'legal_check_' + claimVerification.status, claimVerification, costEstimateUSD, model: MODEL },
       metricsAfter: { writerAgentMonthlyCostUSD: platformCostSoFar + costEstimateUSD },
     });
-    console.warn(`${logPrefix} Draft rejected by legal check for vendor ${vendorId}: ${claimVerification.status}`);
-    return { success: false, blocked: true, reason: 'legal_check_' + claimVerification.status, vendorId: String(vendorId), costEstimateUSD };
+    console.warn(`${logPrefix} Draft ${summaryVerb.toLowerCase()} by legal check for vendor ${vendorId}: ${claimVerification.status}`);
+    return { success: false, blocked: true, reason: 'legal_check_' + claimVerification.status, needsReview: isFixable, vendorId: String(vendorId), costEstimateUSD };
   }
 
   // ── All checks passed — create approval ──

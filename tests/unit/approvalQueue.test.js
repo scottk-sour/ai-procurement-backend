@@ -27,6 +27,7 @@ const {
   createApproval,
   approveItem,
   rejectItem,
+  editItem,
   executeApprovedItem,
   listPending,
   getApprovalById,
@@ -93,10 +94,82 @@ describe('ApprovalQueue Service', () => {
         .rejects.toThrow('Cannot approve item with status "rejected"');
     });
 
+    it('allows approval from needs_review status', async () => {
+      const mockItem = {
+        _id: 'approval-1',
+        status: 'needs_review',
+        save: vi.fn().mockImplementation(function () {
+          return Promise.resolve(this);
+        }),
+      };
+      ApprovalQueue.findById.mockResolvedValue(mockItem);
+
+      const result = await approveItem('approval-1', 'admin-user-id', 'Fixed and reviewed');
+
+      expect(result.status).toBe('approved');
+      expect(result.decidedAt).toBeInstanceOf(Date);
+    });
+
     it('throws if item not found', async () => {
       ApprovalQueue.findById.mockResolvedValue(null);
 
       await expect(approveItem('nonexistent', 'admin-user-id'))
+        .rejects.toThrow('Approval item not found');
+    });
+  });
+
+  describe('editItem', () => {
+    it('updates draftPayload.body and sets editedByAdmin', async () => {
+      const mockItem = {
+        _id: 'approval-1',
+        status: 'needs_review',
+        draftPayload: { title: 'Original', body: 'Old body text' },
+        markModified: vi.fn(),
+        save: vi.fn().mockImplementation(function () {
+          return Promise.resolve(this);
+        }),
+      };
+      ApprovalQueue.findById.mockResolvedValue(mockItem);
+
+      const result = await editItem('approval-1', 'admin-user-id', { body: 'Corrected body text' });
+
+      expect(result.draftPayload.body).toBe('Corrected body text');
+      expect(result.draftPayload.title).toBe('Original');
+      expect(result.editedByAdmin).toBe(true);
+      expect(result.editedAt).toBeInstanceOf(Date);
+      expect(mockItem.markModified).toHaveBeenCalledWith('draftPayload');
+    });
+
+    it('updates title when provided', async () => {
+      const mockItem = {
+        _id: 'approval-1',
+        status: 'pending',
+        draftPayload: { title: 'Old title', body: 'Body' },
+        markModified: vi.fn(),
+        save: vi.fn().mockImplementation(function () {
+          return Promise.resolve(this);
+        }),
+      };
+      ApprovalQueue.findById.mockResolvedValue(mockItem);
+
+      const result = await editItem('approval-1', 'admin-user-id', { title: 'New title' });
+
+      expect(result.draftPayload.title).toBe('New title');
+      expect(result.draftPayload.body).toBe('Body');
+    });
+
+    it('throws if item status does not allow editing', async () => {
+      const mockItem = { _id: 'approval-1', status: 'approved', save: vi.fn() };
+      ApprovalQueue.findById.mockResolvedValue(mockItem);
+
+      await expect(editItem('approval-1', 'admin-user-id', { body: 'New' }))
+        .rejects.toThrow('Cannot edit item with status "approved"');
+    });
+
+    it('throws if item not found', async () => {
+      ApprovalQueue.findById.mockResolvedValue(null);
+
+      await expect(editItem('nonexistent', 'admin-user-id', { body: 'New' }))
         .rejects.toThrow('Approval item not found');
     });
   });
@@ -132,12 +205,28 @@ describe('ApprovalQueue Service', () => {
       expect(mockItem.save).toHaveBeenCalledOnce();
     });
 
-    it('throws if item is not pending', async () => {
+    it('throws if item is not pending or needs_review', async () => {
       const mockItem = { _id: 'approval-1', status: 'approved', save: vi.fn() };
       ApprovalQueue.findById.mockResolvedValue(mockItem);
 
       await expect(rejectItem('approval-1', 'admin-user-id', 'Too late'))
         .rejects.toThrow('Cannot reject item with status "approved"');
+    });
+
+    it('allows rejection from needs_review status', async () => {
+      const mockItem = {
+        _id: 'approval-1',
+        status: 'needs_review',
+        save: vi.fn().mockImplementation(function () {
+          return Promise.resolve(this);
+        }),
+      };
+      ApprovalQueue.findById.mockResolvedValue(mockItem);
+
+      const result = await rejectItem('approval-1', 'admin-user-id', 'Not fixable');
+
+      expect(result.status).toBe('rejected');
+      expect(result.decisionReason).toBe('Not fixable');
     });
   });
 
@@ -152,7 +241,7 @@ describe('ApprovalQueue Service', () => {
 
       const result = await listPending();
 
-      expect(ApprovalQueue.find).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
+      expect(ApprovalQueue.find).toHaveBeenCalledWith(expect.objectContaining({ status: { $in: ['pending', 'needs_review'] } }));
       expect(result.items).toEqual(mockItems);
       expect(result.pagination).toEqual({ page: 1, limit: 20, total: 2, pages: 1 });
     });
@@ -164,7 +253,7 @@ describe('ApprovalQueue Service', () => {
       await listPending({ agentName: 'writer', itemType: 'content_draft', vendorId: 'v123', page: 2, limit: 5 });
 
       expect(ApprovalQueue.find).toHaveBeenCalledWith(expect.objectContaining({
-        status: 'pending',
+        status: { $in: ['pending', 'needs_review'] },
         agentName: 'writer',
         itemType: 'content_draft',
         vendorId: 'v123',

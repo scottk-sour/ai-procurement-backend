@@ -19,8 +19,8 @@ export async function createApproval({ vendorId, agentName, itemType, title, dra
 export async function approveItem(approvalId, adminUserId, reason) {
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
-  if (!['pending', 'firm_completed'].includes(item.status)) {
-    throw new Error(`Cannot approve item with status "${item.status}" — must be "pending" or "firm_completed"`);
+  if (!['pending', 'needs_review', 'firm_completed'].includes(item.status)) {
+    throw new Error(`Cannot approve item with status "${item.status}" — must be "pending", "needs_review", or "firm_completed"`);
   }
 
   item.status = 'approved';
@@ -35,8 +35,8 @@ export async function rejectItem(approvalId, adminUserId, reason) {
 
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
-  if (item.status !== 'pending') {
-    throw new Error(`Cannot reject item with status "${item.status}" — must be "pending"`);
+  if (!['pending', 'needs_review'].includes(item.status)) {
+    throw new Error(`Cannot reject item with status "${item.status}" — must be "pending" or "needs_review"`);
   }
 
   item.status = 'rejected';
@@ -170,6 +170,21 @@ const executionHandlers = {
   },
 };
 
+export async function editItem(approvalId, adminUserId, { body, title }) {
+  const item = await ApprovalQueue.findById(approvalId);
+  if (!item) throw new Error('Approval item not found');
+  if (!['pending', 'needs_review', 'firm_completed'].includes(item.status)) {
+    throw new Error(`Cannot edit item with status "${item.status}" — must be "pending", "needs_review", or "firm_completed"`);
+  }
+
+  if (body !== undefined) item.draftPayload.body = body;
+  if (title !== undefined) item.draftPayload.title = title;
+  item.editedByAdmin = true;
+  item.editedAt = new Date();
+  item.markModified('draftPayload');
+  return item.save();
+}
+
 export async function executeApprovedItem(approvalId) {
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
@@ -199,7 +214,7 @@ export async function executeApprovedItem(approvalId) {
 
 export async function listPending({ status, agentName, itemType, vendorId, page = 1, limit = 20 } = {}) {
   const filter = {};
-  filter.status = status || 'pending';
+  filter.status = status || { $in: ['pending', 'needs_review'] };
   if (agentName) filter.agentName = agentName;
   if (itemType) filter.itemType = itemType;
   if (vendorId) filter.vendorId = vendorId;
