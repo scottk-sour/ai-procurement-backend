@@ -35,11 +35,14 @@ Examples to FLAG:
 Do NOT flag:
 - Purely qualitative statements with no numbers: "overpriced properties take longer to sell"
 - GENERIC third-person category statements with no figure and no firm attribution: "solicitors regulated by the SRA must…", "Propertymark-registered agents are required to…"
-- But DO flag if the firm claims ITS OWN membership/registration/qualification/accreditation ("we are Propertymark-registered", "our NAEA-qualified staff") and this is NOT confirmed in firm_context — add it to firmClaimsNotInContext
+- Firm credential claims that ARE confirmed in the <verified_credentials> section of firm_context: if the firm's Propertymark registration, SRA number, FCA authorisation, TPO membership, or any other credential appears in <verified_credentials>, then "we are Propertymark-registered", "our FCA-authorised team", etc. are VERIFIED FACTS — do NOT flag them
+- Generic professional tone and commitment language that makes no specific checkable factual assertion: "we take every complaint seriously", "our process begins the moment you contact us", "we pride ourselves on service", "your satisfaction is our priority", "we aim to keep you informed at every stage". These are subjective/aspirational statements, not factual claims requiring evidence
 - Regulatory rules/thresholds that are public law: SDLT bands, stamp duty rates
 - [FIRM_DATA: ...] or [FIRM TO PROVIDE: ...] placeholder tokens — these are intentional honest gap markers, the opposite of fabrication. Never flag them.
 
-FIRM CLAIMS NOT IN CONTEXT — flag any firm-specific performance claim (sales counts, fee amounts, team sizes, accreditations, awards, specific service areas) stated as fact that is NOT in firm_context.
+But DO flag if the firm claims ITS OWN membership/registration/qualification/accreditation ("we are RICS-regulated", "our NAEA-qualified staff") and this is NOT confirmed in <verified_credentials> or elsewhere in firm_context — add it to firmClaimsNotInContext. The guard must catch unverified credentials.
+
+FIRM CLAIMS NOT IN CONTEXT — flag any firm-specific performance claim (sales counts, fee amounts, team sizes, accreditations, awards, specific service areas) stated as fact that is NOT in firm_context. Do NOT flag generic professional tone/commitment statements (see above).
 
 QUALITY SCORE:
 - 9-10: statistic-free qualitative content, well-written
@@ -50,6 +53,46 @@ QUALITY SCORE:
 VERDICT: "fail" if ANY fabricatedAttributions, OR ANY firmClaimsNotInContext, OR qualityScore < 8.5.
 
 Return ONLY the JSON object.`;
+
+const GENERIC_TONE_PATTERNS = [
+  /\bwe (?:take|handle|treat) .*?(?:seriously|with care|promptly)\b/i,
+  /\bour (?:process|approach|team|service|priority|commitment|goal|aim)\b/i,
+  /\byour (?:satisfaction|peace of mind|interests|needs|concerns)\b/i,
+  /\bwe (?:pride ourselves|strive|aim|are committed|are dedicated|endeavour|work hard)\b/i,
+  /\bwe (?:understand|believe|recognise|know)\b/i,
+  /\b(?:every|each) (?:client|customer|complaint|case|matter|enquiry) (?:is|receives|gets|deserves)\b/i,
+  /\bfrom (?:the moment|start to finish|day one|initial)\b/i,
+  /\bwe (?:keep you|aim to keep|will keep) (?:informed|updated)\b/i,
+];
+
+export function isGenericTone(text) {
+  if (!text || typeof text !== 'string') return false;
+  if (/\d/.test(text)) return false;
+  return GENERIC_TONE_PATTERNS.some(p => p.test(text));
+}
+
+export function extractVerifiedCredentials(firmContextStr) {
+  if (!firmContextStr || typeof firmContextStr !== 'string') return [];
+  const creds = [];
+  const credBlock = firmContextStr.match(/<verified_credentials>([\s\S]*?)<\/verified_credentials>/);
+  if (credBlock) {
+    const lines = credBlock[1].split('\n').filter(l => l.trim().startsWith('This firm'));
+    for (const line of lines) {
+      if (/propertymark/i.test(line)) creds.push('propertymark');
+      if (/\bSRA\b/i.test(line)) creds.push('sra');
+      if (/\bICAEW\b/i.test(line)) creds.push('icaew');
+      if (/\bACCA\b/i.test(line)) creds.push('acca');
+      if (/\bFCA\b/i.test(line)) creds.push('fca');
+      const memberMatch = line.match(/member of:\s*(.+)\./i);
+      if (memberMatch) creds.push(memberMatch[1].trim().toLowerCase());
+      const accredMatch = line.match(/accreditation:\s*(.+)\./i);
+      if (accredMatch) creds.push(accredMatch[1].trim().toLowerCase());
+      const certMatch = line.match(/certification:\s*(.+)\./i);
+      if (certMatch) creds.push(certMatch[1].trim().toLowerCase());
+    }
+  }
+  return creds;
+}
 
 async function callReviewOnce(client, draftText, firmContext, vertical) {
   const response = await client.messages.create({
@@ -115,20 +158,26 @@ export async function reviewDraftForFabrication({ draftText, firmContext, vertic
 
   const containsPlaceholder = (text) => /\[FIRM_DATA:|\[FIRM TO PROVIDE:/i.test(text || '');
 
+  const verifiedCredentials = extractVerifiedCredentials(firmContext);
+  const claimMatchesCredential = (text) => {
+    const lower = (text || '').toLowerCase();
+    return verifiedCredentials.some(cred => lower.includes(cred));
+  };
+
   const rawAttribs = Array.isArray(parsed.fabricatedAttributions) ? parsed.fabricatedAttributions : [];
   const rawFirmClaims = Array.isArray(parsed.firmClaimsNotInContext) ? parsed.firmClaimsNotInContext : [];
 
+  const filteredAttribs = rawAttribs.filter(a => !containsPlaceholder(a.claim) && !containsPlaceholder(a.body));
+  const filteredFirmClaims = rawFirmClaims.filter(c => !containsPlaceholder(c.claim) && !claimMatchesCredential(c.claim) && !isGenericTone(c.claim));
+  const qualityScore = typeof parsed.qualityScore === 'number' ? parsed.qualityScore : 0;
+
   const result = {
-    fabricatedAttributions: rawAttribs.filter(a => !containsPlaceholder(a.claim) && !containsPlaceholder(a.body)),
-    firmClaimsNotInContext: rawFirmClaims.filter(c => !containsPlaceholder(c.claim)),
-    qualityScore: typeof parsed.qualityScore === 'number' ? parsed.qualityScore : 0,
-    verdict: parsed.verdict === 'pass' ? 'pass' : 'fail',
+    fabricatedAttributions: filteredAttribs,
+    firmClaimsNotInContext: filteredFirmClaims,
+    qualityScore,
+    verdict: (filteredAttribs.length > 0 || filteredFirmClaims.length > 0 || qualityScore < 8.5) ? 'fail' : 'pass',
     reviewRan: true,
   };
-
-  if (result.fabricatedAttributions.length > 0 || result.firmClaimsNotInContext.length > 0 || result.qualityScore < 8.5) {
-    result.verdict = 'fail';
-  }
 
   return result;
 }
