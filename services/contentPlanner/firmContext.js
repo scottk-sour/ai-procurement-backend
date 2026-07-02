@@ -300,12 +300,40 @@ Write in this firm's voice. Tone: ${brand.toneOfVoice || 'professional UK Englis
 
   const groundTruth = buildGroundTruthBlock(firmContext._rawFirmForGate || {});
 
+  const credentialLines = [];
+  const regNums = firmContext.regulatoryNumbers || {};
+  if (regNums.sra) credentialLines.push(`This firm IS registered with the SRA (number: ${regNums.sra}).`);
+  if (regNums.icaew) credentialLines.push(`This firm IS an ICAEW member (number: ${regNums.icaew}).`);
+  if (regNums.acca) credentialLines.push(`This firm IS ACCA-registered (number: ${regNums.acca}).`);
+  if (regNums.fca) credentialLines.push(`This firm IS FCA-authorised (number: ${regNums.fca}).`);
+  if (regNums.propertymark) credentialLines.push(`This firm IS Propertymark-registered (number: ${regNums.propertymark}).`);
+  const bp = firmContext.businessProfile || {};
+  if (Array.isArray(bp.accreditations)) {
+    for (const acc of bp.accreditations) {
+      if (acc && typeof acc === 'string') credentialLines.push(`This firm holds accreditation: ${acc}.`);
+    }
+  }
+  if (Array.isArray(bp.certifications)) {
+    for (const cert of bp.certifications) {
+      if (cert && typeof cert === 'string') credentialLines.push(`This firm holds certification: ${cert}.`);
+    }
+  }
+  const bi = firmContext.brandIdentity || {};
+  if (Array.isArray(bi.memberships)) {
+    for (const mem of bi.memberships) {
+      if (mem && typeof mem === 'string') credentialLines.push(`This firm is a member of: ${mem}.`);
+    }
+  }
+  const credentialsSection = credentialLines.length > 0
+    ? `\n<verified_credentials>\nThe following credentials are confirmed on file. Claims matching these are VERIFIED and must NOT be flagged.\n${credentialLines.join('\n')}\n</verified_credentials>`
+    : '';
+
   return `<firm_context>
 The following facts are verified from this firm's record in the TendorAI database.
 
 ${JSON.stringify(firmContext, null, 2)}
 
-<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>${brandSection}
+<data_completeness>${completeness}% of firm data fields are filled. ${guidance}</data_completeness>${brandSection}${credentialsSection}
 ${groundTruth}
 </firm_context>`;
 }
