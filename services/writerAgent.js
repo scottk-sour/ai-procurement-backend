@@ -408,6 +408,11 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
 
         const located = locateExcerptInText(src, excerpt);
         if (located && located.length > 5) {
+          if (/\[FIRM_DATA:|\[FIRM TO PROVIDE:/i.test(located)) {
+            console.log(`${logPrefix} Skipped deletion of placeholder sentence: "${located.substring(0, 80)}..."`);
+            found = true;
+            break;
+          }
           const updated = src.replace(located, '');
           if (field === 'body') draftBody = updated;
           else if (field === 'linkedIn') draftLinkedIn = updated;
