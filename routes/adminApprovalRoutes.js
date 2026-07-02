@@ -46,7 +46,8 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/admin/approvals/:id
 router.patch('/:id', async (req, res) => {
   try {
-    const { body, title } = req.body;
+    const body  = req.body.body  ?? req.body.draftPayload?.body;
+    const title = req.body.title ?? req.body.draftPayload?.title;
     if (body === undefined && title === undefined) {
       return res.status(400).json({ success: false, error: 'At least one of "body" or "title" is required' });
     }
