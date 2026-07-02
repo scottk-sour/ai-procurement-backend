@@ -113,9 +113,14 @@ export async function reviewDraftForFabrication({ draftText, firmContext, vertic
     };
   }
 
+  const containsPlaceholder = (text) => /\[FIRM_DATA:|\[FIRM TO PROVIDE:/i.test(text || '');
+
+  const rawAttribs = Array.isArray(parsed.fabricatedAttributions) ? parsed.fabricatedAttributions : [];
+  const rawFirmClaims = Array.isArray(parsed.firmClaimsNotInContext) ? parsed.firmClaimsNotInContext : [];
+
   const result = {
-    fabricatedAttributions: Array.isArray(parsed.fabricatedAttributions) ? parsed.fabricatedAttributions : [],
-    firmClaimsNotInContext: Array.isArray(parsed.firmClaimsNotInContext) ? parsed.firmClaimsNotInContext : [],
+    fabricatedAttributions: rawAttribs.filter(a => !containsPlaceholder(a.claim) && !containsPlaceholder(a.body)),
+    firmClaimsNotInContext: rawFirmClaims.filter(c => !containsPlaceholder(c.claim)),
     qualityScore: typeof parsed.qualityScore === 'number' ? parsed.qualityScore : 0,
     verdict: parsed.verdict === 'pass' ? 'pass' : 'fail',
     reviewRan: true,
