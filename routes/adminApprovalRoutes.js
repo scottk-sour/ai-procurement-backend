@@ -3,6 +3,7 @@ import adminAuth from '../middleware/adminAuth.js';
 import {
   approveItem,
   rejectItem,
+  editItem,
   executeApprovedItem,
   listPending,
   getApprovalById,
@@ -39,6 +40,22 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, item });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/admin/approvals/:id
+router.patch('/:id', async (req, res) => {
+  try {
+    const { body, title } = req.body;
+    if (body === undefined && title === undefined) {
+      return res.status(400).json({ success: false, error: 'At least one of "body" or "title" is required' });
+    }
+    const item = await editItem(req.params.id, req.admin?.id || req.admin?.userId, { body, title });
+    console.log(`[ADMIN ACTION] approval_edited id=${item._id} agent=${item.agentName} type=${item.itemType} by=${req.admin?.email}`);
+    res.json({ success: true, item });
+  } catch (err) {
+    const status = err.message.includes('not found') ? 404 : err.message.includes('Cannot') ? 409 : 500;
+    res.status(status).json({ success: false, error: err.message });
   }
 });
 

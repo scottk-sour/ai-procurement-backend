@@ -32,7 +32,7 @@ const approvalQueueSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['pending', 'firm_completed', 'approved', 'rejected', 'executed', 'failed'],
+    enum: ['pending', 'needs_review', 'firm_completed', 'approved', 'rejected', 'executed', 'failed'],
     default: 'pending',
     index: true,
   },
@@ -51,6 +51,8 @@ const approvalQueueSchema = new mongoose.Schema({
   source: { type: String },
   firmApprovedAt: { type: Date },
   firmApprovedBy: { type: String },
+  editedByAdmin: { type: Boolean, default: false },
+  editedAt: { type: Date },
 });
 
 approvalQueueSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
