@@ -1286,7 +1286,7 @@ router.get('/city-stats', async (req, res) => {
  * Return the industry average AEO score for a given category's vendor type
  * NOTE: Must be registered BEFORE /aeo-report/:reportId to avoid param capture
  */
-router.get('/aeo-report/average', async (req, res) => {
+router.get(['/aeo-report/average', '/ai-visibility-report/average'], async (req, res) => {
   try {
     const { category } = req.query;
     const validCategories = [
@@ -1318,7 +1318,7 @@ router.get('/aeo-report/average', async (req, res) => {
  * POST /api/public/aeo-report/:reportId/retry-platform
  * Re-query a single timed-out/errored platform and update the stored report
  */
-router.post('/aeo-report/:reportId/retry-platform', async (req, res) => {
+router.post(['/aeo-report/:reportId/retry-platform', '/ai-visibility-report/:reportId/retry-platform'], async (req, res) => {
   try {
     const { platform } = req.body;
     const validPlatforms = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'];
@@ -1371,7 +1371,7 @@ router.post('/aeo-report/:reportId/retry-platform', async (req, res) => {
  * GET /api/public/aeo-report/:reportId
  * Return full report JSON (excludes pdfBuffer and ipAddress)
  */
-router.get('/aeo-report/:reportId', async (req, res) => {
+router.get(['/aeo-report/:reportId', '/ai-visibility-report/:reportId'], async (req, res) => {
   try {
     const report = await AeoReport.findById(req.params.reportId)
       .select('-pdfBuffer -ipAddress')
@@ -1408,7 +1408,7 @@ router.get('/aeo-report/:reportId', async (req, res) => {
  * GET /api/public/aeo-report/:reportId/pdf
  * Return PDF as binary download
  */
-router.get('/aeo-report/:reportId/pdf', async (req, res) => {
+router.get(['/aeo-report/:reportId/pdf', '/ai-visibility-report/:reportId/pdf'], async (req, res) => {
   try {
     const report = await AeoReport.findById(req.params.reportId).select('pdfBuffer companyName').lean();
 
@@ -1446,7 +1446,7 @@ const aeoRateLimiter = rateLimit({
  * Requires websiteUrl — runs real detector (no LLM hallucination).
  * Returns reportId for redirect to /aeo-report/results/[reportId]
  */
-router.post('/aeo-report', aeoRateLimiter, async (req, res) => {
+router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req, res) => {
   try {
     const { companyName, category, city, email, name, source, customIndustry, websiteUrl } = req.body;
 
