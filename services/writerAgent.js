@@ -744,7 +744,7 @@ function normaliseForMatch(s) {
 }
 
 function splitSentences(text) {
-  return text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 5);
+  return text.split(/(?<=[.!?])\s+(?=[A-Z"'\[\(])/).filter(s => s.trim().length > 5);
 }
 
 function findSentenceInDraft(draft, issueSentence) {
@@ -832,12 +832,25 @@ function applyRepairs(body, issues) {
     }
   }
 
-  repaired = repaired.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
+  repaired = repaired
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/  +/g, ' ')
+    .replace(/(?:^|\.\s+)[a-z][a-z]{0,15}\s*\.(?=\s|$)/gm, '.')
+    .replace(/\.\s*\./g, '.')
+    .trim();
   return { repaired, unresolved };
 }
 
 function locateExcerptInText(text, excerpt) {
-  if (text.includes(excerpt)) return excerpt;
+  if (text.includes(excerpt)) {
+    const idx = text.indexOf(excerpt);
+    const before = text.lastIndexOf('.', idx);
+    const sentStart = before === -1 ? 0 : before + 1;
+    const after = text.indexOf('.', idx + excerpt.length - 1);
+    const sentEnd = after === -1 ? text.length : after + 1;
+    const full = text.slice(sentStart, sentEnd).trim();
+    return full.length > excerpt.length / 2 ? full : excerpt;
+  }
   const sent = findSentenceInDraft(text, excerpt);
   return sent;
 }
