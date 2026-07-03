@@ -19,6 +19,7 @@ import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 import { VENDOR_TYPE_CATEGORIES } from '../services/aeoReportGenerator.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 
 const router = express.Router();
 
@@ -1518,8 +1519,7 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       ...(source && { source }),
     });
 
-    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
-    const reportUrl = `${baseUrl}/aeo-report/results/${report._id}`;
+    const reportUrl = buildReportUrl(report._id);
 
     // 4. Send email with link to full report
     sendAeoReportEmail(email, {
@@ -1528,9 +1528,11 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       category,
       city,
       score: report.score,
+      aiVisibilityScore: report.aiVisibilityScore,
+      aiMentioned: report.aiMentioned,
+      reportId: report._id,
       reportUrl,
       platformResults,
-      tier: 'free',
       competitors: reportData.competitors || [],
       gaps: reportData.gaps || [],
     }).catch((err) =>
