@@ -359,106 +359,136 @@ const TIER_UNLOCKED_PLATFORMS = {
   pro: ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'],
 };
 
-/**
- * Build the AEO report email subject line.
- */
-function buildAeoSubject({ displayName }) {
-  return `Your AI Visibility Report — ${displayName}`;
+const CATEGORY_LABEL_PLURAL = {
+  conveyancing: 'conveyancing solicitors',
+  'family-law': 'family law solicitors',
+  'criminal-law': 'criminal law solicitors',
+  'commercial-law': 'commercial law solicitors',
+  'employment-law': 'employment law solicitors',
+  'wills-and-probate': 'wills and probate solicitors',
+  immigration: 'immigration solicitors',
+  'personal-injury': 'personal injury solicitors',
+  'tax-advisory': 'tax advisory accountants',
+  'audit-assurance': 'audit and assurance accountants',
+  bookkeeping: 'bookkeeping accountants',
+  payroll: 'payroll services accountants',
+  'corporate-finance': 'corporate finance accountants',
+  'business-advisory': 'business advisory accountants',
+  'vat-services': 'VAT services accountants',
+  'financial-planning': 'financial planning accountants',
+  'residential-mortgages': 'residential mortgage advisers',
+  'buy-to-let': 'buy-to-let mortgage advisers',
+  remortgage: 'remortgage advisers',
+  'first-time-buyer': 'first-time buyer mortgage advisers',
+  'equity-release': 'equity release advisers',
+  'commercial-mortgages': 'commercial mortgage advisers',
+  'protection-insurance': 'protection insurance advisers',
+  sales: 'estate agents for sales',
+  lettings: 'lettings agents',
+  'property-management': 'property management agents',
+  'block-management': 'block management agents',
+  auctions: 'property auctioneers',
+  'commercial-property': 'commercial property agents',
+  inventory: 'inventory clerks',
+  copiers: 'photocopier suppliers',
+  telecoms: 'business telecoms suppliers',
+  cctv: 'CCTV installers',
+  it: 'IT support providers',
+  other: 'service providers',
+};
+
+export function getCategoryLabelPlural(category) {
+  return CATEGORY_LABEL_PLURAL[category] || CATEGORY_LABEL_PLURAL.other;
 }
 
-export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, city, score, reportUrl, platformResults, tier, competitors, gaps }) => {
+function buildAeoSubject({ displayName, categoryLabelPlural, city }) {
+  return `Who AI recommends for ${categoryLabelPlural} in ${city} — and why it isn’t ${displayName}`;
+}
+
+export const aeoReportTemplate = ({ name, companyName, category, city, score, reportUrl, platformResults, competitors, gaps, aiMentioned, regulatorNote, unclaimedProfile }) => {
   const displayName = formatCompanyName(companyName);
   const firstName = formatGreetingName(name);
   const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
   const scorePercent = Math.min(100, Math.max(0, score || 0));
+  const categoryLabelPlural = getCategoryLabelPlural(category);
 
-  // Count total mentions across all platforms
-  const mentionCount = (platformResults || []).filter(r => r.mentioned && !r.error).length;
+  const liveWebPlatforms = (platformResults || [])
+    .filter(r => r.dataSource === 'live_web' && r.status === 'checked')
+    .map(r => r.platformLabel)
+    .filter(Boolean);
+  const liveWebLine = liveWebPlatforms.length > 0
+    ? liveWebPlatforms.join(' and ')
+    : 'AI assistants with live web search';
 
-  // Top 3 competitors
+  let mentionResultHtml;
+  if (aiMentioned) {
+    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> was mentioned &mdash; the full report shows where and how prominently.</p>`;
+  } else {
+    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> wasn&rsquo;t one of the firms they named.</p>`;
+  }
+
   const competitorItems = (competitors || []).slice(0, 3).map(c => {
     const cName = typeof c === 'string' ? c : (c.name || c.companyName || '');
     return cName || null;
   }).filter(Boolean);
 
-  // Top 3 gaps
+  const competitorBlock = competitorItems.length > 0
+    ? `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">Instead, they recommended firms like:</p>
+              <ul style="margin:0 0 16px;padding-left:24px;">${competitorItems.map(n => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${n}</li>`).join('')}</ul>
+              <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 24px;">These firms aren&rsquo;t necessarily better &mdash; their websites and public profiles are structured in a way AI systems can verify.</p>`
+    : '';
+
   const gapItems = (gaps || []).slice(0, 3).map(g => {
     const title = typeof g === 'string' ? g : (g.title || g.gap || '');
     return title || null;
   }).filter(Boolean);
 
-  const competitorListHtml = competitorItems.length > 0
-    ? competitorItems.map(n => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${n}</li>`).join('')
+  const gapBlock = gapItems.length > 0
+    ? `<p style="color:#1A56A0;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">Key gaps affecting your visibility:</p>
+              <ul style="margin:0 0 24px;padding-left:24px;">${gapItems.map(g => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${g}</li>`).join('')}</ul>`
     : '';
 
-  const gapListHtml = gapItems.length > 0
-    ? gapItems.map(g => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${g}</li>`).join('')
+  const unclaimedBlock = unclaimedProfile
+    ? `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;"><strong>${displayName}</strong> is already listed on TendorAI &mdash; built from the ${unclaimedProfile.regulatoryBody} &mdash; but the profile is unclaimed.</p>`
     : '';
 
-  // Dynamic mention result paragraph
-  let mentionResultHtml;
-  if (mentionCount === 0) {
-    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> wasn&rsquo;t recommended by any of them.</p>
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">Instead, AI platforms suggested firms such as:</p>`;
-  } else {
-    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> was mentioned by <strong>${mentionCount} of 6</strong> platforms &mdash; but competitors still ranked higher.</p>
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">AI platforms also suggested firms such as:</p>`;
-  }
+  const footerNote = regulatorNote
+    ? `TendorAI is the UK&rsquo;s AI visibility platform for regulated professional services. ${regulatorNote} Combined with live AI assistant analysis.`
+    : 'TendorAI is the UK&rsquo;s AI visibility platform. This report is based on live AI assistant analysis and publicly available data.';
 
-  // Dynamic preview text
-  const previewText = mentionCount === 0
-    ? 'AI recommended your competitors instead. Here\u2019s why.'
-    : `Mentioned by ${mentionCount} of 6 AI platforms \u2014 but competitors ranked higher.`;
-
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your AI Visibility Report &mdash; ${displayName}</title>
-  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+  <title>AI Visibility Report &mdash; ${displayName}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <!-- Preview text (hidden preheader) -->
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${previewText}</div>
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Who AI recommends for ${categoryLabelPlural} in ${city}.</div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 16px;">
     <tr>
       <td align="center">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
 
-          <!-- Logo bar -->
           <tr>
             <td style="background:#ffffff;padding:24px 40px 16px;text-align:center;border-bottom:1px solid #e5e7eb;">
               <img src="https://www.tendorai.com/logo.png" alt="TendorAI" width="140" style="display:inline-block;max-width:140px;height:auto;" />
             </td>
           </tr>
 
-          <!-- Main content -->
           <tr>
             <td style="padding:32px 40px;">
 
-              <!-- Greeting -->
               <p style="color:#374151;font-size:16px;line-height:1.7;margin:0 0 16px;">${greeting}</p>
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">Your AI Visibility Report for <strong>${displayName}</strong> is ready.</p>
 
-              <!-- The question -->
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 12px;">We asked six AI assistants &mdash; including ChatGPT, Gemini and Perplexity &mdash; the same question potential clients increasingly ask:</p>
-              <div style="background:#f0f4f8;border-left:4px solid #1A56A0;border-radius:0 6px 6px 0;padding:14px 18px;margin:0 0 24px;">
-                <p style="margin:0;color:#1f2937;font-size:15px;font-style:italic;line-height:1.5;">&ldquo;Who are the best ${categoryLabel.endsWith('s') ? categoryLabel : categoryLabel + 's'} in ${city}?&rdquo;</p>
-              </div>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">We asked AI assistants with live web search &mdash; ${liveWebLine} &mdash; to name ${categoryLabelPlural} in ${city}.</p>
 
-              <!-- Mention result + competitors -->
               ${mentionResultHtml}
-              ${competitorListHtml ? `<ul style="margin:0 0 16px;padding-left:24px;">${competitorListHtml}</ul>` : ''}
+              ${competitorBlock}
 
-              <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 24px;">These firms aren&rsquo;t necessarily better &mdash; their websites and public profiles are simply structured in a way AI systems can verify and recommend with more confidence.</p>
-
-              <!-- Score -->
               <h3 style="color:#1A56A0;font-size:16px;font-weight:700;margin:0 0 8px;">Your AI Visibility Score: ${scorePercent} / 100</h3>
 
-              <!-- Progress bar -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
                 <tr>
                   <td style="background:#e5e7eb;border-radius:6px;overflow:hidden;height:14px;padding:0;">
@@ -471,55 +501,33 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
                 </tr>
               </table>
 
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">A score at this level means AI platforms currently have low confidence recommending your firm. Firms scoring above 60 appear in roughly 4&times; more AI recommendations.</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">The average across firms we&rsquo;ve analysed is 34.</p>
 
-              <!-- Gaps -->
-              <p style="color:#1A56A0;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">Key gaps affecting your visibility:</p>
-              ${gapListHtml ? `<ul style="margin:0 0 16px;padding-left:24px;">${gapListHtml}</ul>` : ''}
+              ${gapBlock}
 
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">These are common issues &mdash; the average score in your sector is around 35/100 &mdash; but firms fixing them now are the ones starting to appear in AI recommendations.</p>
+              ${unclaimedBlock}
 
-              <!-- Already listed -->
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px;">Your firm is already listed on TendorAI. We built the directory using data from the SRA register, so your profile exists &mdash; it just hasn&rsquo;t been claimed yet. That means you&rsquo;re currently not controlling what AI systems see about your firm.</p>
-
-              <!-- Full report shows -->
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;font-weight:600;">Your full report shows:</p>
-              <ul style="margin:0 0 24px;padding-left:24px;">
-                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">Which AI platforms mention your firm</li>
-                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">Which competitors are recommended instead</li>
-                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">The exact gaps affecting your score</li>
-                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">The specific fixes to improve your visibility</li>
-                <li style="padding:3px 0;color:#374151;font-size:14px;line-height:1.6;">A downloadable PDF report</li>
-              </ul>
-
-              <!-- Single CTA -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center" style="padding:0 0 28px;">
-                    <a href="${reportUrl}" style="display:inline-block;background:#1A56A0;color:#ffffff;padding:16px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;letter-spacing:0.3px;">See why AI recommends your competitors &rarr;</a>
+                    <a href="${reportUrl}" style="display:inline-block;background:#1A56A0;color:#ffffff;padding:16px 36px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;letter-spacing:0.3px;">See your full report &rarr;</a>
                   </td>
                 </tr>
               </table>
 
-              <!-- Sign-off -->
               <div style="padding-top:16px;border-top:1px solid #e5e7eb;">
                 <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;">Best regards,</p>
                 <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 4px;font-weight:600;">Scott Davies</p>
                 <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;">Founder, TendorAI</p>
                 <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="mailto:scott.davies@tendorai.com" style="color:#1A56A0;text-decoration:none;">scott.davies@tendorai.com</a></p>
-                <p style="color:#6b7280;font-size:13px;line-height:1.4;margin:0;"><a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a></p>
               </div>
-
-              <!-- P.S. -->
-              <p style="color:#6b7280;font-size:14px;line-height:1.6;margin:16px 0 0;font-style:italic;">P.S. Three ${categoryLabel.toLowerCase().endsWith('s') ? categoryLabel.toLowerCase() : categoryLabel.toLowerCase() + 's'} in ${city} claimed their profiles this week. If helpful, I&rsquo;m also happy to send the exact prompts we used to test the AI platforms.</p>
 
             </td>
           </tr>
 
-          <!-- Footer -->
           <tr>
             <td style="background:#f9fafb;padding:24px 40px;text-align:center;border-top:1px solid #e5e7eb;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">TendorAI is the UK&rsquo;s AI visibility platform for regulated professional services. This report uses publicly available information from the SRA register and AI platform analysis.</p>
+              <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">${footerNote}</p>
               <p style="margin:12px 0 0;color:#9ca3af;font-size:11px;">
                 <a href="https://www.tendorai.com" style="color:#1A56A0;text-decoration:none;">tendorai.com</a>
               </p>
@@ -534,8 +542,7 @@ export const aeoReportTemplate = ({ name, companyName, category, categoryLabel, 
 </html>`;
 };
 
-// Export helpers for use in emailService.js
-export { formatCompanyName, buildAeoSubject, TIER_UNLOCKED_PLATFORMS };
+export { formatCompanyName, buildAeoSubject, TIER_UNLOCKED_PLATFORMS, getCategoryLabelPlural, CATEGORY_LABEL_PLURAL };
 
 // =====================================================
 // NEW LEAD NOTIFICATION (sent to vendor on VendorLead creation)

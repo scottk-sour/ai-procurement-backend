@@ -12,9 +12,11 @@ import {
   aeoReportTemplate,
   formatCompanyName,
   buildAeoSubject,
+  getCategoryLabelPlural,
   newLeadNotificationTemplate
 } from './emailTemplates.js';
 import { getIndustryConfig } from './industryConfig.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 
 dotenv.config();
 
@@ -235,11 +237,11 @@ export const sendVerifiedReviewNotification = async (vendorEmail, reviewDetails)
 export const sendAeoReportEmail = async (email, reportData) => {
   const config = getIndustryConfig(reportData.category);
   const displayName = formatCompanyName(reportData.companyName);
-  const categoryLabel = config.industryLabel || reportData.category;
-  const tier = reportData.tier || 'free';
+  const categoryLabelPlural = getCategoryLabelPlural(reportData.category);
   const platformResults = reportData.platformResults || [];
+  const reportUrl = reportData.reportUrl || buildReportUrl(reportData.reportId);
 
-  const subject = buildAeoSubject({ displayName });
+  const subject = buildAeoSubject({ displayName, categoryLabelPlural, city: reportData.city });
 
   return sendEmail({
     to: email,
@@ -250,16 +252,17 @@ export const sendAeoReportEmail = async (email, reportData) => {
       name: reportData.name,
       companyName: reportData.companyName,
       category: reportData.category,
-      categoryLabel,
       city: reportData.city,
-      score: reportData.score,
-      reportUrl: reportData.reportUrl,
+      score: reportData.aiVisibilityScore ?? reportData.score,
+      reportUrl,
       platformResults,
-      tier,
       competitors: reportData.competitors || [],
       gaps: reportData.gaps || [],
+      aiMentioned: reportData.aiMentioned ?? false,
+      regulatorNote: config.regulatorNote || null,
+      unclaimedProfile: reportData.unclaimedProfile || null,
     }),
-    text: `Your AI Visibility Report for ${displayName} is ready. Score: ${reportData.score}/100. We asked 6 AI platforms who they recommend as ${/^[aeiou]/i.test(categoryLabel) ? 'an' : 'a'} ${categoryLabel} in ${reportData.city}. See why AI recommends your competitors: ${reportData.reportUrl}`
+    text: `We asked AI assistants with live web search to name ${categoryLabelPlural} in ${reportData.city}. ${displayName} ${reportData.aiMentioned ? 'was mentioned' : 'was not among the firms they named'}. AI Visibility Score: ${reportData.aiVisibilityScore ?? reportData.score}/100. See your full report: ${reportUrl}`
   });
 };
 

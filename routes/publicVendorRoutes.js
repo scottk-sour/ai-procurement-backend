@@ -1548,9 +1548,11 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       category,
       city,
       score: report.score,
+      aiVisibilityScore: report.aiVisibilityScore,
+      aiMentioned: report.aiMentioned,
+      reportId: report._id,
       reportUrl,
       platformResults,
-      tier: 'free',
       competitors: reportData.competitors || [],
       gaps: reportData.gaps || [],
     }).catch((err) =>
