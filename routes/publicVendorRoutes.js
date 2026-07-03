@@ -1525,6 +1525,20 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       ...(source && { source }),
     });
 
+    const allPlatformKeys = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'];
+    const envKeyMap = { perplexity: 'PERPLEXITY_API_KEY', chatgpt: 'OPENAI_API_KEY', claude: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY', grok: 'GROK_API_KEY', meta: 'GROQ_API_KEY' };
+    const executed = platformResults.map(p => p.platform);
+    const skipped = allPlatformKeys.filter(k => !executed.includes(k));
+    console.log(JSON.stringify({
+      event: 'aeo_report_created',
+      reportId: String(report._id),
+      companyName,
+      category,
+      city,
+      platformsExecuted: executed.map(k => ({ platform: k, status: platformResults.find(p => p.platform === k)?.status, dataSource: PLATFORM_DATA_SOURCE[k] || null })),
+      platformsSkipped: skipped.map(k => ({ platform: k, reason: process.env[envKeyMap[k]] ? 'unknown' : 'missing_api_key' })),
+    }));
+
     const reportUrl = buildReportUrl(report._id);
 
     // 4. Send email with link to full report
