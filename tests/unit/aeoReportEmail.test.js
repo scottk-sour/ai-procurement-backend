@@ -4,6 +4,8 @@ import {
   getCategoryLabelPlural,
   buildAeoSubject,
   formatCompanyName,
+  titleCase,
+  dedupeCompetitorNames,
 } from '../../services/emailTemplates.js';
 
 const BASE_REPORT = {
@@ -134,20 +136,28 @@ describe('aeoReportTemplate — mentioned report', () => {
   const html = aeoReportTemplate({
     ...BASE_REPORT,
     aiMentioned: true,
-    competitors: [],
+    platformResults: [
+      { platform: 'perplexity', platformLabel: 'Perplexity', mentioned: true, status: 'checked', dataSource: 'live_web' },
+      { platform: 'chatgpt', platformLabel: 'ChatGPT', mentioned: true, status: 'checked', dataSource: 'live_web' },
+    ],
+    competitors: [
+      { name: 'Smith Family Law' },
+      { name: 'Jones Solicitors' },
+    ],
   });
 
-  it('says the firm was mentioned', () => {
-    expect(html).toContain('was mentioned');
-    expect(html).toContain('full report shows where');
+  it('says the firm was recommended by the live-web platforms', () => {
+    expect(html).toContain('was recommended by');
+    expect(html).toContain('Perplexity and ChatGPT');
   });
 
   it('does not contain "was not mentioned" language', () => {
     expect(html).not.toContain('one of the firms they named');
   });
 
-  it('omits competitor block when empty', () => {
-    expect(html).not.toContain('Instead, they recommended');
+  it('uses "also appeared" heading, never "instead"', () => {
+    expect(html).toContain('also appeared');
+    expect(html).not.toMatch(/\bInstead\b/);
   });
 });
 
@@ -195,5 +205,120 @@ describe('buildAeoSubject', () => {
     expect(subject).toContain('Who AI recommends for family law solicitors in Cardiff');
     expect(subject).toContain('Hughes & Co');
     expect(subject).not.toContain('family laws');
+  });
+});
+
+describe('aiMentioned false uses "instead" framing', () => {
+  const html = aeoReportTemplate({
+    ...BASE_REPORT,
+    aiMentioned: false,
+    competitors: [{ name: 'Rival Co' }],
+  });
+
+  it('contains "instead"', () => {
+    expect(html).toContain('Instead, they recommended');
+  });
+
+  it('contains "one of the firms they named"', () => {
+    expect(html).toContain('one of the firms they named');
+  });
+
+  it('does not contain "was recommended by"', () => {
+    expect(html).not.toContain('was recommended by');
+  });
+
+  it('does not contain "also appeared"', () => {
+    expect(html).not.toContain('also appeared');
+  });
+});
+
+describe('titleCase', () => {
+  it('capitalises "cwmbran" to "Cwmbran"', () => {
+    expect(titleCase('cwmbran')).toBe('Cwmbran');
+  });
+
+  it('capitalises multi-word "port talbot" to "Port Talbot"', () => {
+    expect(titleCase('port talbot')).toBe('Port Talbot');
+  });
+
+  it('passes through already-capitalised', () => {
+    expect(titleCase('Cardiff')).toBe('Cardiff');
+  });
+
+  it('handles empty string', () => {
+    expect(titleCase('')).toBe('');
+  });
+});
+
+describe('city title-casing in email', () => {
+  const html = aeoReportTemplate({
+    ...BASE_REPORT,
+    city: 'cwmbran',
+  });
+
+  it('renders "Cwmbran" in the body', () => {
+    expect(html).toContain('Cwmbran');
+    expect(html).not.toMatch(/\bcwmbran\b/);
+  });
+
+  it('subject contains "Cwmbran" not "cwmbran"', () => {
+    const subject = buildAeoSubject({
+      displayName: 'Test Co',
+      categoryLabelPlural: 'conveyancing solicitors',
+      city: 'cwmbran',
+    });
+    expect(subject).toContain('Cwmbran');
+    expect(subject).not.toMatch(/\bcwmbran\b/);
+  });
+});
+
+describe('dedupeCompetitorNames', () => {
+  it('dedupes "Rubin Lewis O\'Brien" and "Rubin Lewis O\'Brien Solicitors"', () => {
+    const result = dedupeCompetitorNames([
+      { name: "Rubin Lewis O'Brien" },
+      { name: "Rubin Lewis O'Brien Solicitors" },
+      { name: 'Muve' },
+    ]);
+    const rubinEntries = result.filter(n => n.toLowerCase().includes('rubin'));
+    expect(rubinEntries).toHaveLength(1);
+    expect(result).toContain('Muve');
+  });
+
+  it('keeps the longer surface form', () => {
+    const result = dedupeCompetitorNames([
+      { name: 'Smith Ltd' },
+      { name: 'Smith' },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe('Smith Ltd');
+  });
+
+  it('dedupes across case differences', () => {
+    const result = dedupeCompetitorNames([
+      { name: 'JONES SOLICITORS' },
+      { name: 'Jones' },
+    ]);
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe('deduped competitors in email', () => {
+  const html = aeoReportTemplate({
+    ...BASE_REPORT,
+    competitors: [
+      { name: "Rubin Lewis O'Brien" },
+      { name: "Rubin Lewis O'Brien Solicitors" },
+      { name: 'Muve' },
+      { name: 'Fourth Firm' },
+    ],
+  });
+
+  it('renders only one Rubin entry', () => {
+    const matches = html.match(/Rubin Lewis/g) || [];
+    expect(matches).toHaveLength(1);
+  });
+
+  it('renders Muve', () => {
+    expect(html).toContain('Muve');
   });
 });

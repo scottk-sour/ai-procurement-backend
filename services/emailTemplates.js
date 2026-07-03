@@ -401,8 +401,37 @@ export function getCategoryLabelPlural(category) {
   return CATEGORY_LABEL_PLURAL[category] || CATEGORY_LABEL_PLURAL.other;
 }
 
+export function titleCase(str) {
+  if (!str) return '';
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function normaliseCompetitorName(name) {
+  return name.toLowerCase()
+    .replace(/\s+(solicitors?|ltd|llp|limited|plc|inc|corp)\.?\s*$/i, '')
+    .replace(/[''`.,]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function dedupeCompetitorNames(items) {
+  const seen = new Map();
+  for (const item of items) {
+    const raw = typeof item === 'string' ? item : (item.name || item.companyName || '');
+    if (!raw) continue;
+    const key = normaliseCompetitorName(raw);
+    if (!key) continue;
+    const existing = seen.get(key);
+    if (!existing || raw.length > existing.length) {
+      seen.set(key, raw);
+    }
+  }
+  return [...seen.values()];
+}
+
 function buildAeoSubject({ displayName, categoryLabelPlural, city }) {
-  return `Who AI recommends for ${categoryLabelPlural} in ${city} — and why it isn’t ${displayName}`;
+  const tc = titleCase(city);
+  return `Who AI recommends for ${categoryLabelPlural} in ${tc} — and why it isn't ${displayName}`;
 }
 
 export const aeoReportTemplate = ({ name, companyName, category, city, score, reportUrl, platformResults, competitors, gaps, aiMentioned, regulatorNote, unclaimedProfile }) => {
@@ -411,6 +440,7 @@ export const aeoReportTemplate = ({ name, companyName, category, city, score, re
   const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
   const scorePercent = Math.min(100, Math.max(0, score || 0));
   const categoryLabelPlural = getCategoryLabelPlural(category);
+  const cityDisplay = titleCase(city);
 
   const liveWebPlatforms = (platformResults || [])
     .filter(r => r.dataSource === 'live_web' && r.status === 'checked')
@@ -422,18 +452,20 @@ export const aeoReportTemplate = ({ name, companyName, category, city, score, re
 
   let mentionResultHtml;
   if (aiMentioned) {
-    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> was mentioned &mdash; the full report shows where and how prominently.</p>`;
+    mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> was recommended by ${liveWebLine}.</p>`;
   } else {
     mentionResultHtml = `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px;"><strong>${displayName}</strong> wasn&rsquo;t one of the firms they named.</p>`;
   }
 
-  const competitorItems = (competitors || []).slice(0, 3).map(c => {
-    const cName = typeof c === 'string' ? c : (c.name || c.companyName || '');
-    return cName || null;
-  }).filter(Boolean);
+  const dedupedNames = dedupeCompetitorNames(competitors || []);
+  const competitorItems = dedupedNames.slice(0, 3);
+
+  const competitorHeading = aiMentioned
+    ? 'These firms also appeared:'
+    : 'Instead, they recommended firms like:';
 
   const competitorBlock = competitorItems.length > 0
-    ? `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">Instead, they recommended firms like:</p>
+    ? `<p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 8px;">${competitorHeading}</p>
               <ul style="margin:0 0 16px;padding-left:24px;">${competitorItems.map(n => `<li style="padding:4px 0;color:#374151;font-size:15px;line-height:1.6;">${n}</li>`).join('')}</ul>
               <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 24px;">These firms aren&rsquo;t necessarily better &mdash; their websites and public profiles are structured in a way AI systems can verify.</p>`
     : '';
@@ -464,7 +496,7 @@ export const aeoReportTemplate = ({ name, companyName, category, city, score, re
   <title>AI Visibility Report &mdash; ${displayName}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Who AI recommends for ${categoryLabelPlural} in ${city}.</div>
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Who AI recommends for ${categoryLabelPlural} in ${cityDisplay}.</div>
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6;padding:24px 16px;">
     <tr>
@@ -482,7 +514,7 @@ export const aeoReportTemplate = ({ name, companyName, category, city, score, re
 
               <p style="color:#374151;font-size:16px;line-height:1.7;margin:0 0 16px;">${greeting}</p>
 
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">We asked AI assistants with live web search &mdash; ${liveWebLine} &mdash; to name ${categoryLabelPlural} in ${city}.</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px;">We asked AI assistants with live web search &mdash; ${liveWebLine} &mdash; to name ${categoryLabelPlural} in ${cityDisplay}.</p>
 
               ${mentionResultHtml}
               ${competitorBlock}
