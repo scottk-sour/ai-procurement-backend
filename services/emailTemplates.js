@@ -542,7 +542,7 @@ export const aeoReportTemplate = ({ name, companyName, category, city, score, re
 </html>`;
 };
 
-export { formatCompanyName, buildAeoSubject, TIER_UNLOCKED_PLATFORMS, getCategoryLabelPlural, CATEGORY_LABEL_PLURAL };
+export { formatCompanyName, buildAeoSubject, TIER_UNLOCKED_PLATFORMS, CATEGORY_LABEL_PLURAL };
 
 // =====================================================
 // NEW LEAD NOTIFICATION (sent to vendor on VendorLead creation)
