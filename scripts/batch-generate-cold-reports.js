@@ -18,6 +18,7 @@ import AeoReport from '../models/AeoReport.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import { sendEmail } from '../services/emailService.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 
 // ================================================================
 // CONFIG — edit these before each run
@@ -138,7 +139,7 @@ async function main() {
         pdfBuffer,
       });
 
-      const reportUrl = `${FRONTEND_URL}/aeo-report/results/${report._id}`;
+      const reportUrl = buildReportUrl(report._id);
 
       // Send email to ME, not the vendor
       try {

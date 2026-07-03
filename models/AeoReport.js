@@ -130,6 +130,9 @@ const aeoReportSchema = new mongoose.Schema({
       reason: { type: String, default: null },
     }],
     error: { type: String, default: null },
+    rawResponse: { type: String, default: null },
+    promptTested: { type: String, default: null },
+    dataSource: { type: String, enum: ['live_web', 'training_data', null], default: null },
   }],
 
   // Real detector result. Populated by the public-report builder from Commit 3 onward;

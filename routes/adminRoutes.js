@@ -25,6 +25,7 @@ import Stripe from 'stripe';
 import { sendEmail, sendVendorWelcomeEmail, sendSchemaInstallCompleteNotification } from '../services/emailService.js';
 import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 import 'dotenv/config';
 
 // Initialize Stripe (same pattern as stripeRoutes.js)
@@ -770,7 +771,6 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
       pdfBuffer,
     });
 
-    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
     const apiBaseUrl = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
 
     console.log(
@@ -788,7 +788,7 @@ router.post('/generate-vendor-report', adminAuth, async (req, res) => {
       aiMentioned: report.aiMentioned,
       competitors: report.competitors?.length || 0,
       gaps: report.gaps?.length || 0,
-      reportUrl: `${baseUrl}/aeo-report/results/${report._id}`,
+      reportUrl: buildReportUrl(report._id),
       pdfUrl: `${apiBaseUrl}/api/public/aeo-report/${report._id}/pdf`,
     });
   } catch (error) {
@@ -824,7 +824,6 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
       });
     }
 
-    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
     const apiBaseUrl = process.env.API_URL || 'https://ai-procurement-backend.onrender.com';
     const results = [];
 
@@ -850,7 +849,7 @@ router.post('/generate-vendor-reports-batch', adminAuth, async (req, res) => {
           score: report.score,
           technicalHealthScore: report.technicalHealthScore,
           aiVisibilityScore: report.aiVisibilityScore,
-          reportUrl: `${baseUrl}/aeo-report/results/${report._id}`,
+          reportUrl: buildReportUrl(report._id),
           pdfUrl: `${apiBaseUrl}/api/public/aeo-report/${report._id}/pdf`,
         });
 

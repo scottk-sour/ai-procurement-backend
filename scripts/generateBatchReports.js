@@ -20,6 +20,7 @@ import { generateFullReport } from '../services/aeoReportGenerator.js';
 import { generateReportPdf } from '../services/aeoReportPdf.js';
 import AeoReport from '../models/AeoReport.js';
 import Vendor from '../models/Vendor.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
@@ -233,7 +234,7 @@ async function main() {
       const pdfBuffer = await generateReportPdf(reportData);
       const report = await AeoReport.create({ ...reportData, pdfBuffer });
 
-      const reportUrl = `${FRONTEND_URL}/aeo-report/results/${report._id}`;
+      const reportUrl = buildReportUrl(report._id);
       const pdfUrl = `${API_URL}/api/public/aeo-report/${report._id}/pdf`;
 
       console.log(

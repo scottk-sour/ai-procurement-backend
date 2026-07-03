@@ -19,6 +19,9 @@ import { computeIndustryAverage } from '../utils/computeIndustryAverage.js';
 import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 import { VENDOR_TYPE_CATEGORIES } from '../services/aeoReportGenerator.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
+import { buildPrompt } from '../services/platformQuery/prompt.js';
+import { PLATFORM_DATA_SOURCE } from '../services/platformQuery/dataSource.js';
 
 const router = express.Router();
 
@@ -1351,10 +1354,15 @@ router.post(['/aeo-report/:reportId/retry-platform', '/ai-visibility-report/:rep
       city: report.city,
     });
 
-    // Strip rawResponse before storing
-    const { rawResponse, ...storable } = result;
+    const storable = {
+      ...result,
+      promptTested: buildPrompt({ companyName: report.companyName, categoryLabel, city: report.city }),
+      dataSource: PLATFORM_DATA_SOURCE[platform] || null,
+      rawResponse: typeof result.rawResponse === 'string'
+        ? result.rawResponse.substring(0, 4000)
+        : null,
+    };
 
-    // Update the specific platform result in the array
     await AeoReport.updateOne(
       { _id: req.params.reportId, 'platformResults.platform': platform },
       { $set: { 'platformResults.$': storable } },
@@ -1490,11 +1498,10 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       .sort({ createdAt: -1 })
       .select('_id companyName');
     if (existingReport) {
-      const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
       return res.status(200).json({
         success: true,
         reportId: existingReport._id,
-        reportUrl: `${baseUrl}/aeo-report/results/${existingReport._id}`,
+        reportUrl: buildReportUrl(existingReport._id),
         existing: true,
       });
     }
@@ -1518,8 +1525,21 @@ router.post(['/aeo-report', '/ai-visibility-report'], aeoRateLimiter, async (req
       ...(source && { source }),
     });
 
-    const baseUrl = process.env.FRONTEND_URL || 'https://www.tendorai.com';
-    const reportUrl = `${baseUrl}/aeo-report/results/${report._id}`;
+    const allPlatformKeys = ['perplexity', 'chatgpt', 'claude', 'gemini', 'grok', 'meta'];
+    const envKeyMap = { perplexity: 'PERPLEXITY_API_KEY', chatgpt: 'OPENAI_API_KEY', claude: 'ANTHROPIC_API_KEY', gemini: 'GEMINI_API_KEY', grok: 'GROK_API_KEY', meta: 'GROQ_API_KEY' };
+    const executed = platformResults.map(p => p.platform);
+    const skipped = allPlatformKeys.filter(k => !executed.includes(k));
+    console.log(JSON.stringify({
+      event: 'aeo_report_created',
+      reportId: String(report._id),
+      companyName,
+      category,
+      city,
+      platformsExecuted: executed.map(k => ({ platform: k, status: platformResults.find(p => p.platform === k)?.status, dataSource: PLATFORM_DATA_SOURCE[k] || null })),
+      platformsSkipped: skipped.map(k => ({ platform: k, reason: process.env[envKeyMap[k]] ? 'unknown' : 'missing_api_key' })),
+    }));
+
+    const reportUrl = buildReportUrl(report._id);
 
     // 4. Send email with link to full report
     sendAeoReportEmail(email, {
