@@ -20,6 +20,8 @@ import { buildPublicReport } from '../services/publicAeoReportBuilder.js';
 import { computeProfileGaps } from '../utils/computeProfileGaps.js';
 import { VENDOR_TYPE_CATEGORIES } from '../services/aeoReportGenerator.js';
 import { buildReportUrl } from '../lib/utils/reportUrl.js';
+import { buildPrompt } from '../services/platformQuery/prompt.js';
+import { PLATFORM_DATA_SOURCE } from '../services/platformQuery/dataSource.js';
 
 const router = express.Router();
 
@@ -1352,10 +1354,15 @@ router.post(['/aeo-report/:reportId/retry-platform', '/ai-visibility-report/:rep
       city: report.city,
     });
 
-    // Strip rawResponse before storing
-    const { rawResponse, ...storable } = result;
+    const storable = {
+      ...result,
+      promptTested: buildPrompt({ companyName: report.companyName, categoryLabel, city: report.city }),
+      dataSource: PLATFORM_DATA_SOURCE[platform] || null,
+      rawResponse: typeof result.rawResponse === 'string'
+        ? result.rawResponse.substring(0, 4000)
+        : null,
+    };
 
-    // Update the specific platform result in the array
     await AeoReport.updateOne(
       { _id: req.params.reportId, 'platformResults.platform': platform },
       { $set: { 'platformResults.$': storable } },

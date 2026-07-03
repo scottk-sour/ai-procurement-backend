@@ -12,8 +12,9 @@
 
 import { runDetector } from './aeoDetector.js';
 import { queryAllPlatforms } from './platformQuery/index.js';
-import { isValidBusinessName } from './platformQuery/prompt.js';
+import { isValidBusinessName, buildPrompt } from './platformQuery/prompt.js';
 import { isSameFirm, isSameDomain } from './platformQuery/nameMatch.js';
+import { PLATFORM_DATA_SOURCE } from './platformQuery/dataSource.js';
 import {
   checkGoogleBusinessProfile,
   checkGoogleReviews,
@@ -476,7 +477,9 @@ export async function buildPublicReport({
 
   const categoryLabel = customIndustry || CATEGORY_LABELS[category] || category;
 
-  const platformResults = await queryAllPlatforms({
+  const promptTested = buildPrompt({ companyName, categoryLabel, city });
+
+  const rawPlatformResults = await queryAllPlatforms({
     companyName,
     category,
     city,
@@ -486,6 +489,15 @@ export async function buildPublicReport({
     console.error('[AEO] Platform queries failed:', err.message);
     return [];
   });
+
+  const platformResults = rawPlatformResults.map((pr) => ({
+    ...pr,
+    promptTested,
+    dataSource: PLATFORM_DATA_SOURCE[pr.platform] || null,
+    rawResponse: typeof pr.rawResponse === 'string'
+      ? pr.rawResponse.substring(0, 4000)
+      : null,
+  }));
 
   const gaps = deriveGaps(detectorResult.checks, detectorResult.blogDetection);
 
