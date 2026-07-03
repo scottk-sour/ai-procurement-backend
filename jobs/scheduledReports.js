@@ -7,6 +7,7 @@ import { sendEmail } from '../services/emailService.js';
 import { runWeeklyMentionScan } from '../services/aiMentionScanner.js';
 import logger from '../services/logger.js';
 import AgentRun from '../models/AgentRun.js';
+import { buildReportUrl } from '../lib/utils/reportUrl.js';
 
 // ============================================================
 // Reverse maps: vendor practiceAreas/services → AEO report category slug
@@ -179,7 +180,7 @@ export async function generateVendorReports(tier) {
         pdfBuffer,
       });
 
-      const reportUrl = `${frontendUrl}/aeo-report/results/${report._id}`;
+      const reportUrl = buildReportUrl(report._id);
 
       if (vendor.email) {
         try {
