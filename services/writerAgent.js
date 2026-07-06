@@ -609,7 +609,19 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
         const targetedObj = extractFirstJsonObject(targetedText);
         if (targetedObj) {
           const targetedParsed = JSON.parse(targetedObj);
-          draftBody = targetedParsed.body || draftBody;
+          let rewrittenBody = targetedParsed.body || draftBody;
+
+          for (const issue of unresolved) {
+            if (!issue.sentence || !issue.repair) continue;
+            const survivor = findSentenceInDraft(rewrittenBody, issue.sentence);
+            if (survivor && rewrittenBody.includes(issue.repair)) {
+              console.log(`${logPrefix} ${vendor.company}: post-rewrite cleanup — removing duplicate original: "${survivor.substring(0, 80)}..."`);
+              rewrittenBody = replaceAllOccurrences(rewrittenBody, survivor, '', issue);
+            }
+          }
+
+          rewrittenBody = rewrittenBody.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
+          draftBody = rewrittenBody;
         }
       } catch (targetedErr) {
         console.error(`${logPrefix} ${vendor.company}: targeted rewrite failed:`, targetedErr.message);
@@ -885,4 +897,4 @@ function buildClaimFailureReport(issues, firmName) {
   return lines.join('\n');
 }
 
-export { resolveNextTopic, isProTier, MONTHLY_COST_CAP_USD, MONTHLY_PER_VENDOR_CAP, SONNET_INPUT_COST_PER_M, SONNET_OUTPUT_COST_PER_M, ORG_NAME_BAN };
+export { resolveNextTopic, isProTier, MONTHLY_COST_CAP_USD, MONTHLY_PER_VENDOR_CAP, SONNET_INPUT_COST_PER_M, SONNET_OUTPUT_COST_PER_M, ORG_NAME_BAN, applyRepairs, buildClaimFailureReport };

@@ -170,15 +170,18 @@ async function main() {
 
       const resendId = result.id || 'ok';
 
-      await ColdOutreachLog.create({
-        vendorId: report.vendorId,
-        email: realEmail,
-        firmName,
-        score,
-        sentAt: new Date(),
-        resendId,
-        dryRun: DRY_RUN,
-      }).catch(err => console.error(`  Log write failed: ${err.message}`));
+      if (!DRY_RUN) {
+        await ColdOutreachLog.create({
+          vendorId: report.vendorId,
+          email: realEmail,
+          firmName,
+          score,
+          sentAt: new Date(),
+          resendId,
+        }).catch(err => console.error(`  Log write failed: ${err.message}`));
+      } else {
+        console.log(`  [DRY RUN] ColdOutreachLog NOT written for ${firmName}`);
+      }
 
       sent++;
       console.log(`✓ [${i + 1}/${batch.length}] ${firmName} [${vendor.vendorType}] (${score}/100) — sent to ${recipient} (id: ${resendId})`);

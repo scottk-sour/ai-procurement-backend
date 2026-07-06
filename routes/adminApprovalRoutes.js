@@ -4,6 +4,7 @@ import {
   approveItem,
   rejectItem,
   editItem,
+  reVerifyItem,
   executeApprovedItem,
   listPending,
   getApprovalById,
@@ -83,6 +84,20 @@ router.post('/:id/reject', async (req, res) => {
     res.json({ success: true, item });
   } catch (err) {
     const status = err.message.includes('not found') ? 404 : err.message.includes('Cannot') ? 409 : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/approvals/:id/re-verify
+router.post('/:id/re-verify', async (req, res) => {
+  try {
+    const item = await reVerifyItem(req.params.id);
+    console.log(`[ADMIN ACTION] approval_reverified id=${item._id} agent=${item.agentName} status=${item.status} by=${req.admin?.email}`);
+    res.json({ success: true, item });
+  } catch (err) {
+    const status = err.message.includes('not found') ? 404
+      : err.message.includes('Cannot') || err.message.includes('only supported') ? 409
+      : 500;
     res.status(status).json({ success: false, error: err.message });
   }
 });

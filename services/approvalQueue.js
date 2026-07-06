@@ -245,6 +245,110 @@ export async function getApprovalById(approvalId) {
     .lean();
 }
 
+export async function reVerifyItem(approvalId) {
+  const item = await ApprovalQueue.findById(approvalId);
+  if (!item) throw new Error('Approval item not found');
+  if (item.itemType !== 'content_draft') {
+    throw new Error('Re-verify is only supported for content_draft items');
+  }
+  if (!['rejected', 'needs_review'].includes(item.status)) {
+    throw new Error(`Cannot re-verify item with status "${item.status}" — must be "rejected" or "needs_review"`);
+  }
+
+  const { verifyClaims } = await import('./contentReview/verifyClaims.js');
+  const { resolveJurisdiction } = await import('../lib/config/jurisdictions.js');
+  const { profileFor } = await import('../lib/config/industryProfiles.js');
+  const { extractFirstJsonObject } = await import('./contentReview/jsonExtract.js');
+  const { SONNET_MODEL } = await import('../lib/config/models.js');
+
+  const { default: Vendor } = await import('../models/Vendor.js');
+  const vendor = await Vendor.findById(item.vendorId).lean();
+  if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
+
+  const firmContext = await getFirmContext(item.vendorId);
+  const firmContextBlock = renderFirmContextBlock(firmContext);
+  const { regime } = resolveJurisdiction(firmContext._rawFirmForGate || {});
+  const jurisdiction = regime?.country || 'the UK';
+  const regulator = profileFor(vendor.vendorType)?.regulatorFull || null;
+
+  let draftBody = item.draftPayload?.body || '';
+  let claimVerification = { status: 'not_run', issues: [], meta: {} };
+
+  const { applyRepairs, buildClaimFailureReport } = await import('./writerAgent.js');
+
+  const MAX_PASSES = 3;
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    claimVerification = await verifyClaims({
+      draftText: draftBody,
+      vertical: vendor.vendorType,
+      jurisdiction,
+      regulator,
+      firmFacts: firmContextBlock,
+    });
+
+    if (claimVerification.status === 'pass') break;
+    if (claimVerification.status === 'not_run' || claimVerification.status === 'error') break;
+
+    const failedIssues = claimVerification.issues || [];
+    if (failedIssues.length === 0) break;
+
+    const { repaired, unresolved } = applyRepairs(draftBody, failedIssues);
+    draftBody = repaired;
+
+    if (unresolved.length > 0) {
+      try {
+        const { default: Anthropic } = await import('@anthropic-ai/sdk');
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const unresolvedInstructions = unresolved.map(i => `- Replace: "${i.sentence}" → With: "${i.repair || '(remove this sentence entirely)'}"`).join('\n');
+        const targetedResp = await anthropic.messages.create({
+          model: SONNET_MODEL, max_tokens: 4000, temperature: 0,
+          system: 'You are an editor. You will receive an article and a list of specific sentences to replace. Replace ONLY those sentences with the provided replacements. Output every other sentence byte-for-byte unchanged. Return the full article as JSON: { "body": "..." }',
+          messages: [{ role: 'user', content: `ARTICLE:\n${draftBody}\n\nREPLACEMENTS:\n${unresolvedInstructions}` }],
+        });
+        const targetedText = targetedResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+        const targetedObj = extractFirstJsonObject(targetedText);
+        if (targetedObj) {
+          const targetedParsed = JSON.parse(targetedObj);
+          draftBody = targetedParsed.body || draftBody;
+        }
+      } catch (err) {
+        console.error(`[reVerify] Targeted rewrite failed: ${err.message}`);
+      }
+    }
+  }
+
+  item.draftPayload.body = draftBody;
+  item.markModified('draftPayload');
+
+  if (claimVerification.status === 'pass') {
+    item.status = 'pending';
+    item.decisionReason = null;
+    if (!item.metadata) item.metadata = {};
+    item.metadata.reVerifiedAt = new Date();
+    item.metadata.claimVerification = undefined;
+    item.metadata.suggestedFixes = undefined;
+    item.markModified('metadata');
+  } else if (claimVerification.status === 'fail') {
+    const failed = claimVerification.issues || [];
+    item.status = 'needs_review';
+    item.decisionReason = buildClaimFailureReport(failed, vendor.company);
+    if (!item.metadata) item.metadata = {};
+    item.metadata.suggestedFixes = failed.map(i => ({ sentence: i.sentence, reason: i.reason, repair: i.repair, officialSource: i.officialSource, severity: i.severity }));
+    item.metadata.claimVerification = claimVerification;
+    item.metadata.reVerifiedAt = new Date();
+    item.markModified('metadata');
+  } else {
+    item.status = 'rejected';
+    item.decidedAt = new Date();
+    item.decisionReason = `Legal verification did not complete (${claimVerification.status}${claimVerification.meta?.error ? ': ' + claimVerification.meta.error : ''}).`;
+    if (!item.metadata) item.metadata = {};
+    item.metadata.reVerifiedAt = new Date();
+    item.markModified('metadata');
+  }
+
+  return item.save();
+}
+
 export async function latestRejectionReason(vendorId, itemType = 'content_draft') {
   const last = await ApprovalQueue.findOne({ vendorId, itemType, status: 'rejected' })
     .sort({ decidedAt: -1, createdAt: -1 })

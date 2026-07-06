@@ -47,6 +47,22 @@ function extractJson(text) {
   return JSON.parse(obj);
 }
 
+async function callWithRetry(fn, label, maxAttempts = 2, backoffMs = 1500) {
+  let lastError;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts - 1) {
+        console.warn(`[verifyClaims] ${label} attempt ${attempt + 1} failed (${err.message}), retrying after ${backoffMs / 1000}s`);
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK', regulator = null, firmFacts = null }) {
   const startMs = Date.now();
 
@@ -64,18 +80,20 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
 
   let claims;
   try {
-    const extractResp = await anthropic.messages.create({
-      model: SONNET_MODEL,
-      max_tokens: 1500,
-      temperature: 0,
-      system: EXTRACT_SYSTEM,
-      messages: [{ role: 'user', content: `Vertical: ${vertical}\nJurisdiction: ${jurisdiction}\n\nDraft:\n${draftText}` }],
-    });
-    const raw = extractResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const parsed = extractJson(raw);
+    const parsed = await callWithRetry(async () => {
+      const extractResp = await anthropic.messages.create({
+        model: SONNET_MODEL,
+        max_tokens: 1500,
+        temperature: 0,
+        system: EXTRACT_SYSTEM,
+        messages: [{ role: 'user', content: `Vertical: ${vertical}\nJurisdiction: ${jurisdiction}\n\nDraft:\n${draftText}` }],
+      });
+      const raw = extractResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      return extractJson(raw);
+    }, 'extraction');
     claims = parsed.claims || [];
   } catch (err) {
-    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim extraction failed: ${err.message}`, executionMs: Date.now() - startMs } };
+    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim extraction failed after 2 attempts: ${err.message}`, executionMs: Date.now() - startMs } };
   }
 
   if (claims.length === 0) {
@@ -83,18 +101,17 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
   }
 
   let results;
-  let verifyLastError;
-  for (let verifyAttempt = 0; verifyAttempt < 2; verifyAttempt++) {
-    try {
+  try {
+    const parsed = await callWithRetry(async () => {
       const verifyResp = await anthropic.messages.create({
         model: SONNET_MODEL,
-        max_tokens: 3000,
+        max_tokens: 4096,
         temperature: 0,
         system: buildVerifySystem(jurisdiction, regulator, firmFacts),
         tools: [{
           type: 'web_search_20250305',
           name: 'web_search',
-          max_uses: 10,
+          max_uses: 8,
           allowed_domains: ALLOWED_DOMAINS,
         }],
         messages: [{
@@ -103,20 +120,11 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
         }],
       });
       const raw = verifyResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const parsed = extractJson(raw);
-      results = parsed.results || [];
-      verifyLastError = null;
-      break;
-    } catch (err) {
-      verifyLastError = err;
-      if (verifyAttempt === 0) {
-        console.warn(`[verifyClaims] Attempt 1 failed (${err.message}), retrying after 1.5s`);
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    }
-  }
-  if (verifyLastError) {
-    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim verification failed after 2 attempts: ${verifyLastError.message}`, model: SONNET_MODEL, jurisdiction, regulator, executionMs: Date.now() - startMs, claimCount: claims.length } };
+      return extractJson(raw);
+    }, 'verification');
+    results = parsed.results || [];
+  } catch (err) {
+    return { status: 'error', issues: [], meta: { guard: 'legal-review', error: `Claim verification failed after 2 attempts: ${err.message}`, model: SONNET_MODEL, jurisdiction, regulator, executionMs: Date.now() - startMs, claimCount: claims.length } };
   }
 
   const resultMap = new Map(results.map(r => [r.id, r]));
