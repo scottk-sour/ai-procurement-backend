@@ -258,9 +258,9 @@ function estimateActionImpact(approval) {
 
 function buildWhatsNext() {
   return FLEET_SCHEDULE.map(entry => ({
-    dayLabel: entry.day,
+    dayLabel: entry.days.join(', '),
     eventLabel: entry.label,
-    vendorImpact: entry.impact,
+    timeUTC: entry.timeUTC,
   }));
 }
 

@@ -247,12 +247,15 @@ export async function getApprovalById(approvalId) {
 
 export async function reVerifyItem(approvalId) {
   const item = await ApprovalQueue.findById(approvalId);
-  if (!item) throw new Error('Approval item not found');
-  if (item.itemType !== 'content_draft') {
-    throw new Error('Re-verify is only supported for content_draft items');
+  if (!item) {
+    return { ok: false, code: 404, error: 'Approval not found' };
   }
-  if (!['rejected', 'needs_review'].includes(item.status)) {
-    throw new Error(`Cannot re-verify item with status "${item.status}" — must be "rejected" or "needs_review"`);
+  if (item.itemType !== 'content_draft') {
+    return { ok: false, code: 400, error: `Re-verification only applies to content drafts (got: ${item.itemType})` };
+  }
+  const RE_VERIFIABLE_STATUSES = ['rejected', 'needs_review'];
+  if (!RE_VERIFIABLE_STATUSES.includes(item.status)) {
+    return { ok: false, code: 409, error: `Cannot re-verify a draft with status "${item.status}". Only rejected or needs_review drafts can be re-checked.` };
   }
 
   const { verifyClaims } = await import('./contentReview/verifyClaims.js');
@@ -346,7 +349,8 @@ export async function reVerifyItem(approvalId) {
     item.markModified('metadata');
   }
 
-  return item.save();
+  const saved = await item.save();
+  return { ok: true, approval: saved };
 }
 
 export async function latestRejectionReason(vendorId, itemType = 'content_draft') {
