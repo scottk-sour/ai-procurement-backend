@@ -265,7 +265,7 @@ function buildWhatsNext() {
 }
 
 async function getDedupedPendingApprovals(vendorId) {
-  const all = await ApprovalQueue.find({ vendorId, status: 'pending' }).lean();
+  const all = await ApprovalQueue.find({ vendorId, status: { $in: ['pending', 'needs_review', 'approved'] } }).lean();
   const seen = new Set();
   return all.filter(a => {
     const key = [a.itemType, String(a.vendorId), a.draftPayload?.directory || a.title || a._id].join('::');

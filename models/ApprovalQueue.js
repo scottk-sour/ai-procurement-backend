@@ -51,6 +51,8 @@ const approvalQueueSchema = new mongoose.Schema({
   source: { type: String },
   firmApprovedAt: { type: Date },
   firmApprovedBy: { type: String },
+  firmRejectionReason: { type: String, default: null },
+  firmRejectedAt: { type: Date },
   editedByAdmin: { type: Boolean, default: false },
   editedAt: { type: Date },
 });

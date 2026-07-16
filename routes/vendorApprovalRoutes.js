@@ -4,19 +4,21 @@ import ApprovalQueue from '../models/ApprovalQueue.js';
 import Vendor from '../models/Vendor.js';
 import { isValidFirmDataKey, getFirmDataLabel } from '../services/writerAgent/firmDataKeys.js';
 import { countAllPlaceholders } from '../services/writerAgent/parsePlaceholders.js';
+import { firmApproveAndExecute, firmRejectItem } from '../services/approvalQueue.js';
+import { pingBingIndexNow } from '../services/indexNowService.js';
 
 const router = express.Router();
 
 router.use(vendorAuth);
 
-// GET /api/vendor/approvals
+// GET /api/vendor/approvals — firms see only admin-approved drafts
 router.get('/', async (req, res) => {
   try {
     const vendorId = req.vendorId;
     const { status, itemType, page, limit } = req.query;
 
     const filter = { vendorId };
-    filter.status = status || 'pending';
+    filter.status = status || 'approved';
     if (itemType) filter.itemType = itemType;
 
     const lim = Math.min(parseInt(limit) || 20, 100);
@@ -58,6 +60,10 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
+    if (!['approved', 'firm_completed', 'executed'].includes(item.status)) {
+      return res.status(403).json({ success: false, error: 'This draft is not available for review yet' });
+    }
+
     res.json({ success: true, item });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -86,11 +92,10 @@ router.post('/:id/firm-data', async (req, res) => {
     if (approval.vendorId.toString() !== req.vendorId.toString()) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    if (!['pending', 'firm_completed'].includes(approval.status)) {
+    if (!['approved', 'firm_completed'].includes(approval.status)) {
       return res.status(400).json({ success: false, error: `Cannot edit firm data on approval with status "${approval.status}"` });
     }
 
-    // Save to vendor.firmData
     const vendor = await Vendor.findById(req.vendorId);
     if (!vendor.firmData) vendor.firmData = new Map();
     vendor.firmData.set(key, {
@@ -101,7 +106,6 @@ router.post('/:id/firm-data', async (req, res) => {
     });
     await vendor.save();
 
-    // Replace [FIRM_DATA: key | ...] in draft content
     const keyPattern = new RegExp(`\\[FIRM_DATA:\\s*${key}\\s*\\|[^\\]]*\\]`, 'g');
     if (approval.draftPayload?.body) {
       approval.draftPayload.body = approval.draftPayload.body.replace(keyPattern, String(value));
@@ -112,7 +116,6 @@ router.post('/:id/firm-data', async (req, res) => {
     if (approval.draftPayload?.facebookText) {
       approval.draftPayload.facebookText = approval.draftPayload.facebookText.replace(keyPattern, String(value));
     }
-    // Remove saved key from dataGaps so it disappears on refresh
     if (Array.isArray(approval.draftPayload?.dataGaps)) {
       approval.draftPayload.dataGaps = approval.draftPayload.dataGaps.filter(g =>
         typeof g === 'string' ? g !== key : g?.key !== key
@@ -141,42 +144,59 @@ router.post('/:id/firm-data', async (req, res) => {
   }
 });
 
-// POST /api/vendor/approvals/:id/firm-approve — firm marks draft as complete
+// POST /api/vendor/approvals/:id/firm-approve — firm approves and auto-publishes
 router.post('/:id/firm-approve', async (req, res) => {
   try {
-    const approval = await ApprovalQueue.findById(req.params.id);
-    if (!approval) {
-      return res.status(404).json({ success: false, error: 'Approval item not found' });
-    }
-    if (approval.vendorId.toString() !== req.vendorId.toString()) {
-      return res.status(403).json({ success: false, error: 'Access denied' });
-    }
-    if (approval.status !== 'pending') {
-      return res.status(400).json({ success: false, error: `Cannot firm-approve from status "${approval.status}"` });
-    }
+    const result = await firmApproveAndExecute(req.params.id, req.vendorId.toString());
 
-    const gaps = approval.draftPayload?.dataGaps
-      ?? approval.metadata?.dataGaps
-      ?? [];
-    const remaining = Array.isArray(gaps) ? gaps.length : 0;
-
-    if (remaining > 0) {
-      return res.status(400).json({
+    if (!result.ok) {
+      return res.status(422).json({
         success: false,
-        error: `Cannot approve: ${remaining} field(s) still need your input.`,
-        remaining,
+        error: `Draft could not be published: ${result.error}. It has been sent back to admin for review.`,
+        routedToReview: true,
       });
     }
 
-    approval.status = 'firm_completed';
-    approval.firmApprovedAt = new Date();
-    approval.firmApprovedBy = req.vendorId.toString();
-    await approval.save();
+    const item = result.item;
+    let liveUrl = null;
+    if (item.itemType === 'content_draft' && item.executionResult?.slug) {
+      liveUrl = `https://www.tendorai.com/posts/${item.executionResult.slug}`;
+      item.liveUrl = liveUrl;
+      await item.save();
+      pingBingIndexNow([liveUrl]).then(r => {
+        if (r.ok) console.log(`[IndexNow] Pinged for ${liveUrl}`);
+      });
+    }
 
-    res.json({ success: true, status: approval.status, firmApprovedAt: approval.firmApprovedAt });
+    res.json({ success: true, status: item.status, liveUrl });
   } catch (err) {
     console.error('[firm-approve] error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    const status = err.message.includes('not found') ? 404
+      : err.message.includes('Access denied') ? 403
+      : err.message.includes('Cannot') || err.message.includes('must be') ? 400
+      : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/vendor/approvals/:id/firm-reject — firm rejects with required comment
+router.post('/:id/firm-reject', async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'A rejection comment is required' });
+    }
+
+    const item = await firmRejectItem(req.params.id, req.vendorId.toString(), reason);
+    console.log(`[FIRM ACTION] draft_rejected id=${item._id} by=vendor:${req.vendorId} reason="${reason.substring(0, 100)}"`);
+    res.json({ success: true, status: item.status });
+  } catch (err) {
+    console.error('[firm-reject] error:', err);
+    const status = err.message.includes('not found') ? 404
+      : err.message.includes('Access denied') ? 403
+      : err.message.includes('Cannot') || err.message.includes('must be') ? 400
+      : 500;
+    res.status(status).json({ success: false, error: err.message });
   }
 });
 
