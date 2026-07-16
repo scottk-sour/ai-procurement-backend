@@ -27,6 +27,8 @@ export async function approveItem(approvalId, adminUserId, reason) {
   item.decidedAt = new Date();
   item.decidedBy = adminUserId || undefined;
   if (reason) item.decisionReason = reason;
+  item.firmRejectionReason = null;
+  item.firmRejectedAt = null;
   return item.save();
 }
 
@@ -48,8 +50,6 @@ export async function rejectItem(approvalId, adminUserId, reason) {
 
 const executionHandlers = {
   async schema_change(item) {
-    // Connects to SchemaInstallRequest service when implemented.
-    // Expected draftPayload: { websiteUrl, schemaMarkup, cmsPlatform }
     throw new Error('Execution handler for "schema_change" is not yet connected — implement in services/approvalQueue.js');
   },
 
@@ -58,7 +58,6 @@ const executionHandlers = {
     if (!payload.title) throw new Error('draftPayload.title is required to create a VendorPost');
     if (!payload.body) throw new Error('draftPayload.body is required to create a VendorPost');
 
-    // Pre-publish validator — hard block on errors, log warnings.
     const validation = validateContentDraft(payload);
     if (!validation.passed) {
       throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
@@ -71,9 +70,6 @@ const executionHandlers = {
     const vendor = await Vendor.findById(item.vendorId).lean();
     if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
 
-    // Semantic firm-performance-claim check (Haiku) — replaces the deterministic
-    // regex which false-positived on generic process descriptions and markdown.
-    // Fail-closed: API error or timeout blocks publish.
     const allText = [payload.body, payload.linkedInText || '', payload.facebookText || ''].join('\n\n');
     let firmContextBlock;
     try {
@@ -147,25 +143,18 @@ const executionHandlers = {
   },
 
   async review_request_batch(item) {
-    // Sends review request emails in batch when implemented.
-    // Expected draftPayload: { recipients: [{ email, name }], templateId }
     throw new Error('Execution handler for "review_request_batch" is not yet connected — implement in services/approvalQueue.js');
   },
 
   async press_release(item) {
-    // Distributes press release when implemented.
-    // Expected draftPayload: { headline, body, targetOutlets }
     throw new Error('Execution handler for "press_release" is not yet connected — implement in services/approvalQueue.js');
   },
 
   async outreach_pitch(item) {
-    // Sends outreach pitch emails when implemented.
-    // Expected draftPayload: { recipientEmail, subject, body }
     throw new Error('Execution handler for "outreach_pitch" is not yet connected — implement in services/approvalQueue.js');
   },
 
   async other(item) {
-    // Generic handler for untyped items — requires manual execution.
     throw new Error('Execution handler for "other" requires a type-specific implementation');
   },
 };
@@ -188,8 +177,8 @@ export async function editItem(approvalId, adminUserId, { body, title }) {
 export async function executeApprovedItem(approvalId) {
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
-  if (item.status !== 'approved') {
-    throw new Error(`Cannot execute item with status "${item.status}" — must be "approved"`);
+  if (!['approved', 'firm_completed'].includes(item.status)) {
+    throw new Error(`Cannot execute item with status "${item.status}" — must be "approved" or "firm_completed"`);
   }
 
   const handler = executionHandlers[item.itemType];
@@ -210,6 +199,54 @@ export async function executeApprovedItem(approvalId) {
     await item.save();
     throw err;
   }
+}
+
+export async function firmApproveAndExecute(approvalId, vendorIdStr) {
+  const item = await ApprovalQueue.findById(approvalId);
+  if (!item) throw new Error('Approval item not found');
+  if (item.vendorId.toString() !== vendorIdStr) {
+    throw new Error('Access denied');
+  }
+  if (item.status !== 'approved') {
+    throw new Error(`Cannot firm-approve from status "${item.status}" — draft must be approved by admin first`);
+  }
+
+  item.firmApprovedAt = new Date();
+  item.firmApprovedBy = vendorIdStr;
+  item.status = 'firm_completed';
+  await item.save();
+
+  try {
+    const result = await executeApprovedItem(item._id);
+    return { ok: true, item: result };
+  } catch (err) {
+    item.status = 'needs_review';
+    item.decisionReason = `Firm approved but publish failed: ${err.message}`;
+    item.executionError = err.message;
+    item.firmApprovedAt = null;
+    item.firmApprovedBy = null;
+    await item.save();
+    console.error(`[firmApproveAndExecute] Publish failed for ${approvalId}, routed to needs_review: ${err.message}`);
+    return { ok: false, error: err.message, routedToReview: true };
+  }
+}
+
+export async function firmRejectItem(approvalId, vendorIdStr, reason) {
+  if (!reason || !reason.trim()) throw new Error('Rejection comment is required');
+
+  const item = await ApprovalQueue.findById(approvalId);
+  if (!item) throw new Error('Approval item not found');
+  if (item.vendorId.toString() !== vendorIdStr) {
+    throw new Error('Access denied');
+  }
+  if (item.status !== 'approved') {
+    throw new Error(`Cannot reject from status "${item.status}" — draft must be approved by admin first`);
+  }
+
+  item.status = 'needs_review';
+  item.firmRejectionReason = reason.trim();
+  item.firmRejectedAt = new Date();
+  return item.save();
 }
 
 export async function listPending({ status, agentName, itemType, vendorId, page = 1, limit = 20 } = {}) {
@@ -331,20 +368,17 @@ export async function reVerifyItem(approvalId) {
     item.metadata.claimVerification = undefined;
     item.metadata.suggestedFixes = undefined;
     item.markModified('metadata');
-  } else if (claimVerification.status === 'fail') {
+  } else {
     const failed = claimVerification.issues || [];
     item.status = 'needs_review';
-    item.decisionReason = buildClaimFailureReport(failed, vendor.company);
+    item.decisionReason = failed.length > 0
+      ? buildClaimFailureReport(failed, vendor.company)
+      : `Legal verification did not complete (${claimVerification.status}${claimVerification.meta?.error ? ': ' + claimVerification.meta.error : ''}).`;
     if (!item.metadata) item.metadata = {};
-    item.metadata.suggestedFixes = failed.map(i => ({ sentence: i.sentence, reason: i.reason, repair: i.repair, officialSource: i.officialSource, severity: i.severity }));
+    if (failed.length > 0) {
+      item.metadata.suggestedFixes = failed.map(i => ({ sentence: i.sentence, reason: i.reason, repair: i.repair, officialSource: i.officialSource, severity: i.severity }));
+    }
     item.metadata.claimVerification = claimVerification;
-    item.metadata.reVerifiedAt = new Date();
-    item.markModified('metadata');
-  } else {
-    item.status = 'rejected';
-    item.decidedAt = new Date();
-    item.decisionReason = `Legal verification did not complete (${claimVerification.status}${claimVerification.meta?.error ? ': ' + claimVerification.meta.error : ''}).`;
-    if (!item.metadata) item.metadata = {};
     item.metadata.reVerifiedAt = new Date();
     item.markModified('metadata');
   }

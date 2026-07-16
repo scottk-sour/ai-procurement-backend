@@ -207,7 +207,7 @@ async function buildAgentActivity(vendorId, weekStarting) {
 
 async function buildNeedsAttention(vendorId) {
   try {
-    const pending = await ApprovalQueue.find({ vendorId, status: 'pending' })
+    const pending = await ApprovalQueue.find({ vendorId, status: 'approved' })
       .select('itemType title')
       .lean();
 
