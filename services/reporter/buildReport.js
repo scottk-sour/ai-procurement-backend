@@ -7,6 +7,7 @@ import { titleCaseCompanyName } from './textFormatters.js';
 import { filterRealCompetitors } from './filterRealCompetitors.js';
 import { isSameFirm } from '../platformQuery/nameMatch.js';
 import { vendorHasRealScans as _vendorHasRealScans, getBrowsingFilter } from '../../lib/data/vendorMentions.js';
+import { FLEET_SCHEDULE } from '../../lib/config/fleetSchedule.js';
 
 function slugifyUpper(text) {
   return (text || 'UNKNOWN')
@@ -90,7 +91,7 @@ export async function buildAIVisibilityIntelligenceReport(vendorId, weekStartDat
   })).sort((a, b) => b.estimatedImpact - a.estimatedImpact);
 
   // SECTION 6: What's next
-  const whatsNext = buildWhatsNext(weekEnd);
+  const whatsNext = buildWhatsNext();
 
   // Board summary — plain factual, no LLM call for fabricated narrative
   const mentionedPlatforms = [...new Set(weekScans.filter(s => s.mentioned === true).map(s => s.platform).filter(Boolean))];
@@ -255,15 +256,12 @@ function estimateActionImpact(approval) {
   return { directory_submission: 5, content_draft: 7, schema_change: 4, review_request_batch: 3 }[approval.itemType] || 3;
 }
 
-function buildWhatsNext(weekEnd) {
-  return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((d, i) => {
-    const date = new Date(weekEnd); date.setDate(date.getDate() + i + 1);
-    return {
-      dayLabel: `${d} ${date.getDate()} ${date.toLocaleString('en-GB', { month: 'short' })}`,
-      eventLabel: i === 0 ? 'AI visibility scan' : i === 2 ? 'Content draft expected' : i === 3 ? 'Detective gap analysis' : i === 4 ? 'Content draft + directory audit' : 'AI visibility scan',
-      vendorImpact: i === 2 || i === 4 ? 'Will appear in your approval queue' : i === 3 ? 'New fixes may be added to your queue' : 'Tracks score changes across live engines',
-    };
-  });
+function buildWhatsNext() {
+  return FLEET_SCHEDULE.map(entry => ({
+    dayLabel: entry.days.join(', '),
+    eventLabel: entry.label,
+    timeUTC: entry.timeUTC,
+  }));
 }
 
 async function getDedupedPendingApprovals(vendorId) {

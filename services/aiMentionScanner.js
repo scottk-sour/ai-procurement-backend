@@ -494,10 +494,7 @@ export async function runWeeklyMentionScan() {
           alertsSent++;
         }
 
-        // Save score history for this vendor (if not already saved via notification path)
-        if (!vendorsNotified.has(vendor._id.toString())) {
-          await saveScoreHistory(vendor, weekStarting);
-        }
+        await saveScoreHistory(vendor, weekStarting);
       }
 
       vendorsScanned.add(vendor._id.toString());

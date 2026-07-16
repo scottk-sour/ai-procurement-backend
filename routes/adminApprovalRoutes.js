@@ -4,6 +4,7 @@ import {
   approveItem,
   rejectItem,
   editItem,
+  reVerifyItem,
   executeApprovedItem,
   listPending,
   getApprovalById,
@@ -84,6 +85,21 @@ router.post('/:id/reject', async (req, res) => {
   } catch (err) {
     const status = err.message.includes('not found') ? 404 : err.message.includes('Cannot') ? 409 : 500;
     res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/approvals/:id/re-verify
+router.post('/:id/re-verify', async (req, res) => {
+  try {
+    const result = await reVerifyItem(req.params.id);
+    if (result.ok === false) {
+      return res.status(result.code || 400).json({ success: false, error: result.error });
+    }
+    console.log(`[ADMIN ACTION] approval_reverified id=${result.approval._id} agent=${result.approval.agentName} status=${result.approval.status} by=${req.admin?.email}`);
+    res.json({ success: true, item: result.approval });
+  } catch (err) {
+    console.error('[re-verify] failed:', err.message);
+    res.status(500).json({ success: false, error: 'Re-verification failed' });
   }
 });
 

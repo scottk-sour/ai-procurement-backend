@@ -99,7 +99,7 @@ async function main() {
       });
 
       sent++;
-      console.log(`✓ [${i + 1}/${FIRMS.length}] ${f.firm} (${f.score}/100) — sent to ${recipient} (id: ${result.id || 'ok'})`);
+      console.log(`✓ [${i + 1}/${FIRMS.length}] ${f.firm} (${f.score}/100) — sent to ${recipient} (id: ${result.id || 'ok'})${DRY_RUN ? ' [DRY RUN — no outreach log written]' : ''}`);
     } catch (err) {
       failed++;
       failures.push({ firm: f.firm, error: err.message });
