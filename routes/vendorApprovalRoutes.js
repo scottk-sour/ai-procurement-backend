@@ -1,12 +1,8 @@
 import express from 'express';
 import vendorAuth from '../middleware/vendorAuth.js';
 import ApprovalQueue from '../models/ApprovalQueue.js';
-import Vendor from '../models/Vendor.js';
-import { isValidFirmDataKey, getFirmDataLabel } from '../services/writerAgent/firmDataKeys.js';
-import { countAllPlaceholders } from '../services/writerAgent/parsePlaceholders.js';
 import { firmApproveAndExecute, firmRejectItem } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
-import ApprovalQueueModel from '../models/ApprovalQueue.js';
 
 const router = express.Router();
 
@@ -90,7 +86,7 @@ router.post('/:id/firm-data', async (req, res) => {
     if (approval.vendorId.toString() !== req.vendorId.toString()) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    if (!['approved', 'firm_completed'].includes(approval.status)) {
+    if (approval.status !== 'approved') {
       return res.status(400).json({ success: false, error: `Cannot edit firm data on approval with status "${approval.status}"` });
     }
 
@@ -107,48 +103,17 @@ router.post('/:id/firm-data', async (req, res) => {
       }
     }
 
-    const vendor = await Vendor.findById(req.vendorId);
-    if (!vendor.firmData) vendor.firmData = new Map();
-    vendor.firmData.set(key, {
-      value: String(value),
-      label: getFirmDataLabel(key),
-      updatedAt: new Date(),
-      updatedBy: 'firm',
-    });
-    await vendor.save();
-
-    const keyPattern = new RegExp(`\\[FIRM_DATA:\\s*${key}\\s*\\|[^\\]]*\\]`, 'g');
-    if (approval.draftPayload?.body) {
-      approval.draftPayload.body = approval.draftPayload.body.replace(keyPattern, String(value));
-    }
-    if (approval.draftPayload?.linkedInText) {
-      approval.draftPayload.linkedInText = approval.draftPayload.linkedInText.replace(keyPattern, String(value));
-    }
-    if (approval.draftPayload?.facebookText) {
-      approval.draftPayload.facebookText = approval.draftPayload.facebookText.replace(keyPattern, String(value));
-    }
-    if (Array.isArray(approval.draftPayload?.dataGaps)) {
-      approval.draftPayload.dataGaps = approval.draftPayload.dataGaps.filter(g =>
-        typeof g === 'string' ? g !== key : g?.key !== key
-      );
-    }
-    if (Array.isArray(approval.metadata?.dataGaps)) {
-      approval.metadata.dataGaps = approval.metadata.dataGaps.filter(g =>
-        typeof g === 'string' ? g !== key : g?.key !== key
-      );
-      approval.markModified('metadata');
-    }
-    approval.markModified('draftPayload');
+    if (!approval.firmData) approval.firmData = new Map();
+    approval.firmData.set(key, String(value));
+    approval.markModified('firmData');
     await approval.save();
 
-    const allContent = [
-      approval.draftPayload?.body || '',
-      approval.draftPayload?.linkedInText || '',
-      approval.draftPayload?.facebookText || '',
-    ].join('\n');
-    const remainingPlaceholders = countAllPlaceholders(allContent);
+    const bodyText = [approval.draftPayload?.body || '', approval.draftPayload?.linkedInText || '', approval.draftPayload?.facebookText || ''].join('\n');
+    const allPlaceholderKeys = [...new Set([...(bodyText.matchAll(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|/gi))].map(m => m[1]))];
+    const filledKeys = allPlaceholderKeys.filter(k => approval.firmData.has(k));
+    const remainingCount = allPlaceholderKeys.length - filledKeys.length;
 
-    res.json({ success: true, filledKey: key, remainingPlaceholders });
+    res.json({ success: true, filledKey: key, remainingPlaceholders: remainingCount, filledCount: filledKeys.length, totalPlaceholders: allPlaceholderKeys.length });
   } catch (err) {
     console.error('[firm-data] error:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -158,15 +123,17 @@ router.post('/:id/firm-data', async (req, res) => {
 // POST /api/vendor/approvals/:id/firm-approve — firm approves and auto-publishes
 router.post('/:id/firm-approve', async (req, res) => {
   try {
-    const preCheck = await ApprovalQueueModel.findById(req.params.id).select('draftPayload vendorId status').lean();
+    const preCheck = await ApprovalQueue.findById(req.params.id).select('draftPayload firmData vendorId status').lean();
     if (preCheck && preCheck.vendorId?.toString() === req.vendorId.toString()) {
-      const allContent = [preCheck.draftPayload?.body || '', preCheck.draftPayload?.linkedInText || '', preCheck.draftPayload?.facebookText || ''].join('\n');
-      const placeholderMatches = allContent.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ][^\]]*\]|\[[A-Z][A-Z_ ]+:\s[^\]]+\]/g);
-      if (placeholderMatches && placeholderMatches.length > 0) {
+      const bodyText = [preCheck.draftPayload?.body || '', preCheck.draftPayload?.linkedInText || '', preCheck.draftPayload?.facebookText || ''].join('\n');
+      const allPlaceholderKeys = [...new Set([...(bodyText.matchAll(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|/gi))].map(m => m[1]))];
+      const savedData = preCheck.firmData instanceof Map ? preCheck.firmData : new Map(Object.entries(preCheck.firmData || {}));
+      const unfilled = allPlaceholderKeys.filter(k => !savedData.has(k));
+      if (unfilled.length > 0) {
         return res.status(400).json({
           success: false,
-          error: `Cannot publish: ${placeholderMatches.length} unfilled placeholder(s) remain`,
-          placeholders: [...new Set(placeholderMatches)],
+          error: `Cannot publish: ${unfilled.length} unfilled placeholder(s) remain`,
+          unfilledKeys: unfilled,
         });
       }
     }
@@ -174,6 +141,13 @@ router.post('/:id/firm-approve', async (req, res) => {
     const result = await firmApproveAndExecute(req.params.id, req.vendorId.toString());
 
     if (!result.ok) {
+      if (result.firmRetriable) {
+        return res.status(422).json({
+          success: false,
+          error: result.error,
+          firmRetriable: true,
+        });
+      }
       return res.status(422).json({
         success: false,
         error: `Draft could not be published: ${result.error}. It has been sent back to admin for review.`,

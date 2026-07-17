@@ -10,7 +10,6 @@ describe('firmData contract verification', () => {
   it('dataGaps is stored on draftPayload (accessible to frontend without metadata dig)', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
-    // Should appear in the draftPayload block, not just metadata
     const draftPayloadSection = content.slice(
       content.indexOf('draftPayload: {'),
       content.indexOf('metadata: {')
@@ -18,28 +17,26 @@ describe('firmData contract verification', () => {
     expect(draftPayloadSection).toContain('dataGaps:');
   });
 
-  it('firm-data endpoint removes saved key from draftPayload.dataGaps', async () => {
+  it('firm-data endpoint stores values on approval.firmData map, not in body', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('routes/vendorApprovalRoutes.js', 'utf8');
-    expect(content).toContain('draftPayload.dataGaps');
-    expect(content).toContain('.filter(g =>');
-    expect(content).toContain("g?.key !== key");
+    expect(content).toContain("approval.firmData.set(key,");
+    expect(content).toContain("markModified('firmData')");
+    expect(content).not.toContain("approval.draftPayload.body = approval.draftPayload.body.replace");
   });
 
-  it('firm-data endpoint also removes from metadata.dataGaps', async () => {
+  it('firm-data endpoint validates keys against body placeholders, not static whitelist', async () => {
     const fs = await import('fs');
     const content = fs.readFileSync('routes/vendorApprovalRoutes.js', 'utf8');
-    expect(content).toContain('metadata.dataGaps');
-    expect(content).toContain("markModified('metadata')");
+    expect(content).toContain('FIRM_DATA:');
+    expect(content).toContain('not found in this draft');
+    expect(content).not.toContain('isValidFirmDataKey');
   });
 
-  it('FIRM_DATA_KEYS registry is the single source of truth for gap keys', async () => {
+  it('execution handler substitutes firmData at publish time', async () => {
     const fs = await import('fs');
-    const writerContent = fs.readFileSync('services/writerAgent.js', 'utf8');
-    const routeContent = fs.readFileSync('routes/vendorApprovalRoutes.js', 'utf8');
-    // Writer iterates FIRM_DATA_KEYS for gaps
-    expect(writerContent).toContain('Object.entries(FIRM_DATA_KEYS)');
-    // Route validates against isValidFirmDataKey
-    expect(routeContent).toContain('isValidFirmDataKey(key)');
+    const content = fs.readFileSync('services/approvalQueue.js', 'utf8');
+    expect(content).toContain('substitutePlaceholders');
+    expect(content).toContain('mergedPayload');
   });
 });

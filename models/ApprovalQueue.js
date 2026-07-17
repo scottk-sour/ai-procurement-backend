@@ -49,6 +49,11 @@ const approvalQueueSchema = new mongoose.Schema({
   executionError: { type: String },
   liveUrl: { type: String, default: null },
   source: { type: String },
+  firmData: {
+    type: Map,
+    of: String,
+    default: () => new Map(),
+  },
   firmApprovedAt: { type: Date },
   firmApprovedBy: { type: String },
   firmRejectionReason: { type: String, default: null },
