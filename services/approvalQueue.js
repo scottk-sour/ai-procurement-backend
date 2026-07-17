@@ -48,6 +48,66 @@ export async function rejectItem(approvalId, adminUserId, reason) {
   return item.save();
 }
 
+function buildFirmDataMap(item) {
+  return item.firmData instanceof Map ? item.firmData : new Map(Object.entries(item.firmData || {}));
+}
+
+export function substitutePlaceholders(text, firmDataMap) {
+  if (!text) return text;
+  return text.replace(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|[^\]]*\]/g, (match, key) => {
+    return firmDataMap.has(key) ? firmDataMap.get(key) : match;
+  });
+}
+
+function buildMergedPayload(payload, firmDataMap) {
+  return {
+    ...payload,
+    body: substitutePlaceholders(payload.body, firmDataMap),
+    linkedInText: substitutePlaceholders(payload.linkedInText, firmDataMap),
+    facebookText: substitutePlaceholders(payload.facebookText, firmDataMap),
+  };
+}
+
+async function validateAndReviewMergedPayload(mergedPayload, item) {
+  const validation = validateContentDraft(mergedPayload);
+  if (!validation.passed) {
+    throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
+  }
+  if (validation.warnings.length > 0) {
+    console.warn(`[approvalQueue] Warnings for approval ${item._id}:`, validation.warnings);
+  }
+
+  const { default: Vendor } = await import('../models/Vendor.js');
+  const vendor = await Vendor.findById(item.vendorId).lean();
+  if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
+
+  const allText = [mergedPayload.body, mergedPayload.linkedInText || '', mergedPayload.facebookText || ''].join('\n\n');
+  let firmContextBlock;
+  try {
+    const firmContext = await getFirmContext(item.vendorId);
+    firmContextBlock = renderFirmContextBlock(firmContext);
+  } catch (err) {
+    throw new Error(`Cannot load firm context for semantic check: ${err.message}`);
+  }
+
+  const semanticReview = await reviewDraftForFabrication({
+    draftText: allText,
+    firmContext: firmContextBlock,
+    vertical: vendor.vendorType,
+  });
+
+  if (semanticReview.verdict === 'fail') {
+    const claims = [
+      ...(semanticReview.fabricatedAttributions || []).map(a => `Fabricated attribution (${a.body}): "${a.claim}"`),
+      ...(semanticReview.firmClaimsNotInContext || []).map(c => `Unverified firm claim: "${c.claim}"`),
+    ];
+    const errorNote = semanticReview.error
+      ? `Semantic review error (fail-closed): ${semanticReview.error}`
+      : `Semantic review failed (quality ${semanticReview.qualityScore}/10): ${claims.join('; ')}`;
+    throw new Error(`Publish blocked — ${errorNote}`);
+  }
+}
+
 const executionHandlers = {
   async schema_change(item) {
     throw new Error('Execution handler for "schema_change" is not yet connected — implement in services/approvalQueue.js');
@@ -58,59 +118,10 @@ const executionHandlers = {
     if (!payload.title) throw new Error('draftPayload.title is required to create a VendorPost');
     if (!payload.body) throw new Error('draftPayload.body is required to create a VendorPost');
 
-    const firmDataMap = item.firmData instanceof Map ? item.firmData : new Map(Object.entries(item.firmData || {}));
+    const firmDataMap = buildFirmDataMap(item);
+    const mergedPayload = buildMergedPayload(payload, firmDataMap);
 
-    function substitutePlaceholders(text) {
-      if (!text) return text;
-      return text.replace(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|[^\]]*\]/g, (match, key) => {
-        return firmDataMap.has(key) ? firmDataMap.get(key) : match;
-      });
-    }
-
-    const mergedPayload = {
-      ...payload,
-      body: substitutePlaceholders(payload.body),
-      linkedInText: substitutePlaceholders(payload.linkedInText),
-      facebookText: substitutePlaceholders(payload.facebookText),
-    };
-
-    const validation = validateContentDraft(mergedPayload);
-    if (!validation.passed) {
-      throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
-    }
-    if (validation.warnings.length > 0) {
-      console.warn(`[approvalQueue.content_draft] Warnings for approval ${item._id}:`, validation.warnings);
-    }
-
-    const { default: Vendor } = await import('../models/Vendor.js');
-    const vendor = await Vendor.findById(item.vendorId).lean();
-    if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
-
-    const allText = [mergedPayload.body, mergedPayload.linkedInText || '', mergedPayload.facebookText || ''].join('\n\n');
-    let firmContextBlock;
-    try {
-      const firmContext = await getFirmContext(item.vendorId);
-      firmContextBlock = renderFirmContextBlock(firmContext);
-    } catch (err) {
-      throw new Error(`Cannot load firm context for semantic check: ${err.message}`);
-    }
-
-    const semanticReview = await reviewDraftForFabrication({
-      draftText: allText,
-      firmContext: firmContextBlock,
-      vertical: vendor.vendorType,
-    });
-
-    if (semanticReview.verdict === 'fail') {
-      const claims = [
-        ...(semanticReview.fabricatedAttributions || []).map(a => `Fabricated attribution (${a.body}): "${a.claim}"`),
-        ...(semanticReview.firmClaimsNotInContext || []).map(c => `Unverified firm claim: "${c.claim}"`),
-      ];
-      const errorNote = semanticReview.error
-        ? `Semantic review error (fail-closed): ${semanticReview.error}`
-        : `Semantic review failed (quality ${semanticReview.qualityScore}/10): ${claims.join('; ')}`;
-      throw new Error(`Publish blocked — ${errorNote}`);
-    }
+    await validateAndReviewMergedPayload(mergedPayload, item);
 
     const { default: VendorPost } = await import('../models/VendorPost.js');
     const post = new VendorPost({
@@ -385,6 +396,48 @@ export async function reVerifyItem(approvalId) {
 
   const saved = await item.save();
   return { ok: true, approval: saved };
+}
+
+export async function firmRepublish(approvalId, vendorIdStr) {
+  const item = await ApprovalQueue.findById(approvalId);
+  if (!item) throw new Error('Approval item not found');
+  if (item.vendorId.toString() !== vendorIdStr) {
+    throw new Error('Access denied');
+  }
+  if (item.status !== 'executed') {
+    throw new Error(`Cannot republish from status "${item.status}" — must be "executed"`);
+  }
+  if (item.itemType !== 'content_draft') {
+    throw new Error('Republish is only supported for content_draft items');
+  }
+  const postId = item.executionResult?.postId;
+  if (!postId) {
+    throw new Error('No published post linked to this approval (missing executionResult.postId)');
+  }
+
+  const payload = item.draftPayload || {};
+  const firmDataMap = buildFirmDataMap(item);
+  const mergedPayload = buildMergedPayload(payload, firmDataMap);
+
+  await validateAndReviewMergedPayload(mergedPayload, item);
+
+  const { default: VendorPost } = await import('../models/VendorPost.js');
+  const post = await VendorPost.findById(postId);
+  if (!post) throw new Error(`Published post ${postId} not found`);
+
+  post.body = mergedPayload.body;
+  post.title = mergedPayload.title;
+  post.linkedInText = mergedPayload.linkedInText;
+  post.facebookText = mergedPayload.facebookText;
+  post.updatedAt = new Date();
+  await post.save();
+
+  if (!item.republishedAt) item.republishedAt = [];
+  item.republishedAt.push(new Date());
+  item.markModified('republishedAt');
+  await item.save();
+
+  return { ok: true, postId: post._id, slug: post.slug, updatedAt: post.updatedAt };
 }
 
 export async function latestRejectionReason(vendorId, itemType = 'content_draft') {

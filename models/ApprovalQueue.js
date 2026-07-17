@@ -60,6 +60,7 @@ const approvalQueueSchema = new mongoose.Schema({
   firmRejectedAt: { type: Date },
   editedByAdmin: { type: Boolean, default: false },
   editedAt: { type: Date },
+  republishedAt: [{ type: Date }],
 });
 
 approvalQueueSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
