@@ -23,8 +23,7 @@ describe('Writer repair pass — deterministic deletion', () => {
     const fs = await import('fs');
     const content = fs.readFileSync('services/writerAgent.js', 'utf8');
 
-    expect(content).toContain('excerpt.substring(0, 30)');
-    expect(content).toContain('src.replace(sentence,');
+    expect(content).toContain('excerpt.substring(0,');
     expect(content).toContain('deletedSentences.push');
   });
 

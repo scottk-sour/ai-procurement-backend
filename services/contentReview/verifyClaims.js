@@ -1,5 +1,6 @@
 import { SONNET_MODEL } from '../../lib/config/models.js';
 import { extractFirstJsonObject } from './jsonExtract.js';
+import { BANNED_PHRASE_WORDS, repairContainsBannedPhrase } from '../contentPlanner/validators.js';
 
 const ALLOWED_DOMAINS = [
   'legislation.gov.uk', 'gov.uk', 'gov.wales', 'law.gov.wales',
@@ -41,6 +42,10 @@ Only genuinely cosmetic wording differences pass as acceptable.
 
 FIRM FACTS (the ONLY verified source for firm-specific claims):
 ${firmFacts || '(none provided)'}
+
+REPAIR CONSTRAINTS — when suggesting replacement text:
+- NEVER use these banned phrases: ${BANNED_PHRASE_WORDS.join(', ')}
+- Keep UK English spelling throughout
 
 RESPONSE FORMAT — return ONLY the JSON object below, no commentary before or after:
 { "results": [{ "id": "c1", "verdict": "verified"|"contradicted"|"firm-unverified"|"unverifiable", "reason": "<max 25 words>", "source": null|"official URL", "repair": null|"suggested replacement text for non-verified claims only", "confidence": "high"|"medium"|"low" }] }`;
@@ -238,6 +243,12 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
       : verdict === 'firm-unverified' ? 'high'
       : 'medium';
 
+    let repair = r.repair || null;
+    if (repair && repairContainsBannedPhrase(repair)) {
+      console.warn(`[verifyClaims] Repair for ${c.id} contains banned phrase, nullifying: "${repair.substring(0, 80)}"`);
+      repair = null;
+    }
+
     issues.push({
       id: c.id,
       type: c.type || 'unknown',
@@ -246,7 +257,7 @@ export async function verifyClaims({ draftText, vertical, jurisdiction = 'the UK
       sentence: c.text,
       reason: r.reason || 'No result returned from verification',
       officialSource: r.source || null,
-      repair: r.repair || null,
+      repair,
       confidence: r.confidence || 'medium',
     });
   }

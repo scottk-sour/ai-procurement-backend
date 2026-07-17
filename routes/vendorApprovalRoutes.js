@@ -6,6 +6,7 @@ import { isValidFirmDataKey, getFirmDataLabel } from '../services/writerAgent/fi
 import { countAllPlaceholders } from '../services/writerAgent/parsePlaceholders.js';
 import { firmApproveAndExecute, firmRejectItem } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
+import ApprovalQueueModel from '../models/ApprovalQueue.js';
 
 const router = express.Router();
 
@@ -78,9 +79,6 @@ router.post('/:id/firm-data', async (req, res) => {
     if (!key || typeof key !== 'string') {
       return res.status(400).json({ success: false, error: 'key is required' });
     }
-    if (!isValidFirmDataKey(key)) {
-      return res.status(400).json({ success: false, error: `Unknown firmData key: "${key}". Only registered keys are accepted.` });
-    }
     if (value === undefined || value === null) {
       return res.status(400).json({ success: false, error: 'value is required' });
     }
@@ -94,6 +92,19 @@ router.post('/:id/firm-data', async (req, res) => {
     }
     if (!['approved', 'firm_completed'].includes(approval.status)) {
       return res.status(400).json({ success: false, error: `Cannot edit firm data on approval with status "${approval.status}"` });
+    }
+
+    if (approval.itemType === 'content_draft') {
+      const bodyText = [approval.draftPayload?.body || '', approval.draftPayload?.linkedInText || '', approval.draftPayload?.facebookText || ''].join('\n');
+      const keyPattern = new RegExp(`\\[FIRM_DATA:\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\|`, 'i');
+      if (!keyPattern.test(bodyText)) {
+        const presentKeys = [...(bodyText.matchAll(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|/gi))].map(m => m[1]);
+        const unique = [...new Set(presentKeys)];
+        return res.status(400).json({
+          success: false,
+          error: `Key "${key}" not found in this draft. Available keys: ${unique.length > 0 ? unique.join(', ') : '(none)'}`,
+        });
+      }
     }
 
     const vendor = await Vendor.findById(req.vendorId);
@@ -147,6 +158,19 @@ router.post('/:id/firm-data', async (req, res) => {
 // POST /api/vendor/approvals/:id/firm-approve — firm approves and auto-publishes
 router.post('/:id/firm-approve', async (req, res) => {
   try {
+    const preCheck = await ApprovalQueueModel.findById(req.params.id).select('draftPayload vendorId status').lean();
+    if (preCheck && preCheck.vendorId?.toString() === req.vendorId.toString()) {
+      const allContent = [preCheck.draftPayload?.body || '', preCheck.draftPayload?.linkedInText || '', preCheck.draftPayload?.facebookText || ''].join('\n');
+      const placeholderMatches = allContent.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ][^\]]*\]|\[[A-Z][A-Z_ ]+:\s[^\]]+\]/g);
+      if (placeholderMatches && placeholderMatches.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Cannot publish: ${placeholderMatches.length} unfilled placeholder(s) remain`,
+          placeholders: [...new Set(placeholderMatches)],
+        });
+      }
+    }
+
     const result = await firmApproveAndExecute(req.params.id, req.vendorId.toString());
 
     if (!result.ok) {
