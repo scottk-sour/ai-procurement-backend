@@ -14,9 +14,9 @@ import { detectPossibleFabrication } from './writerGuards.js';
  * Pure functions — no DB access, no side effects.
  */
 
-const PLACEHOLDER_PATTERN = /\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]/i;
+const PLACEHOLDER_PATTERN = /\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]|\[[A-Z][A-Z_ ]+:\s[^\]]+\]/;
 
-const BANNED_PHRASES = [
+export const BANNED_PHRASES = [
   /\bin today'?s fast-paced\b/i,
   /\blet'?s dive in\b/i,
   /\bin conclusion\b/i,
@@ -29,6 +29,17 @@ const BANNED_PHRASES = [
   /\bfurthermore\b/i,
   /\badditionally\b/i,
 ];
+
+export const BANNED_PHRASE_WORDS = [
+  'in today\'s fast-paced', 'let\'s dive in', 'in conclusion',
+  'it\'s worth noting', 'it is important to note', 'without further ado',
+  'have you ever wondered', 'that being said', 'moreover', 'furthermore', 'additionally',
+];
+
+export function repairContainsBannedPhrase(repairText) {
+  if (!repairText) return false;
+  return BANNED_PHRASES.some(p => p.test(repairText));
+}
 
 const US_ENGLISH_PATTERNS = [
   { pattern: /\boptimization\b/i, suggestion: 'optimisation' },

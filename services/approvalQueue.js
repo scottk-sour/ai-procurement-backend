@@ -193,9 +193,9 @@ export async function executeApprovedItem(approvalId) {
     item.executionResult = result;
     return item.save();
   } catch (err) {
-    item.status = 'failed';
-    item.executedAt = new Date();
+    item.status = 'needs_review';
     item.executionError = err.message;
+    item.decisionReason = `Execution failed: ${err.message}`;
     await item.save();
     throw err;
   }
@@ -290,16 +290,14 @@ export async function reVerifyItem(approvalId) {
   if (item.itemType !== 'content_draft') {
     return { ok: false, code: 400, error: `Re-verification only applies to content drafts (got: ${item.itemType})` };
   }
-  const RE_VERIFIABLE_STATUSES = ['rejected', 'needs_review'];
+  const RE_VERIFIABLE_STATUSES = ['rejected', 'needs_review', 'failed'];
   if (!RE_VERIFIABLE_STATUSES.includes(item.status)) {
-    return { ok: false, code: 409, error: `Cannot re-verify a draft with status "${item.status}". Only rejected or needs_review drafts can be re-checked.` };
+    return { ok: false, code: 409, error: `Cannot re-verify a draft with status "${item.status}". Only rejected, needs_review, or failed drafts can be re-checked.` };
   }
 
   const { verifyClaims } = await import('./contentReview/verifyClaims.js');
   const { resolveJurisdiction } = await import('../lib/config/jurisdictions.js');
   const { profileFor } = await import('../lib/config/industryProfiles.js');
-  const { extractFirstJsonObject } = await import('./contentReview/jsonExtract.js');
-  const { SONNET_MODEL } = await import('../lib/config/models.js');
 
   const { default: Vendor } = await import('../models/Vendor.js');
   const vendor = await Vendor.findById(item.vendorId).lean();
@@ -311,54 +309,17 @@ export async function reVerifyItem(approvalId) {
   const jurisdiction = regime?.country || 'the UK';
   const regulator = profileFor(vendor.vendorType)?.regulatorFull || null;
 
-  let draftBody = item.draftPayload?.body || '';
-  let claimVerification = { status: 'not_run', issues: [], meta: {} };
+  const draftBody = item.draftPayload?.body || '';
 
-  const { applyRepairs, buildClaimFailureReport } = await import('./writerAgent.js');
+  const { buildClaimFailureReport } = await import('./writerAgent.js');
 
-  const MAX_PASSES = 3;
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
-    claimVerification = await verifyClaims({
-      draftText: draftBody,
-      vertical: vendor.vendorType,
-      jurisdiction,
-      regulator,
-      firmFacts: firmContextBlock,
-    });
-
-    if (claimVerification.status === 'pass') break;
-    if (claimVerification.status === 'not_run' || claimVerification.status === 'error') break;
-
-    const failedIssues = claimVerification.issues || [];
-    if (failedIssues.length === 0) break;
-
-    const { repaired, unresolved } = applyRepairs(draftBody, failedIssues);
-    draftBody = repaired;
-
-    if (unresolved.length > 0) {
-      try {
-        const { default: Anthropic } = await import('@anthropic-ai/sdk');
-        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const unresolvedInstructions = unresolved.map(i => `- Replace: "${i.sentence}" → With: "${i.repair || '(remove this sentence entirely)'}"`).join('\n');
-        const targetedResp = await anthropic.messages.create({
-          model: SONNET_MODEL, max_tokens: 4000, temperature: 0,
-          system: 'You are an editor. You will receive an article and a list of specific sentences to replace. Replace ONLY those sentences with the provided replacements. Output every other sentence byte-for-byte unchanged. Return the full article as JSON: { "body": "..." }',
-          messages: [{ role: 'user', content: `ARTICLE:\n${draftBody}\n\nREPLACEMENTS:\n${unresolvedInstructions}` }],
-        });
-        const targetedText = targetedResp.content.filter(b => b.type === 'text').map(b => b.text).join('');
-        const targetedObj = extractFirstJsonObject(targetedText);
-        if (targetedObj) {
-          const targetedParsed = JSON.parse(targetedObj);
-          draftBody = targetedParsed.body || draftBody;
-        }
-      } catch (err) {
-        console.error(`[reVerify] Targeted rewrite failed: ${err.message}`);
-      }
-    }
-  }
-
-  item.draftPayload.body = draftBody;
-  item.markModified('draftPayload');
+  const claimVerification = await verifyClaims({
+    draftText: draftBody,
+    vertical: vendor.vendorType,
+    jurisdiction,
+    regulator,
+    firmFacts: firmContextBlock,
+  });
 
   if (claimVerification.status === 'pass') {
     item.status = 'pending';

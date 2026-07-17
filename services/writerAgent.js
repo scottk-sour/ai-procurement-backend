@@ -830,6 +830,21 @@ function replaceAllOccurrences(body, located, replacement, issue) {
   return result;
 }
 
+function countExactOccurrences(text, needle) {
+  let count = 0, idx = 0;
+  while ((idx = text.indexOf(needle, idx)) !== -1) { count++; idx += needle.length; }
+  return count;
+}
+
+function wordOverlap(a, b) {
+  const wa = new Set(normaliseForMatch(a).split(/\s+/).filter(w => w.length > 2));
+  const wb = new Set(normaliseForMatch(b).split(/\s+/).filter(w => w.length > 2));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  let shared = 0;
+  for (const w of wa) if (wb.has(w)) shared++;
+  return shared / Math.min(wa.size, wb.size);
+}
+
 function applyRepairs(body, issues) {
   let repaired = body;
   const unresolved = [];
@@ -838,16 +853,25 @@ function applyRepairs(body, issues) {
     if (!issue.sentence) { unresolved.push(issue); continue; }
 
     const located = findSentenceInDraft(repaired, issue.sentence);
+    if (!located) { unresolved.push(issue); continue; }
 
-    if (!located) {
+    if (wordOverlap(located, issue.sentence) < 0.5) {
+      console.warn(`[applyRepairs] Skipped low-overlap match: issue="${issue.sentence.substring(0, 50)}..." located="${located.substring(0, 50)}..."`);
+      unresolved.push(issue);
+      continue;
+    }
+
+    const occurrences = countExactOccurrences(repaired, located);
+    if (occurrences !== 1) {
+      console.warn(`[applyRepairs] Skipped "${located.substring(0, 60)}..." — found ${occurrences} occurrences (need exactly 1)`);
       unresolved.push(issue);
       continue;
     }
 
     if (issue.verdict === 'firm-unverified' && (!issue.repair || issue.repair.toLowerCase().includes('remove'))) {
-      repaired = replaceAllOccurrences(repaired, located, '', issue);
+      repaired = repaired.replace(located, '');
     } else if (issue.repair) {
-      repaired = replaceAllOccurrences(repaired, located, issue.repair, issue);
+      repaired = repaired.replace(located, issue.repair);
     } else {
       unresolved.push(issue);
       continue;
