@@ -1,7 +1,7 @@
 import express from 'express';
 import vendorAuth from '../middleware/vendorAuth.js';
 import ApprovalQueue from '../models/ApprovalQueue.js';
-import { firmApproveAndExecute, firmRejectItem } from '../services/approvalQueue.js';
+import { firmApproveAndExecute, firmRejectItem, firmRepublish } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
 
 const router = express.Router();
@@ -86,7 +86,7 @@ router.post('/:id/firm-data', async (req, res) => {
     if (approval.vendorId.toString() !== req.vendorId.toString()) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
-    if (approval.status !== 'approved') {
+    if (!['approved', 'executed'].includes(approval.status)) {
       return res.status(400).json({ success: false, error: `Cannot edit firm data on approval with status "${approval.status}"` });
     }
 
@@ -190,6 +190,25 @@ router.post('/:id/firm-reject', async (req, res) => {
     res.json({ success: true, status: item.status });
   } catch (err) {
     console.error('[firm-reject] error:', err);
+    const status = err.message.includes('not found') ? 404
+      : err.message.includes('Access denied') ? 403
+      : err.message.includes('Cannot') || err.message.includes('must be') ? 400
+      : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/vendor/approvals/:id/firm-republish — update published post with new firm values
+router.post('/:id/firm-republish', async (req, res) => {
+  try {
+    const result = await firmRepublish(req.params.id, req.vendorId.toString());
+    console.log(`[FIRM ACTION] draft_republished id=${req.params.id} postId=${result.postId} by=vendor:${req.vendorId}`);
+    res.json({ success: true, postId: result.postId, slug: result.slug, updatedAt: result.updatedAt });
+  } catch (err) {
+    console.error('[firm-republish] error:', err);
+    if (err.message.includes('Publish blocked') || err.message.includes('Validation failed') || err.message.includes('Semantic review')) {
+      return res.status(422).json({ success: false, error: err.message });
+    }
     const status = err.message.includes('not found') ? 404
       : err.message.includes('Access denied') ? 403
       : err.message.includes('Cannot') || err.message.includes('must be') ? 400
