@@ -58,7 +58,23 @@ const executionHandlers = {
     if (!payload.title) throw new Error('draftPayload.title is required to create a VendorPost');
     if (!payload.body) throw new Error('draftPayload.body is required to create a VendorPost');
 
-    const validation = validateContentDraft(payload);
+    const firmDataMap = item.firmData instanceof Map ? item.firmData : new Map(Object.entries(item.firmData || {}));
+
+    function substitutePlaceholders(text) {
+      if (!text) return text;
+      return text.replace(/\[FIRM_DATA:\s*([a-zA-Z_]+)\s*\|[^\]]*\]/g, (match, key) => {
+        return firmDataMap.has(key) ? firmDataMap.get(key) : match;
+      });
+    }
+
+    const mergedPayload = {
+      ...payload,
+      body: substitutePlaceholders(payload.body),
+      linkedInText: substitutePlaceholders(payload.linkedInText),
+      facebookText: substitutePlaceholders(payload.facebookText),
+    };
+
+    const validation = validateContentDraft(mergedPayload);
     if (!validation.passed) {
       throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
     }
@@ -70,7 +86,7 @@ const executionHandlers = {
     const vendor = await Vendor.findById(item.vendorId).lean();
     if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
 
-    const allText = [payload.body, payload.linkedInText || '', payload.facebookText || ''].join('\n\n');
+    const allText = [mergedPayload.body, mergedPayload.linkedInText || '', mergedPayload.facebookText || ''].join('\n\n');
     let firmContextBlock;
     try {
       const firmContext = await getFirmContext(item.vendorId);
@@ -99,19 +115,19 @@ const executionHandlers = {
     const { default: VendorPost } = await import('../models/VendorPost.js');
     const post = new VendorPost({
       vendor: item.vendorId,
-      title: payload.title,
-      body: payload.body,
-      category: payload.category || 'guide',
-      tags: payload.tags || [],
+      title: mergedPayload.title,
+      body: mergedPayload.body,
+      category: mergedPayload.category || 'guide',
+      tags: mergedPayload.tags || [],
       status: 'published',
       aiGenerated: true,
-      topic: payload.topic,
-      stats: payload.stats,
-      linkedInText: payload.linkedInText,
-      facebookText: payload.facebookText,
-      pillar: payload.pillar,
-      plan: payload.plan,
-      primaryData: payload.primaryData,
+      topic: mergedPayload.topic,
+      stats: mergedPayload.stats,
+      linkedInText: mergedPayload.linkedInText,
+      facebookText: mergedPayload.facebookText,
+      pillar: mergedPayload.pillar,
+      plan: mergedPayload.plan,
+      primaryData: mergedPayload.primaryData,
       relatedApprovalId: item._id,
       agentRunId: item.metadata?.agentRunId || undefined,
     });
@@ -201,6 +217,17 @@ export async function executeApprovedItem(approvalId) {
   }
 }
 
+const FIRM_RETRIABLE_PATTERNS = [
+  /Validation failed/i,
+  /unresolved placeholder/i,
+  /Semantic review/i,
+  /firm context/i,
+];
+
+function isFirmRetriableError(msg) {
+  return FIRM_RETRIABLE_PATTERNS.some(p => p.test(msg));
+}
+
 export async function firmApproveAndExecute(approvalId, vendorIdStr) {
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
@@ -220,13 +247,25 @@ export async function firmApproveAndExecute(approvalId, vendorIdStr) {
     const result = await executeApprovedItem(item._id);
     return { ok: true, item: result };
   } catch (err) {
+    const firmCanFix = isFirmRetriableError(err.message);
+
+    if (firmCanFix) {
+      item.status = 'approved';
+      item.executionError = err.message;
+      item.firmApprovedAt = null;
+      item.firmApprovedBy = null;
+      await item.save();
+      console.warn(`[firmApproveAndExecute] Publish failed (firm-retriable) for ${approvalId}: ${err.message}`);
+      return { ok: false, error: err.message, firmRetriable: true };
+    }
+
     item.status = 'needs_review';
     item.decisionReason = `Firm approved but publish failed: ${err.message}`;
     item.executionError = err.message;
     item.firmApprovedAt = null;
     item.firmApprovedBy = null;
     await item.save();
-    console.error(`[firmApproveAndExecute] Publish failed for ${approvalId}, routed to needs_review: ${err.message}`);
+    console.error(`[firmApproveAndExecute] Publish failed (draft issue) for ${approvalId}, routed to needs_review: ${err.message}`);
     return { ok: false, error: err.message, routedToReview: true };
   }
 }
