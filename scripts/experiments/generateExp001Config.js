@@ -70,7 +70,8 @@ async function main() {
     includedFirms += firms.length;
 
     const vendorIds = firms.map(f => f.firmId);
-    const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select('practiceAreas').lean();
+    const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select('company practiceAreas').lean();
+    const vendorMap = new Map(vendors.map(v => [String(v._id), v]));
     const specialismCounts = {};
     for (const v of vendors) {
       for (const pa of (v.practiceAreas || [])) {
@@ -82,7 +83,7 @@ async function main() {
     const targets = firms.map(f => ({
       url: `${PROFILE_BASE}/${f.slug}`,
       group: f.group,
-      entityName: null,
+      entityName: vendorMap.get(f.firmId)?.company || null,
     }));
 
     const templates = [
