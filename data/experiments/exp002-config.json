@@ -1,0 +1,127 @@
+{
+  "study": "study_2026_07_exp002",
+  "description": "Do answer-first blog post openings earn more AI citations than conventional openings?",
+  "notes": "First measurement 4 weeks after posts go live. No pre-publication baseline.",
+  "prompts": [
+    {
+      "id": "1a-title",
+      "text": "Do client review sites like ReviewSolicitors affect AI recommendations?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-client-review-sites-like-reviewsolicitors-affect-ai-recommendations", "group": "treatment", "entityName": "ReviewSolicitors" }]
+    },
+    {
+      "id": "1a-rephrase",
+      "text": "How much do solicitor review platforms influence what ChatGPT recommends?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-client-review-sites-like-reviewsolicitors-affect-ai-recommendations", "group": "treatment", "entityName": "ReviewSolicitors" }]
+    },
+    {
+      "id": "1b-title",
+      "text": "Do Google reviews affect whether ChatGPT recommends your firm?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-google-reviews-affect-whether-chatgpt-recommends-your-firm", "group": "control", "entityName": null }]
+    },
+    {
+      "id": "1b-rephrase",
+      "text": "Does a firm's Google review rating change its chances of being recommended by AI?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-google-reviews-affect-whether-chatgpt-recommends-your-firm", "group": "control", "entityName": null }]
+    },
+    {
+      "id": "2a-title",
+      "text": "Can ChatGPT recommend a firm that has no website?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/can-chatgpt-recommend-a-firm-that-has-no-website", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "2a-rephrase",
+      "text": "Do businesses without websites ever appear in AI assistant recommendations?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/can-chatgpt-recommend-a-firm-that-has-no-website", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "2b-title",
+      "text": "Does blocking AI crawlers like GPTBot make your firm invisible to ChatGPT?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-blocking-ai-crawlers-like-gptbot-make-your-firm-invisible-to-chatgpt", "group": "control", "entityName": "GPTBot" }]
+    },
+    {
+      "id": "2b-rephrase",
+      "text": "What happens to your AI visibility if you block GPTBot in robots.txt?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-blocking-ai-crawlers-like-gptbot-make-your-firm-invisible-to-chatgpt", "group": "control", "entityName": "GPTBot" }]
+    },
+    {
+      "id": "3a-title",
+      "text": "How often do ChatGPT's business recommendations change?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/how-often-do-chatgpts-business-recommendations-change", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "3a-rephrase",
+      "text": "Are ChatGPT's firm recommendations stable or do they change week to week?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/how-often-do-chatgpts-business-recommendations-change", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "3b-title",
+      "text": "Why does ChatGPT recommend different firms each time you ask?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/why-does-chatgpt-recommend-different-firms-each-time-you-ask", "group": "control", "entityName": null }]
+    },
+    {
+      "id": "3b-rephrase",
+      "text": "What causes variation in the businesses ChatGPT suggests for the same query?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/why-does-chatgpt-recommend-different-firms-each-time-you-ask", "group": "control", "entityName": null }]
+    },
+    {
+      "id": "4a-title",
+      "text": "Do AI assistants read Rightmove and Zoopla when recommending estate agents?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-ai-assistants-read-rightmove-and-zoopla-when-recommending-estate-agents", "group": "treatment", "entityName": "Rightmove" }]
+    },
+    {
+      "id": "4a-rephrase",
+      "text": "Does listing property on Rightmove or Zoopla help estate agents get recommended by AI?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-ai-assistants-read-rightmove-and-zoopla-when-recommending-estate-agents", "group": "treatment", "entityName": "Rightmove" }]
+    },
+    {
+      "id": "4b-title",
+      "text": "Do AI assistants check the FCA register when recommending mortgage advisers?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-ai-assistants-check-the-fca-register-when-recommending-mortgage-advisers", "group": "control", "entityName": "FCA" }]
+    },
+    {
+      "id": "4b-rephrase",
+      "text": "How does FCA registration status affect whether AI recommends a mortgage adviser?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-ai-assistants-check-the-fca-register-when-recommending-mortgage-advisers", "group": "control", "entityName": "FCA" }]
+    },
+    {
+      "id": "5a-title",
+      "text": "Does your Google Business Profile affect what Gemini says about your firm?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-your-google-business-profile-affect-what-gemini-says-about-your-firm", "group": "treatment", "entityName": "Google Business Profile" }]
+    },
+    {
+      "id": "5a-rephrase",
+      "text": "How much does a complete Google Business listing influence Gemini's firm recommendations?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-your-google-business-profile-affect-what-gemini-says-about-your-firm", "group": "treatment", "entityName": "Google Business Profile" }]
+    },
+    {
+      "id": "5b-title",
+      "text": "Does your firm's LinkedIn presence affect AI visibility?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-your-firms-linkedin-presence-affect-ai-visibility", "group": "control", "entityName": "LinkedIn" }]
+    },
+    {
+      "id": "5b-rephrase",
+      "text": "Can having an active LinkedIn company page improve whether AI assistants mention your firm?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-your-firms-linkedin-presence-affect-ai-visibility", "group": "control", "entityName": "LinkedIn" }]
+    },
+    {
+      "id": "6a-title",
+      "text": "Do online directories still matter for AI recommendations in 2026?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-online-directories-still-matter-for-ai-recommendations-in-2026", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "6a-rephrase",
+      "text": "Are business directory listings a factor in what AI assistants recommend?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/do-online-directories-still-matter-for-ai-recommendations-in-2026", "group": "treatment", "entityName": null }]
+    },
+    {
+      "id": "6b-title",
+      "text": "Does the Law Society directory affect ChatGPT recommendations?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-the-law-society-directory-affect-chatgpt-recommendations", "group": "control", "entityName": "Law Society" }]
+    },
+    {
+      "id": "6b-rephrase",
+      "text": "How much weight does ChatGPT give to a firm's Law Society listing when making recommendations?",
+      "targets": [{ "url": "https://www.tendorai.com/posts/does-the-law-society-directory-affect-chatgpt-recommendations", "group": "control", "entityName": "Law Society" }]
+    }
+  ]
+}
