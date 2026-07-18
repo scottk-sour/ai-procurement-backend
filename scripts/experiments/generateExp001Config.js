@@ -7,7 +7,13 @@
  * prompt templates instantiated per city.
  *
  * Usage:
- *   node scripts/experiments/generateExp001Config.js
+ *   node scripts/experiments/generateExp001Config.js [--min-firms N] [--max-firms N]
+ *
+ * Options:
+ *   --min-firms N   Only include cities with at least N assigned firms (default: 2)
+ *   --max-firms N   Only include cities with at most N assigned firms (default: no limit)
+ *
+ * Target URLs are restricted to firms in qualifying cities only.
  *
  * Run AFTER generateExp001Assignment.js.
  */
@@ -24,6 +30,11 @@ if (!MONGODB_URI) { console.error('MONGODB_URI required'); process.exit(1); }
 
 const PROFILE_BASE = 'https://www.tendorai.com/solicitors';
 
+function getArg(name) {
+  const idx = process.argv.indexOf(`--${name}`);
+  return idx !== -1 && process.argv[idx + 1] ? process.argv[idx + 1] : null;
+}
+
 async function main() {
   const assignPath = path.resolve('data/experiments/exp001-assignment.json');
   if (!fs.existsSync(assignPath)) {
@@ -31,6 +42,9 @@ async function main() {
     process.exit(1);
   }
   const assignment = JSON.parse(fs.readFileSync(assignPath, 'utf8'));
+
+  const minFirms = parseInt(getArg('min-firms') || '2');
+  const maxFirms = parseInt(getArg('max-firms') || '0') || Infinity;
 
   await mongoose.connect(MONGODB_URI);
   const Vendor = (await import('../../models/Vendor.js')).default;
@@ -43,8 +57,18 @@ async function main() {
   }
 
   const prompts = [];
+  let includedCities = 0;
+  let excludedCities = 0;
+  let includedFirms = 0;
 
   for (const [cityKey, { display: city, firms }] of Object.entries(byCity).sort()) {
+    if (firms.length < minFirms || firms.length > maxFirms) {
+      excludedCities++;
+      continue;
+    }
+    includedCities++;
+    includedFirms += firms.length;
+
     const vendorIds = firms.map(f => f.firmId);
     const vendors = await Vendor.find({ _id: { $in: vendorIds } }).select('practiceAreas').lean();
     const specialismCounts = {};
@@ -81,14 +105,15 @@ async function main() {
   const config = {
     study: 'study_2026_07_exp001',
     description: 'Does JSON-LD LegalService schema on solicitor profile pages increase AI citation?',
+    filters: { minFirms, maxFirms: maxFirms === Infinity ? null : maxFirms },
     prompts,
   };
 
   const outPath = path.resolve('data/experiments/exp001-config.json');
   fs.writeFileSync(outPath, JSON.stringify(config, null, 2));
   console.log(`Config written to ${outPath}`);
-  console.log(`${prompts.length} prompts across ${Object.keys(byCity).length} cities`);
-  console.log(`${assignment.firms.length} target URLs`);
+  console.log(`${prompts.length} prompts across ${includedCities} cities (${excludedCities} excluded by firm-count filter)`);
+  console.log(`${includedFirms} target firms (min-firms=${minFirms}, max-firms=${maxFirms === Infinity ? 'none' : maxFirms})`);
 
   await mongoose.disconnect();
 }
