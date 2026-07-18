@@ -76,6 +76,8 @@ const PLATFORM_CONFIG = {
   },
 };
 
+import { isFirmMentioned } from './lib/mentionMatcher.js';
+
 function normaliseUrl(url) {
   try {
     const u = new URL(url);
@@ -85,14 +87,12 @@ function normaliseUrl(url) {
 
 function checkTargets(responseText, citedUrls, targets) {
   const normCited = new Set(citedUrls.map(normaliseUrl));
-  const lowerText = (responseText || '').toLowerCase();
 
   return targets.map(t => {
     const normTarget = normaliseUrl(t.url);
     const cited = normCited.has(normTarget) || citedUrls.some(u => normaliseUrl(u).startsWith(normTarget));
-    const entityName = t.entityName || '';
-    const mentioned = entityName ? lowerText.includes(entityName.toLowerCase()) : false;
-    return { url: t.url, group: t.group, cited, mentioned, entityName };
+    const mentioned = isFirmMentioned(responseText, t.entityName);
+    return { url: t.url, group: t.group, cited, mentioned, entityName: t.entityName || null };
   });
 }
 
