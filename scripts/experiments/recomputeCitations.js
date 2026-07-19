@@ -4,9 +4,11 @@
  * Recompute citation flags on stored experiment runs against corrected
  * target URLs from the config file.
  *
- * Streams runs via cursor (constant memory), batches writes via bulkWrite,
- * never resets flags before computing — each record is read, recomputed,
- * and written in one pass.
+ * Only touches the `cited`, `url`, `group`, and `entityName` fields on each
+ * target. The `mentioned` field is carried over from the stored value
+ * untouched — it is never read, recomputed, or defaulted by this script.
+ *
+ * Streams runs via cursor (constant memory), batches writes via bulkWrite.
  *
  * Usage:
  *   node scripts/experiments/recomputeCitations.js \
@@ -52,18 +54,19 @@ function normaliseUrl(url) {
   }
 }
 
-const configTargets = new Map();
+// Config lookup keyed by (promptId, normUrl) → { rawUrl, group, entityName }
+const configLookup = new Map();
 for (const prompt of config.prompts) {
-  const targets = (prompt.targets || []).map(t => ({
-    normUrl: normaliseUrl(t.url),
-    rawUrl: t.url,
-    group: t.group,
-    entityName: t.entityName || null,
-  }));
-  configTargets.set(prompt.id, targets);
+  for (const t of (prompt.targets || [])) {
+    configLookup.set(`${prompt.id}::${normaliseUrl(t.url)}`, {
+      rawUrl: t.url,
+      group: t.group,
+      entityName: t.entityName || null,
+    });
+  }
 }
 
-console.log(`Loaded targets for ${configTargets.size} prompts from config`);
+console.log(`Loaded ${configLookup.size} target entries from config`);
 
 await mongoose.connect(MONGODB_URI);
 
@@ -80,47 +83,50 @@ const promptStats = {};
 for await (const run of cursor) {
   scanned++;
 
-  const cfgTargets = configTargets.get(run.promptId);
-  if (!cfgTargets) continue;
-
   const normCited = new Set((run.citedUrls || []).map(normaliseUrl));
   const normCitedArr = [...normCited];
 
   if (!promptStats[run.promptId]) promptStats[run.promptId] = { before: 0, after: 0, total: 0 };
 
-  const newTargets = cfgTargets.map(ct => {
-    const cited = normCited.has(ct.normUrl) ||
-      normCitedArr.some(c => c.startsWith(ct.normUrl));
+  let changed = false;
+  const updatedTargets = run.targets.map(target => {
+    const raw = target.toObject ? target.toObject() : { ...target };
+    const normUrl = normaliseUrl(raw.url);
 
-    const existing = run.targets.find(t =>
-      normaliseUrl(t.url) === ct.normUrl || t.url === ct.rawUrl
-    );
-    const wasCited = existing?.cited ?? false;
+    const cfg = configLookup.get(`${run.promptId}::${normUrl}`);
+    const correctUrl = cfg?.rawUrl || raw.url;
+    const correctGroup = cfg?.group || raw.group;
+    const correctEntityName = cfg?.entityName || raw.entityName || null;
+
+    const cited = normCited.has(normaliseUrl(correctUrl)) ||
+      normCitedArr.some(c => c.startsWith(normaliseUrl(correctUrl)));
+
+    const wasCited = raw.cited ?? false;
 
     promptStats[run.promptId].total++;
     if (wasCited) promptStats[run.promptId].before++;
     if (cited) { promptStats[run.promptId].after++; totalCited++; }
     if (wasCited !== cited) flipped++;
 
+    if (wasCited !== cited || raw.url !== correctUrl || raw.entityName !== correctEntityName) {
+      changed = true;
+    }
+
     return {
-      url: ct.rawUrl,
-      group: ct.group,
+      ...raw,
+      url: correctUrl,
+      group: correctGroup,
       cited,
-      mentioned: existing?.mentioned ?? false,
-      entityName: ct.entityName || existing?.entityName || null,
+      entityName: correctEntityName,
+      // mentioned is carried over from raw — never touched
     };
   });
-
-  const changed = newTargets.some((nt, i) => {
-    const old = run.targets[i];
-    return !old || old.cited !== nt.cited || old.url !== nt.url || old.entityName !== nt.entityName;
-  }) || newTargets.length !== run.targets.length;
 
   if (changed) {
     bulkOps.push({
       updateOne: {
         filter: { _id: run._id },
-        update: { $set: { targets: newTargets } },
+        update: { $set: { targets: updatedTargets } },
       },
     });
   }

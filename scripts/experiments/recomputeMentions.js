@@ -4,9 +4,11 @@
  * Recompute mention flags on stored experiment runs using the fixed matcher
  * and current config file (which has correct entityName values).
  *
- * Streams runs via cursor (constant memory), batches writes via bulkWrite,
- * never resets flags before computing — each record is read, recomputed,
- * and written in one pass.
+ * Only touches the `mentioned` and `entityName` fields on each target.
+ * The `cited` field is carried over from the stored value untouched —
+ * it is never read, recomputed, or defaulted by this script.
+ *
+ * Streams runs via cursor (constant memory), batches writes via bulkWrite.
  *
  * Usage:
  *   node scripts/experiments/recomputeMentions.js \
@@ -70,20 +72,26 @@ for await (const run of cursor) {
 
   let changed = false;
   const updatedTargets = run.targets.map(target => {
-    const configEntityName = entityLookup.get(`${run.promptId}::${target.url}`) || target.entityName || null;
-    const wasMentioned = target.mentioned;
+    const raw = target.toObject ? target.toObject() : { ...target };
+
+    const configEntityName = entityLookup.get(`${run.promptId}::${raw.url}`) || raw.entityName || null;
+    const wasMentioned = raw.mentioned ?? false;
     const nowMentioned = isFirmMentioned(run.responseText, configEntityName);
 
     promptStats[run.promptId].total++;
     if (wasMentioned) promptStats[run.promptId].before++;
     if (nowMentioned) { promptStats[run.promptId].after++; totalMentioned++; }
-    if (wasMentioned !== nowMentioned || target.entityName !== configEntityName) changed = true;
     if (wasMentioned !== nowMentioned) flipped++;
 
+    if (wasMentioned !== nowMentioned || raw.entityName !== configEntityName) {
+      changed = true;
+    }
+
     return {
-      ...target.toObject ? target.toObject() : target,
+      ...raw,
       mentioned: nowMentioned,
-      entityName: configEntityName || target.entityName || null,
+      entityName: configEntityName,
+      // cited is carried over from raw — never touched
     };
   });
 
