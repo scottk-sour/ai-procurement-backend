@@ -28,7 +28,7 @@ import mongoose from 'mongoose';
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 if (!MONGODB_URI) { console.error('MONGODB_URI required'); process.exit(1); }
 
-const PROFILE_BASE = 'https://www.tendorai.com/solicitors';
+const PROFILE_BASE = 'https://www.tendorai.com/suppliers/vendor';
 
 function getArg(name) {
   const idx = process.argv.indexOf(`--${name}`);
