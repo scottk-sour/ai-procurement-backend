@@ -285,6 +285,16 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     countPlaceholders(parsed.linkedInText || '') +
     countPlaceholders(parsed.facebookText || '');
 
+  const allDraftContent = [parsed.body || '', parsed.linkedInText || '', parsed.facebookText || ''].join('\n');
+  const allPlaceholderKeys = [...(allDraftContent.matchAll(/\[FIRM_DATA:\s*([^\s|]+)\s*\|/gi))].map(m => m[1]);
+  const invalidKeys = allPlaceholderKeys.filter(k => !(k in FIRM_DATA_KEYS));
+  if (invalidKeys.length > 0) {
+    const unique = [...new Set(invalidKeys)];
+    console.error(`${logPrefix} ${vendor.company}: draft contains ${unique.length} invalid placeholder key(s): ${unique.join(', ')}`);
+    await failRun(agentRun._id, { failureReason: `invalid_placeholder_keys: ${unique.join(', ')}` });
+    return { success: false, error: 'invalid_placeholder_keys', invalidKeys: unique, vendorId: String(vendorId) };
+  }
+
   const inputTokens = response.usage?.input_tokens || 0;
   const outputTokens = response.usage?.output_tokens || 0;
   let costEstimateUSD = (inputTokens / 1_000_000 * SONNET_INPUT_COST_PER_M) +

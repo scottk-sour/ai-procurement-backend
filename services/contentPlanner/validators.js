@@ -14,7 +14,7 @@ import { detectPossibleFabrication } from './writerGuards.js';
  * Pure functions — no DB access, no side effects.
  */
 
-const PLACEHOLDER_PATTERN = /\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]|\[FIRM TO PROVIDE[: ]|\[[A-Z][A-Z_ ]+:\s[^\]]+\]/;
+const PLACEHOLDER_PATTERN = /\[FIRM_DATA:|\[FIRM TO PROVIDE[: ]|\[[A-Z][A-Z_ ]+:\s[^\]]+\]/;
 
 export const BANNED_PHRASES = [
   /\bin today'?s fast-paced\b/i,
@@ -80,8 +80,8 @@ const PROXIMITY_WINDOW = 250;
  */
 export function countPlaceholders(text) {
   if (typeof text !== 'string') return 0;
-  const keyed = text.match(/\[FIRM_DATA:\s*[a-zA-Z_]+\s*\|[^\]]+\]/gi) || [];
-  const legacy = text.match(/\[FIRM TO PROVIDE[: ]/gi) || [];
+  const keyed = text.match(/\[FIRM_DATA:[^\]]*\]/gi) || [];
+  const legacy = text.match(/\[FIRM TO PROVIDE[: ][^\]]*\]/gi) || [];
   return keyed.length + legacy.length;
 }
 
