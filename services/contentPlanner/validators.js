@@ -57,6 +57,60 @@ const US_ENGLISH_PATTERNS = [
   { pattern: /\bspecialize(d|s|r|rs)?\b/i, suggestion: 'specialise variants' },
 ];
 
+const BANNED_SUBSTITUTIONS = [
+  { pattern: /\bIn today'?s fast-paced\b/gi, replacement: 'In the current' },
+  { pattern: /\blet'?s dive in\b/gi, replacement: '' },
+  { pattern: /\bIn conclusion,?\s*/gi, replacement: '' },
+  { pattern: /\bIt'?s worth noting (that )?/gi, replacement: '' },
+  { pattern: /\bIt is important to note (that )?/gi, replacement: '' },
+  { pattern: /\bWithout further ado,?\s*/gi, replacement: '' },
+  { pattern: /\bHave you ever wondered\b/gi, replacement: 'You may wonder' },
+  { pattern: /\bThat being said,?\s*/gi, replacement: '' },
+  { pattern: /\bMoreover,?\s*/gi, replacement: '' },
+  { pattern: /\bFurthermore,?\s*/gi, replacement: '' },
+  { pattern: /\bAdditionally,?\s*/gi, replacement: 'Also, ' },
+];
+
+const US_TO_UK_SUBSTITUTIONS = [
+  { pattern: /\boptimization\b/gi, replacement: 'optimisation' },
+  { pattern: /\boptimize\b/gi, replacement: 'optimise' },
+  { pattern: /\boptimized\b/gi, replacement: 'optimised' },
+  { pattern: /\boptimizes\b/gi, replacement: 'optimises' },
+  { pattern: /\boptimizer\b/gi, replacement: 'optimiser' },
+  { pattern: /\bbehavior\b/gi, replacement: 'behaviour' },
+  { pattern: /\bbehavioral\b/gi, replacement: 'behavioural' },
+  { pattern: /\bcolor\b/gi, replacement: 'colour' },
+  { pattern: /\bcolored\b/gi, replacement: 'coloured' },
+  { pattern: /\borganization\b/gi, replacement: 'organisation' },
+  { pattern: /\borganize\b/gi, replacement: 'organise' },
+  { pattern: /\borganized\b/gi, replacement: 'organised' },
+  { pattern: /\borganizes\b/gi, replacement: 'organises' },
+  { pattern: /\bcentered\b/gi, replacement: 'centred' },
+  { pattern: /\banalyze\b/gi, replacement: 'analyse' },
+  { pattern: /\banalyzed\b/gi, replacement: 'analysed' },
+  { pattern: /\banalyzes\b/gi, replacement: 'analyses' },
+  { pattern: /\brecognized\b/gi, replacement: 'recognised' },
+  { pattern: /\brealize\b/gi, replacement: 'realise' },
+  { pattern: /\brealized\b/gi, replacement: 'realised' },
+  { pattern: /\brealizes\b/gi, replacement: 'realises' },
+  { pattern: /\bspecialize\b/gi, replacement: 'specialise' },
+  { pattern: /\bspecialized\b/gi, replacement: 'specialised' },
+  { pattern: /\bspecializes\b/gi, replacement: 'specialises' },
+];
+
+export function autoCleanseDraft(text) {
+  if (!text) return text;
+  let result = text;
+  for (const { pattern, replacement } of BANNED_SUBSTITUTIONS) {
+    result = result.replace(pattern, replacement);
+  }
+  for (const { pattern, replacement } of US_TO_UK_SUBSTITUTIONS) {
+    result = result.replace(pattern, replacement);
+  }
+  result = result.replace(/  +/g, ' ').replace(/\n{3,}/g, '\n\n');
+  return result;
+}
+
 const TIER_1_SOURCES = [
   'SRA', 'Solicitors Regulation Authority',
   'ICAEW', 'ACCA', 'AAT',

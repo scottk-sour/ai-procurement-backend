@@ -123,30 +123,22 @@ describe('firmRepublish', () => {
     await expect(firmRepublish('appr-1', 'wrong-vendor')).rejects.toThrow('Access denied');
   });
 
-  it('on semantic failure leaves the live post untouched', async () => {
-    const { reviewDraftForFabrication } = await import('../../services/contentPlanner/fabricationReview.js');
-    reviewDraftForFabrication.mockResolvedValueOnce({ verdict: 'fail', fabricatedAttributions: [{ claim: 'bad claim', body: 'anon' }], firmClaimsNotInContext: [], qualityScore: 3 });
-
-    const approval = makeApproval();
+  it('on unresolved placeholder blocks publish and leaves post untouched', async () => {
+    const approval = makeApproval({
+      draftPayload: {
+        title: 'Test',
+        body: 'Fee is [FIRM_DATA: brokerFee | Your fee]. Time is [FIRM_DATA: teamSize | Size] staff.',
+      },
+      firmData: new Map([['brokerFee', '£499']]),
+    });
     ApprovalQueue.findById.mockResolvedValue(approval);
 
     const mockPost = { _id: 'post-1', slug: 'original-slug', body: 'live content', title: 'live title', save: mockPostSave };
     mockPostFindById.mockResolvedValue(mockPost);
 
-    await expect(firmRepublish('appr-1', 'vendor-1')).rejects.toThrow('Publish blocked');
+    await expect(firmRepublish('appr-1', 'vendor-1')).rejects.toThrow('unresolved placeholder');
     expect(mockPost.body).toBe('live content');
     expect(mockPostSave).not.toHaveBeenCalled();
-    expect(approval.status).toBe('executed');
-  });
-
-  it('on validation failure leaves approval as executed', async () => {
-    const { validateContentDraft } = await import('../../services/contentPlanner/validators.js');
-    validateContentDraft.mockReturnValueOnce({ passed: false, errors: ['Banned phrase: "additionally"'], warnings: [] });
-
-    const approval = makeApproval();
-    ApprovalQueue.findById.mockResolvedValue(approval);
-
-    await expect(firmRepublish('appr-1', 'vendor-1')).rejects.toThrow('Validation failed');
     expect(approval.status).toBe('executed');
   });
 

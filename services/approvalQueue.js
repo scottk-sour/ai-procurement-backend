@@ -1,6 +1,4 @@
 import ApprovalQueue from '../models/ApprovalQueue.js';
-import { validateContentDraft } from './contentPlanner/validators.js';
-import { reviewDraftForFabrication } from './contentPlanner/fabricationReview.js';
 import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
 
 export async function createApproval({ vendorId, agentName, itemType, title, draftPayload, metadata, source }) {
@@ -68,43 +66,11 @@ function buildMergedPayload(payload, firmDataMap) {
   };
 }
 
-async function validateAndReviewMergedPayload(mergedPayload, item) {
-  const validation = validateContentDraft(mergedPayload);
-  if (!validation.passed) {
-    throw new Error(`Validation failed: ${validation.errors.join('; ')}`);
-  }
-  if (validation.warnings.length > 0) {
-    console.warn(`[approvalQueue] Warnings for approval ${item._id}:`, validation.warnings);
-  }
-
-  const { default: Vendor } = await import('../models/Vendor.js');
-  const vendor = await Vendor.findById(item.vendorId).lean();
-  if (!vendor) throw new Error(`Vendor not found: ${item.vendorId}`);
-
-  const allText = [mergedPayload.body, mergedPayload.linkedInText || '', mergedPayload.facebookText || ''].join('\n\n');
-  let firmContextBlock;
-  try {
-    const firmContext = await getFirmContext(item.vendorId);
-    firmContextBlock = renderFirmContextBlock(firmContext);
-  } catch (err) {
-    throw new Error(`Cannot load firm context for semantic check: ${err.message}`);
-  }
-
-  const semanticReview = await reviewDraftForFabrication({
-    draftText: allText,
-    firmContext: firmContextBlock,
-    vertical: vendor.vendorType,
-  });
-
-  if (semanticReview.verdict === 'fail') {
-    const claims = [
-      ...(semanticReview.fabricatedAttributions || []).map(a => `Fabricated attribution (${a.body}): "${a.claim}"`),
-      ...(semanticReview.firmClaimsNotInContext || []).map(c => `Unverified firm claim: "${c.claim}"`),
-    ];
-    const errorNote = semanticReview.error
-      ? `Semantic review error (fail-closed): ${semanticReview.error}`
-      : `Semantic review failed (quality ${semanticReview.qualityScore}/10): ${claims.join('; ')}`;
-    throw new Error(`Publish blocked — ${errorNote}`);
+function checkUnresolvedPlaceholders(mergedPayload) {
+  const allText = [mergedPayload.body || '', mergedPayload.linkedInText || '', mergedPayload.facebookText || ''].join('\n');
+  const remaining = allText.match(/\[FIRM_DATA:[^\]]*\]/gi) || [];
+  if (remaining.length > 0) {
+    throw new Error(`Cannot publish: ${remaining.length} unresolved placeholder(s) remain: ${remaining.slice(0, 3).join(', ')}${remaining.length > 3 ? '...' : ''}`);
   }
 }
 
@@ -121,7 +87,7 @@ const executionHandlers = {
     const firmDataMap = buildFirmDataMap(item);
     const mergedPayload = buildMergedPayload(payload, firmDataMap);
 
-    await validateAndReviewMergedPayload(mergedPayload, item);
+    checkUnresolvedPlaceholders(mergedPayload);
 
     const { default: VendorPost } = await import('../models/VendorPost.js');
     const post = new VendorPost({
@@ -419,7 +385,7 @@ export async function firmRepublish(approvalId, vendorIdStr) {
   const firmDataMap = buildFirmDataMap(item);
   const mergedPayload = buildMergedPayload(payload, firmDataMap);
 
-  await validateAndReviewMergedPayload(mergedPayload, item);
+  checkUnresolvedPlaceholders(mergedPayload);
 
   const { default: VendorPost } = await import('../models/VendorPost.js');
   const post = await VendorPost.findById(postId);

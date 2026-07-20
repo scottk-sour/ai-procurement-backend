@@ -9,6 +9,7 @@ import { buildUserPrompt } from '../routes/vendorPostRoutes.js';
 import { findOrCreateRun, startRun, completeRun, failRun } from './agentRun.js';
 import { createApproval, latestRejectionReason } from './approvalQueue.js';
 import { buildCtaForVendor, detectPossibleFabrication } from './contentPlanner/writerGuards.js';
+import { autoCleanseDraft } from './contentPlanner/validators.js';
 import { FIRM_DATA_KEYS } from './writerAgent/firmDataKeys.js';
 import { localiseNamedEntities, buildJurisdictionRulesBlock } from './contentReview/groundTruth.js';
 import { validateDraft } from './contentReview/validateDraft.js';
@@ -345,11 +346,13 @@ export async function runWriterAgentForVendor(vendorId, options = {}) {
     };
   }
 
-  // ── Checkpoint 1: Fabrication detection + repair loop ──
+  // ── Auto-cleanse: silently fix banned phrases and US English ──
 
-  let draftBody = parsed.body || '';
-  let draftLinkedIn = parsed.linkedInText || '';
-  let draftFacebook = parsed.facebookText || '';
+  let draftBody = autoCleanseDraft(parsed.body || '');
+  let draftLinkedIn = autoCleanseDraft(parsed.linkedInText || '');
+  let draftFacebook = autoCleanseDraft(parsed.facebookText || '');
+
+  // ── Checkpoint 1: Fabrication detection + repair loop ──
   let repaired = false;
   let repairedViolations = null;
   // No repair cost — repair is deterministic deletion, no LLM call
