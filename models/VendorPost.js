@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const vendorPostSchema = new mongoose.Schema({
   vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', required: true, index: true },
   title: { type: String, required: true, maxlength: 200, trim: true },
-  body: { type: String, required: true, maxlength: 10000, trim: true },
+  body: { type: String, required: true, maxlength: 50000, trim: true },
   category: {
     type: String,
     enum: ['news', 'product', 'offer', 'guide', 'update'],
