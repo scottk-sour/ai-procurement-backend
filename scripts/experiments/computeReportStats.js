@@ -47,6 +47,11 @@ const LEGAL_DIRECTORY = new Set([
   'yelp.co.uk',
   'yelp.com',
   'tendorai.com',
+  'thesolicitordirectory.co.uk',
+  'vouchedfor.co.uk',
+  'reallymoving.com',
+  'lawhive.co.uk',
+  'qualitysolicitors.com',
 ]);
 
 const FORUM_SOCIAL = new Set([
