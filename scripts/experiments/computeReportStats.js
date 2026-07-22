@@ -25,33 +25,34 @@ if (!MONGODB_URI) { console.error('MONGODB_URI required'); process.exit(1); }
 
 const STUDY = 'study_2026_07_exp001';
 
-// Domain classification: directories/review platforms vs firm websites
-const DIRECTORY_DOMAINS = new Set([
+// ── Five-bucket domain classification ──
+
+const LEGAL_DIRECTORY = new Set([
   'reviewsolicitors.co.uk',
   'solicitors.com',
-  'lawsociety.org.uk',
-  'sra.org.uk',
-  'checkatrade.com',
-  'trustpilot.com',
+  'solicitorsup.co.uk',
+  'solicitor.info',
+  'lawyersolicitor.co.uk',
+  'legalrank.uk',
+  'samconveyancing.co.uk',
+  'findlaw.co.uk',
+  'lawyerlocator.co.uk',
+  'legal500.com',
+  'chambers.com',
+  'legalcheek.com',
   'yell.com',
-  'google.com',
-  'google.co.uk',
-  'reddit.com',
+  'trustpilot.com',
+  'bark.com',
+  'checkatrade.com',
   'yelp.co.uk',
   'yelp.com',
-  'bark.com',
-  'lawyerlocator.co.uk',
-  'findlaw.co.uk',
-  'chambers.com',
-  'legal500.com',
-  'legalcheek.com',
-  'moneysupermarket.com',
-  'comparethemarket.com',
-  'which.co.uk',
-  'citizensadvice.org.uk',
-  'gov.uk',
-  'wikipedia.org',
-  'en.wikipedia.org',
+  'tendorai.com',
+]);
+
+const FORUM_SOCIAL = new Set([
+  'reddit.com',
+  'mumsnet.com',
+  'quora.com',
   'facebook.com',
   'linkedin.com',
   'twitter.com',
@@ -59,18 +60,39 @@ const DIRECTORY_DOMAINS = new Set([
   'instagram.com',
   'youtube.com',
   'tiktok.com',
-  'tendorai.com',
-  'www.tendorai.com',
+  'medium.com',
+]);
+
+const MEDIA_REFERENCE = new Set([
   'bbc.co.uk',
   'theguardian.com',
   'telegraph.co.uk',
   'independent.co.uk',
   'dailymail.co.uk',
   'thisismoney.co.uk',
-  'mumsnet.com',
-  'quora.com',
-  'medium.com',
+  'wikipedia.org',
+  'en.wikipedia.org',
+  'gov.uk',
+  'citizensadvice.org.uk',
+  'sra.org.uk',
+  'lawsociety.org.uk',
+  'which.co.uk',
+  'moneysupermarket.com',
+  'comparethemarket.com',
 ]);
+
+const SEARCH = new Set([
+  'google.com',
+  'google.co.uk',
+]);
+
+const BUCKET_LABELS = {
+  firm: 'Individual firm website',
+  directory: 'Legal directory / review platform',
+  forum: 'Forum / social',
+  media: 'Media / reference',
+  search: 'Search engine',
+};
 
 function extractDomain(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); }
@@ -78,9 +100,13 @@ function extractDomain(url) {
 }
 
 function classifyDomain(domain) {
-  if (DIRECTORY_DOMAINS.has(domain)) return 'directory_review_platform';
-  if (domain.endsWith('.gov.uk') || domain.endsWith('.org.uk') || domain.endsWith('.ac.uk')) return 'directory_review_platform';
-  return 'firm_website';
+  if (SEARCH.has(domain)) return 'search';
+  if (LEGAL_DIRECTORY.has(domain)) return 'directory';
+  if (FORUM_SOCIAL.has(domain)) return 'forum';
+  if (MEDIA_REFERENCE.has(domain)) return 'media';
+  if (domain.endsWith('.gov.uk')) return 'media';
+  if (domain.endsWith('.ac.uk')) return 'media';
+  return 'firm';
 }
 
 await mongoose.connect(MONGODB_URI);
@@ -108,11 +134,32 @@ if (fs.existsSync(configPath)) {
   console.log(`Practice areas in prompt panel: ${practiceAreaCount} (${[...specs].join(', ')})`);
 }
 
-// Prompt count
 const promptIds = new Set(runs.map(r => r.promptId));
 console.log(`Distinct prompts: ${promptIds.size}`);
 
-// ── Per-platform domain tables ──
+// ── Top 40 domains with buckets (for manual verification) ──
+
+const globalDomainCounts = {};
+for (const run of runs) {
+  for (const url of (run.citedUrls || [])) {
+    const domain = extractDomain(url);
+    globalDomainCounts[domain] = (globalDomainCounts[domain] || 0) + 1;
+  }
+}
+const globalSorted = Object.entries(globalDomainCounts).sort((a, b) => b[1] - a[1]);
+
+console.log(`\n${'═'.repeat(70)}`);
+console.log('TOP 40 DOMAINS — with assigned bucket (VERIFY THIS)');
+console.log('═'.repeat(70));
+console.log('Domain'.padEnd(40) + 'Count'.padStart(7) + '  Bucket');
+console.log('─'.repeat(70));
+for (const [domain, count] of globalSorted.slice(0, 40)) {
+  const bucket = classifyDomain(domain);
+  const label = BUCKET_LABELS[bucket] || bucket;
+  console.log(`${domain.padEnd(40)}${String(count).padStart(7)}  ${label}`);
+}
+
+// ── Per-platform stats with five buckets ──
 
 for (const platform of ['perplexity', 'chatgpt']) {
   const platformRuns = runs.filter(r => r.platform === platform);
@@ -128,67 +175,87 @@ for (const platform of ['perplexity', 'chatgpt']) {
   }
 
   const sorted = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]);
-  const top10 = sorted.slice(0, 10);
 
-  console.log(`\n${'═'.repeat(60)}`);
+  console.log(`\n${'═'.repeat(70)}`);
   console.log(`${platform.toUpperCase()} — Top 10 cited domains`);
-  console.log('═'.repeat(60));
+  console.log('═'.repeat(70));
   console.log(`Total citations: ${totalCitations} across ${platformRuns.length} runs\n`);
-  console.log('Domain'.padEnd(35) + 'Count'.padStart(8) + '  Share');
-  console.log('─'.repeat(55));
-  for (const [domain, count] of top10) {
+  console.log('Domain'.padEnd(40) + 'Count'.padStart(7) + '  Share');
+  console.log('─'.repeat(60));
+  for (const [domain, count] of sorted.slice(0, 10)) {
     const pct = (count / totalCitations * 100).toFixed(1);
-    console.log(`${domain.padEnd(35)}${String(count).padStart(8)}  ${pct}%`);
+    console.log(`${domain.padEnd(40)}${String(count).padStart(7)}  ${pct}%`);
   }
 
-  // Directory vs firm split
-  let dirCount = 0, firmCount = 0;
+  // Five-bucket breakdown
+  const buckets = { firm: 0, directory: 0, forum: 0, media: 0, search: 0 };
+  let firmExGardner = 0;
   for (const [domain, count] of sorted) {
-    if (classifyDomain(domain) === 'directory_review_platform') dirCount += count;
-    else firmCount += count;
+    const bucket = classifyDomain(domain);
+    buckets[bucket] += count;
+    if (bucket === 'firm' && domain !== 'gardnerchampion.co.uk') firmExGardner += count;
   }
-  console.log(`\nDirectory/review/platform: ${dirCount} (${(dirCount/totalCitations*100).toFixed(1)}%)`);
-  console.log(`Individual firm websites:  ${firmCount} (${(firmCount/totalCitations*100).toFixed(1)}%)`);
 
-  // Distinct firm domains
-  const firmDomains = sorted.filter(([d]) => classifyDomain(d) === 'firm_website');
-  console.log(`Distinct firm domains cited: ${firmDomains.length}`);
+  console.log(`\nFive-bucket breakdown:`);
+  for (const [key, label] of Object.entries(BUCKET_LABELS)) {
+    const count = buckets[key];
+    const pct = totalCitations > 0 ? (count / totalCitations * 100).toFixed(1) : '0.0';
+    console.log(`  ${label.padEnd(38)} ${String(count).padStart(6)}  (${pct}%)`);
+  }
+
+  const firmTotal = buckets.firm;
+  const firmPct = totalCitations > 0 ? (firmTotal / totalCitations * 100).toFixed(1) : '0.0';
+  const firmExPct = totalCitations > 0 ? (firmExGardner / totalCitations * 100).toFixed(1) : '0.0';
+  console.log(`\n  Firm share (incl gardnerchampion):    ${String(firmTotal).padStart(6)}  (${firmPct}%)`);
+  console.log(`  Firm share (excl gardnerchampion):    ${String(firmExGardner).padStart(6)}  (${firmExPct}%)`);
+
+  const firmDomains = sorted.filter(([d]) => classifyDomain(d) === 'firm');
+  console.log(`  Distinct firm domains cited:          ${firmDomains.length}`);
 }
 
 // ── Cross-platform stats ──
 
-console.log(`\n${'═'.repeat(60)}`);
+console.log(`\n${'═'.repeat(70)}`);
 console.log('CROSS-PLATFORM STATS');
-console.log('═'.repeat(60));
+console.log('═'.repeat(70));
 
-const allDomainCounts = {};
 let allCitations = 0;
+const allBuckets = { firm: 0, directory: 0, forum: 0, media: 0, search: 0 };
+let allFirmExGardner = 0;
 const allFirmDomains = new Set();
 
-for (const run of runs) {
-  for (const url of (run.citedUrls || [])) {
-    const domain = extractDomain(url);
-    allDomainCounts[domain] = (allDomainCounts[domain] || 0) + 1;
-    allCitations++;
-    if (classifyDomain(domain) === 'firm_website') allFirmDomains.add(domain);
+for (const [domain, count] of globalSorted) {
+  allCitations += count;
+  const bucket = classifyDomain(domain);
+  allBuckets[bucket] += count;
+  if (bucket === 'firm') {
+    allFirmDomains.add(domain);
+    if (domain !== 'gardnerchampion.co.uk') allFirmExGardner += count;
   }
 }
 
-const sortedAll = Object.entries(allDomainCounts).sort((a, b) => b[1] - a[1]);
-const top5Total = sortedAll.slice(0, 5).reduce((s, [, c]) => s + c, 0);
-console.log(`\nTop-5 domain concentration: ${top5Total}/${allCitations} (${(top5Total/allCitations*100).toFixed(1)}%)`);
+const top5Total = globalSorted.slice(0, 5).reduce((s, [, c]) => s + c, 0);
+console.log(`\nTop-5 domain concentration: ${top5Total}/${allCitations} (${(top5Total / allCitations * 100).toFixed(1)}%)`);
 console.log('Top 5:');
-for (const [domain, count] of sortedAll.slice(0, 5)) {
-  console.log(`  ${domain}: ${count} (${(count/allCitations*100).toFixed(1)}%)`);
+for (const [domain, count] of globalSorted.slice(0, 5)) {
+  console.log(`  ${domain}: ${count} (${(count / allCitations * 100).toFixed(1)}%)`);
 }
 
+console.log(`\nFive-bucket breakdown (both engines):`);
+for (const [key, label] of Object.entries(BUCKET_LABELS)) {
+  const count = allBuckets[key];
+  const pct = allCitations > 0 ? (count / allCitations * 100).toFixed(1) : '0.0';
+  console.log(`  ${label.padEnd(38)} ${String(count).padStart(6)}  (${pct}%)`);
+}
+
+console.log(`\n  Firm share (incl gardnerchampion):    ${String(allBuckets.firm).padStart(6)}  (${(allBuckets.firm / allCitations * 100).toFixed(1)}%)`);
+console.log(`  Firm share (excl gardnerchampion):    ${String(allFirmExGardner).padStart(6)}  (${(allFirmExGardner / allCitations * 100).toFixed(1)}%)`);
 console.log(`\nDistinct firm domains cited (both engines): ${allFirmDomains.size}`);
 
 // Most-cited single firm
-const firmSorted = sortedAll.filter(([d]) => classifyDomain(d) === 'firm_website');
+const firmSorted = globalSorted.filter(([d]) => classifyDomain(d) === 'firm');
 if (firmSorted.length > 0) {
   const [topFirmDomain, topFirmCount] = firmSorted[0];
-  // Count distinct prompts this firm appeared in
   const promptsWithFirm = new Set();
   for (const run of runs) {
     for (const url of (run.citedUrls || [])) {
@@ -201,16 +268,24 @@ if (firmSorted.length > 0) {
   console.log(`Most-cited firm domain: ${topFirmDomain} — ${topFirmCount} citations across ${promptsWithFirm.size} of ${promptIds.size} prompts`);
 }
 
-// Zero-citation runs
 const zeroCitationRuns = runs.filter(r => !r.citedUrls || r.citedUrls.length === 0).length;
 console.log(`\nRuns with zero citations: ${zeroCitationRuns}/${runs.length}`);
 
-console.log(`\n${'═'.repeat(60)}`);
-console.log('DOMAIN CLASSIFICATION USED');
-console.log('═'.repeat(60));
-console.log('The following domains are classified as directory/review/platform:');
-console.log([...DIRECTORY_DOMAINS].sort().join(', '));
-console.log('\nEverything else is classified as an individual firm website.');
+// ── Classification reference ──
 
-console.log(`\n${'═'.repeat(60)}\n`);
+console.log(`\n${'═'.repeat(70)}`);
+console.log('DOMAIN CLASSIFICATION REFERENCE');
+console.log('═'.repeat(70));
+console.log(`\n(b) Legal directory / review platform (${LEGAL_DIRECTORY.size}):`);
+console.log(`    ${[...LEGAL_DIRECTORY].sort().join(', ')}`);
+console.log(`\n(c) Forum / social (${FORUM_SOCIAL.size}):`);
+console.log(`    ${[...FORUM_SOCIAL].sort().join(', ')}`);
+console.log(`\n(d) Media / reference (${MEDIA_REFERENCE.size}):`);
+console.log(`    ${[...MEDIA_REFERENCE].sort().join(', ')}`);
+console.log(`\n(e) Search (${SEARCH.size}):`);
+console.log(`    ${[...SEARCH].sort().join(', ')}`);
+console.log(`\n(a) Individual firm website: everything else`);
+console.log(`    Also: any .gov.uk or .ac.uk domain → media/reference`);
+
+console.log(`\n${'═'.repeat(70)}\n`);
 await mongoose.disconnect();
