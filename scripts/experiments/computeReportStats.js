@@ -99,11 +99,19 @@ function extractDomain(url) {
   catch { return url; }
 }
 
+function inSet(domain, set) {
+  if (set.has(domain)) return true;
+  for (const entry of set) {
+    if (domain.endsWith('.' + entry)) return true;
+  }
+  return false;
+}
+
 function classifyDomain(domain) {
-  if (SEARCH.has(domain)) return 'search';
-  if (LEGAL_DIRECTORY.has(domain)) return 'directory';
-  if (FORUM_SOCIAL.has(domain)) return 'forum';
-  if (MEDIA_REFERENCE.has(domain)) return 'media';
+  if (inSet(domain, SEARCH)) return 'search';
+  if (inSet(domain, LEGAL_DIRECTORY)) return 'directory';
+  if (inSet(domain, FORUM_SOCIAL)) return 'forum';
+  if (inSet(domain, MEDIA_REFERENCE)) return 'media';
   if (domain.endsWith('.gov.uk')) return 'media';
   if (domain.endsWith('.ac.uk')) return 'media';
   return 'firm';
