@@ -9,7 +9,11 @@
 
 const { MongoClient } = require('mongodb');
 
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb+srv://kinder1975sd:4FtK7wvRRg24pYV0@cluster0.mpjodzz.mongodb.net/ai-procurement?retryWrites=true&w=majority&appName=Cluster0';
+const MONGO_URI = process.env.MONGODB_URI;
+if (!MONGO_URI) {
+  console.error('MONGODB_URI environment variable is required');
+  process.exit(1);
+}
 
 const firms = [
   {
