@@ -2,7 +2,11 @@ from pymongo import MongoClient
 import pandas as pd
 
 # Connect to MongoDB Atlas
-client = MongoClient("mongodb+srv://kinder1975sd:Seren2010@cluster0.mpjodzz.mongodb.net/ai-procurement?retryWrites=true&w=majority")
+import os
+_mongodb_uri = os.environ.get("MONGODB_URI")
+if not _mongodb_uri:
+    raise SystemExit("MONGODB_URI environment variable is required")
+client = MongoClient(_mongodb_uri)
 db = client["ai-procurement"]
 collection = db["vendorproducts"]
 
