@@ -508,4 +508,9 @@ export function startScheduledReports() {
   import('./reviewsAgent.js').then(m => m.registerReviewsAgentCron()).catch(err => {
     logger.error('[ScheduledReports] Failed to register Reviews Agent cron:', err.message);
   });
+
+  // Searchable API mirror cron — runs daily 02:00 UTC, archives raw measurement JSON
+  import('./searchableMirror.js').then(m => m.registerSearchableMirrorCron()).catch(err => {
+    logger.error('[ScheduledReports] Failed to register Searchable Mirror cron:', err.message);
+  });
 }
