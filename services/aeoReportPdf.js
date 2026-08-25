@@ -6,6 +6,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, PDFName, PDFString, PDFArray, PDFDict, PDFNumber } from 'pdf-lib';
+import { BROWSING_PLATFORMS } from '../lib/config/browsingPlatforms.js';
 
 // Brand colours
 const BLUE = rgb(0.106, 0.31, 0.447);       // #1B4F72
@@ -39,6 +40,27 @@ const ESTATE_CATEGORIES = new Set([
   'sales', 'lettings', 'property-management', 'block-management',
   'auctions', 'commercial-property', 'inventory',
 ]);
+
+// Platform names for report copy, derived per-report from what was actually
+// queried. Sentences about being recommended/found name only browsing platforms
+// (live web search) — Claude and other non-browsing models answer from training
+// data and must not be named as recommendation sources. Zero-length falls back
+// to "AI assistants" (the correct behaviour when a run had no successful browsing
+// platform — never invent a name).
+function browsingPlatformNames(report) {
+  return [...new Set(
+    (report.platformResults || [])
+      .filter((p) => BROWSING_PLATFORMS.includes(p.platform))
+      .map((p) => p.platformLabel)
+      .filter(Boolean),
+  )];
+}
+
+function joinPlatforms(names, conj) {
+  if (names.length === 0) return 'AI assistants';
+  if (names.length === 1) return names[0];
+  return names.slice(0, -1).join(', ') + ` ${conj} ` + names[names.length - 1];
+}
 
 function isProfessionalCategory(cat) {
   return PROFESSIONAL_CATEGORIES.has(cat);
@@ -485,7 +507,7 @@ function drawWhatAiKnowsPage(ctx, report) {
 
     const eduParagraphs = [
       'Your website may perform well on traditional SEO audits -- but that no longer guarantees visibility. SEO measures how Google indexes your site. AI Visibility (AEO — Answer Engine Optimisation) measures whether AI actually recommends you.',
-      'AI recommendation engines like ChatGPT, Perplexity, and Claude don\'t just crawl your site -- they evaluate structured data, authority signals, verified profiles, and review sentiment to decide who to recommend.',
+      `AI recommendation engines like ${joinPlatforms(browsingPlatformNames(report), 'and')} don't just crawl your site -- they evaluate structured data, authority signals, verified profiles, and review sentiment to decide who to recommend.`,
       'A business can score 70+ on a website SEO audit and still score under 20 on AI visibility, because the signals AI uses are fundamentally different from what traditional SEO tools measure.',
     ];
     for (const para of eduParagraphs) {
@@ -679,7 +701,7 @@ function drawGapsPage(ctx, report) {
     page.drawText('What This Means', { x: MARGIN + 15, y: y - 2, size: 14, font: bold, color: WHITE });
     drawWrappedText(
       page,
-      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential ${terms.customer} use ChatGPT, Perplexity, or Claude to find ${report.category} ${terms.professional} in ${report.city}, they are being directed to your competitors.`,
+      `With a score of ${report.score}/100, your business is largely invisible to AI recommendation engines. When potential ${terms.customer} use ${joinPlatforms(browsingPlatformNames(report), 'or')} to find ${report.category} ${terms.professional} in ${report.city}, they are being directed to your competitors.`,
       MARGIN + 15, y - 22, font, 10, WHITE, CONTENT_W - 30, 14
     );
   }
@@ -708,7 +730,7 @@ function drawTheShiftPage(ctx, report) {
     },
     {
       title: 'What is AI Visibility (AEO)?',
-      text: 'AI Visibility (AEO — Answer Engine Optimisation) is the process of making your business visible to AI recommendation engines like ChatGPT, Perplexity, Claude, and Google AI Overviews. Unlike SEO which optimises for search engine rankings, AI Visibility (AEO) focuses on structured data, authority signals, and verified profiles that AI tools use to make recommendations.',
+      text: `AI Visibility (AEO — Answer Engine Optimisation) is the process of making your business visible to AI recommendation engines like ${joinPlatforms(browsingPlatformNames(report), 'and')}. Unlike SEO which optimises for search engine rankings, AI Visibility (AEO) focuses on structured data, authority signals, and verified profiles that AI tools use to make recommendations.`,
     },
     {
       title: 'SEO vs AI Visibility (AEO)',
@@ -803,103 +825,19 @@ function drawCtaPage(ctx, report) {
   y -= 25;
   y = drawWrappedText(
     page,
-    'TendorAI is the UK\'s first AI-optimised supplier directory. We make your business visible to ChatGPT, Perplexity, Claude, and Google AI Overviews — so when buyers search, you get recommended.',
+    `This report measures how AI assistants (${joinPlatforms(browsingPlatformNames(report), 'and')}) answer when people ask for ${report.category} in ${report.city}.`,
     MARGIN, y, font, 11, GREY, CONTENT_W, 16
   );
 
-  // Features list
-  y -= 25;
-  page.drawText('What You Get', { x: MARGIN, y, size: 14, font: bold, color: DARK });
-  y -= 20;
-
-  const features = [
-    'AI-Optimised Vendor Profile — structured data that AI tools can read and recommend',
-    'Weekly AI Mention Scanning — track whether AI recommends you and your position',
-    'AI Visibility (AEO) Audit Tool — check your website\'s AI readiness with 10-point analysis',
-    'Competitor Intelligence — see who AI recommends in your area',
-    'Review Collection — gather verified reviews that boost AI trust signals',
-    'Visibility Score Dashboard — track your AI visibility score over time',
-    'Product/Service Listings — showcase your full range with specs',
-    'Lead Generation — receive quote requests from AI-referred buyers',
-  ];
-
-  for (const feat of features) {
-    if (y < 320) break;
-    page.drawText('>', { x: MARGIN + 5, y, size: 11, font: bold, color: GREEN });
-    y = drawWrappedText(page, feat, MARGIN + 25, y, font, 10, DARK, CONTENT_W - 30, 14);
-    y -= 8;
-  }
-
-  // Pricing table
-  y -= 10;
-  page.drawText('Plans & Pricing', { x: MARGIN, y, size: 14, font: bold, color: DARK });
-  y -= 20;
-
-  const plans = [
-    { name: 'Free', price: '\u00A30/forever', features: ['Basic AI profile', 'Category listing', 'Ranked last in results'], url: 'https://www.tendorai.com/vendor-signup' },
-    { name: 'Pro', price: '\u00A3299/mo', features: ['Ranked first in AI results', 'Weekly AI Visibility (AEO) reports', 'TendorAI Verified badge', 'Unlimited products', 'Competitor reports', 'Dedicated support'], url: 'https://www.tendorai.com/vendor-signup?tier=pro' },
-  ];
-
-  const planW = CONTENT_W / 2;
-  for (let i = 0; i < plans.length; i++) {
-    const plan = plans[i];
-    const px = MARGIN + i * planW;
-    const isHighlight = i === 1; // Pro is highlighted
-
-    // Plan card
-    const cardH = 190;
-    page.drawRectangle({
-      x: px + 3,
-      y: y - cardH,
-      width: planW - 6,
-      height: cardH,
-      color: isHighlight ? BLUE : LIGHT_BG,
-      borderColor: isHighlight ? BLUE : LIGHT_GREY,
-      borderWidth: 1,
-    });
-
-    const textColor = isHighlight ? WHITE : DARK;
-    const subColor = isHighlight ? rgb(0.8, 0.85, 0.9) : GREY;
-
-    // Plan name
-    const nameW = bold.widthOfTextAtSize(plan.name, 14);
-    page.drawText(plan.name, { x: px + planW / 2 - nameW / 2, y: y - 20, size: 14, font: bold, color: textColor });
-
-    // Price
-    const priceW = bold.widthOfTextAtSize(plan.price, 20);
-    page.drawText(plan.price, { x: px + planW / 2 - priceW / 2, y: y - 45, size: 20, font: bold, color: textColor });
-
-    // Early adopter subtext
-    if (plan.subtext) {
-      const stW = font.widthOfTextAtSize(plan.subtext, 7);
-      page.drawText(plan.subtext, { x: px + planW / 2 - stW / 2, y: y - 57, size: 7, font, color: subColor });
-    }
-
-    // Features
-    let fy = plan.subtext ? y - 72 : y - 65;
-    for (const feat of plan.features) {
-      if (fy < y - cardH + 10) break;
-      const featLines = wrapText(`> ${feat}`, font, 8, planW - 24);
-      for (const line of featLines) {
-        page.drawText(line, { x: px + 12, y: fy, size: 8, font, color: subColor });
-        fy -= 12;
-      }
-    }
-
-    // Make entire card a clickable link
-    addLinkAnnotation(page, px + 3, y - cardH, planW - 6, cardH, plan.url);
-  }
-
-  y -= 220;
-
-  // CTA
-  if (y > 80) {
-    page.drawRectangle({ x: MARGIN, y: y - 40, width: CONTENT_W, height: 50, color: BLUE });
-    const ctaText = 'Get started free at www.tendorai.com/vendor-signup';
-    const ctaW = bold.widthOfTextAtSize(ctaText, 14);
-    page.drawText(ctaText, { x: PAGE_W / 2 - ctaW / 2, y: y - 22, size: 14, font: bold, color: WHITE });
-    addLinkAnnotation(page, MARGIN, y - 40, CONTENT_W, 50, 'https://www.tendorai.com/vendor-signup');
-  }
+  // Single booking CTA — no pricing, no offer. The free report is a pure diagnostic.
+  y -= 30;
+  page.drawText('Book a call to talk through what this report shows:', { x: MARGIN, y, size: 11, font: bold, color: DARK });
+  y -= 18;
+  const bookingUrl = 'https://www.tendorai.com/contact';
+  const bookingText = 'www.tendorai.com/contact';
+  page.drawText(bookingText, { x: MARGIN, y, size: 11, font: bold, color: BLUE });
+  const bookingW = bold.widthOfTextAtSize(bookingText, 11);
+  addLinkAnnotation(page, MARGIN, y - 3, bookingW, 14, bookingUrl);
 
   drawFooter(page, ctx, 6);
 }

@@ -9,6 +9,11 @@ const router = express.Router();
 
 const { ADMIN_JWT_SECRET } = process.env;
 
+// Outreach sending is paused: the public site still shows the old £299 self-serve
+// pricing in many places, so any cold email would land the prospect on a page that
+// contradicts it. Flip back to true once the site copy is updated.
+const OUTREACH_SENDING_ENABLED = false;
+
 const adminAuth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
@@ -31,6 +36,9 @@ router.use(adminAuth);
 // POST /send-email — send Email 1 or Email 2 to selected outreach records via Resend
 router.post('/send-email', async (req, res) => {
   try {
+    if (!OUTREACH_SENDING_ENABLED) {
+      return res.status(403).json({ success: false, message: 'Outreach sending is paused.' });
+    }
     const { ids, emailType } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0 || !['email1', 'email2'].includes(emailType)) {
       return res.status(400).json({ success: false, message: 'ids (array) and emailType ("email1" or "email2") are required' });
@@ -75,7 +83,7 @@ router.post('/send-email', async (req, res) => {
         subject = `${record.firmName} — you're not appearing in AI search results`;
         body = `Hi,
 
-I was checking how ${record.firmName} appears when people use AI tools like ChatGPT, Perplexity, and Google AI to find a ${sector} in ${city}.
+I was checking how ${record.firmName} appears when people use AI tools like ChatGPT and Perplexity to find a ${sector} in ${city}.
 
 ${scoreLine}
 
@@ -105,21 +113,13 @@ Just following up on my last email about how ${record.firmName} appears in AI se
 
 The short version:
 
-When someone asks ChatGPT, Perplexity or Google AI for a ${sector} in ${city}, your firm isn't currently being recommended.
+When someone asks ChatGPT and Perplexity for a ${sector} in ${city}, your firm isn't currently being recommended.
 
 That's not unusual — most firms aren't set up properly for AI yet.
 
 But a small number are starting to show up consistently, and they're the ones getting the early advantage.
 
 We've already created a profile for ${record.firmName} using public regulator data — it just hasn't been claimed or optimised yet.
-
-TendorAI Pro (£299/month) handles that by:
-- Structuring your firm so AI can properly understand it
-- Installing schema on your website (no dev work needed)
-- Tracking where you appear across ChatGPT, Perplexity, etc.
-- Showing which firms are being recommended instead of you
-
-No ongoing work needed once it's set up.
 
 If it's not a priority right now, no problem at all.
 
