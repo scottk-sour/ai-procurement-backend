@@ -244,11 +244,20 @@ export function mapScoreBreakdown(detectorResult, platformResults) {
   const structDataRaw = scoreOf('schema');
   const structDataMax = maxOf('schema');
 
+  // Only platforms that actually returned a usable answer count toward this
+  // sub-score. Errored/timed-out/null rows are excluded from BOTH numerator and
+  // denominator (matching gradeAiMentions), so a failed call never depresses the
+  // score as if the firm went unmentioned. With zero valid platforms the
+  // sub-score stays null — never a numeric 0 built on no successful checks.
   let competitivePosition = null;
-  if (Array.isArray(platformResults) && platformResults.length > 0) {
-    const total = platformResults.length;
-    const mentioned = platformResults.filter((p) => p.mentioned === true).length;
-    competitivePosition = Math.round((mentioned / total) * SUB_SCORE_MAX);
+  if (Array.isArray(platformResults)) {
+    const valid = platformResults.filter(
+      (p) => p && !p.error && p.mentioned !== null && p.mentioned !== undefined,
+    );
+    if (valid.length > 0) {
+      const mentioned = valid.filter((p) => p.mentioned === true).length;
+      competitivePosition = Math.round((mentioned / valid.length) * SUB_SCORE_MAX);
+    }
   }
 
   return {
