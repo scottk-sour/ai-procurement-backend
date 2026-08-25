@@ -114,11 +114,15 @@ const authenticateVendor = async (req, res, next) => {
 };
 
 // Get available subscription plans
+// £299 self-serve is discontinued: the managed service is sold via a booked call,
+// so this public endpoint no longer advertises a numeric price. Slated for removal
+// once the frontend confirms it no longer calls it.
 router.get('/plans', (req, res) => {
   const plans = Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
     id: key,
     name: plan.name,
-    price: plan.price,
+    price: null,
+    priceLabel: 'Book a call',
     features: plan.features,
   }));
 

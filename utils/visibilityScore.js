@@ -3,7 +3,7 @@
  *
  * 7 categories, 100 points total. Tier ceilings:
  *   Free vendor, fully active:       ~40/100
- *   Pro (£299/mo), fully active:     ~100/100
+ *   Pro, fully active:               ~100/100
  *   Nobody hits 100 without doing everything.
  */
 
@@ -184,8 +184,8 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   const hasBlogAddon = !!vendor.blogAddonActive;
 
   const planChecks = [
-    { name: 'Pro plan (£299/mo)', points: 5, completed: tier === 'visible' || tier === 'verified' },
-    { name: 'Pro plan (£299/mo)', points: 5, completed: tier === 'verified' },
+    { name: 'Pro plan', points: 5, completed: tier === 'visible' || tier === 'verified' },
+    { name: 'Pro plan', points: 5, completed: tier === 'verified' },
     { name: 'Blog add-on active', points: 5, completed: hasBlogAddon },
     { name: 'Profile claimed (not unclaimed)', points: 5, completed: isClaimed },
   ];
@@ -197,15 +197,15 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
 
   if (tier === 'listed') {
     tips.push({
-      message: 'Upgrade to Pro (£299/mo) to earn plan tier points',
+      message: 'Upgrade to Pro to earn plan tier points',
       impact: 'high', points: 5, priority: 18,
-      category: 'plan', action: 'View Plans',
+      category: 'plan', action: 'Book a call', actionUrl: 'https://www.tendorai.com/contact',
     });
   } else if (tier === 'visible') {
     tips.push({
-      message: 'Upgrade to Pro (£299/mo) to unlock 20 more points',
+      message: 'Upgrade to Pro to unlock 20 more points',
       impact: 'high', points: 25, priority: 22,
-      category: 'plan', action: 'View Plans',
+      category: 'plan', action: 'Book a call', actionUrl: 'https://www.tendorai.com/contact',
     });
   }
 
@@ -252,9 +252,9 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
   // Next tier info
   let nextTier = null;
   if (tier === 'listed') {
-    nextTier = { name: 'Pro', price: '£299/mo', additionalPoints: 35 };
+    nextTier = { name: 'Pro', price: null, additionalPoints: 35 };
   } else if (tier === 'visible') {
-    nextTier = { name: 'Pro', price: '£299/mo', additionalPoints: 25 };
+    nextTier = { name: 'Pro', price: null, additionalPoints: 25 };
   }
 
   // Backward-compat recommendations
@@ -285,8 +285,8 @@ export function calculateVisibilityScore(vendor, products = [], mentionData = {}
 function getTierDisplayName(tier) {
   const names = {
     listed: 'Free',
-    visible: 'Pro (£299/mo)',
-    verified: 'Pro (£299/mo)',
+    visible: 'Pro',
+    verified: 'Pro',
   };
   return names[tier] || 'Free';
 }

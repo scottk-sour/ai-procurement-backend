@@ -550,8 +550,7 @@ router.get('/vendors/:id', async (req, res) => {
       profileData.showPricing = false;
       profileData.upgradePrompt = {
         message: 'Upgrade to see full profile and request quotes',
-        tier: 'pro',
-        price: '£299/mo'
+        tier: 'pro'
       };
     }
 
