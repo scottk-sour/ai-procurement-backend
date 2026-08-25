@@ -47,7 +47,9 @@ export async function querySinglePlatform(platformKey, { companyName, categoryLa
 
   try {
     const result = await queryWithTimeout(platform, { companyName, categoryLabel, city, websiteUrl });
-    return { ...result, status: 'checked' };
+    // A platform module may report a failure by returning an error (rather than
+    // throwing) — respect it so a failed call is never labelled 'checked'.
+    return { ...result, status: result.error ? 'error' : 'checked' };
   } catch (err) {
     return {
       platform: platform.key,
@@ -85,7 +87,8 @@ export async function queryAllPlatforms({ companyName, category, city, categoryL
       queryWithTimeout(platform, { companyName, categoryLabel, city, websiteUrl })
         .then(result => ({
           ...result,
-          status: 'checked',
+          // Respect a module that reports failure by returning an error.
+          status: result.error ? 'error' : 'checked',
         }))
         .catch(err => ({
           platform: platform.key,
