@@ -9,11 +9,27 @@ export async function queryPerplexity({ companyName, categoryLabel, city, websit
 
   const prompt = buildPrompt({ companyName, categoryLabel, city });
 
-  const response = await client.chat.completions.create({
-    model: 'sonar',
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 1024,
-  });
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model: 'sonar',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1024,
+    });
+  } catch (err) {
+    // Never fall through to an empty result that scores as "not mentioned".
+    // A failed call is an explicit error state: mentioned:null, error set.
+    return {
+      platform: 'perplexity',
+      platformLabel: 'Perplexity',
+      mentioned: null,
+      position: null,
+      snippet: null,
+      competitors: [],
+      rawResponse: null,
+      error: err.message,
+    };
+  }
 
   const rawResponse = response.choices?.[0]?.message?.content || '';
   const parsed = parsePlatformResponse(rawResponse, companyName, { websiteUrl });

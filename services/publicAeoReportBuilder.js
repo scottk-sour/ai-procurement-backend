@@ -181,11 +181,21 @@ const GAP_TITLES = {
   faq: 'No FAQ schema or section',
   content: 'Insufficient content length',
   blog: 'No blog or content hub',
+  pricing: 'No pricing or fee information',
+  detailedServices: 'No detailed service pages',
 };
 
 const BLOG_GAP_EXPLANATION =
   'AI assistants prefer to cite sources with regular, authoritative content. ' +
   'None of the common blog paths was reachable on your site.';
+
+const PRICING_GAP_EXPLANATION =
+  'AI assistants favour firms that publish clear pricing or fee information. ' +
+  'None was detected on your site.';
+
+const DETAILED_SERVICES_GAP_EXPLANATION =
+  'AI assistants prefer detailed service pages they can read and cite. ' +
+  'Your site lacks them or they are too thin to parse.';
 
 // ─── Helpers ───
 
@@ -193,7 +203,7 @@ const BLOG_GAP_EXPLANATION =
  * Derive at most 5 gaps from detector failures, ordered by points lost (impact) descending.
  * If fewer than 5 checks fail, returns fewer entries — no LLM padding.
  */
-function deriveGaps(checks, blogDetection) {
+function deriveGaps(checks, blogDetection, { hasPricing, hasDetailedServices } = {}) {
   const gaps = [];
   for (const check of checks || []) {
     if (!check || check.passed) continue;
@@ -211,6 +221,26 @@ function deriveGaps(checks, blogDetection) {
       key: 'blog',
       title: GAP_TITLES.blog,
       explanation: BLOG_GAP_EXPLANATION,
+      impact: 10,
+    });
+  }
+  // Pricing and detailed-services are top-level detector fields, not entries in
+  // `checks`, so they must be folded in explicitly or they never surface as gaps
+  // (they render in the checks list via `!!hasPricing` — a falsy value shows ✗,
+  // so a falsy value is a gap here too).
+  if (!hasPricing) {
+    gaps.push({
+      key: 'pricing',
+      title: GAP_TITLES.pricing,
+      explanation: PRICING_GAP_EXPLANATION,
+      impact: 10,
+    });
+  }
+  if (!hasDetailedServices) {
+    gaps.push({
+      key: 'detailedServices',
+      title: GAP_TITLES.detailedServices,
+      explanation: DETAILED_SERVICES_GAP_EXPLANATION,
       impact: 10,
     });
   }
@@ -331,22 +361,6 @@ function buildSummary({ companyName, category, customIndustry, city, websiteUrl,
     text += ` Key gaps identified: ${top}.`;
   }
   return text;
-}
-
-/**
- * Count structural gaps surfaced by the data: platforms that decisively did
- * not recommend the firm, competitors found, and sub-score categories below
- * half of SUB_SCORE_MAX. Null platform results (timeout/error) and null
- * sub-scores (not computed) are ignored.
- */
-function computeGapsIdentified(report) {
-  const platformsNotRecommending = (report.platformResults || [])
-    .filter((r) => r.mentioned === false).length;
-  const competitorsFound = (report.competitors || []).length;
-  const breakdown = report.scoreBreakdown || {};
-  const subScoreBelow50 = Object.values(breakdown)
-    .filter((v) => typeof v === 'number' && v / SUB_SCORE_MAX < 0.5).length;
-  return platformsNotRecommending + competitorsFound + subScoreBelow50;
 }
 
 /**
@@ -508,7 +522,10 @@ export async function buildPublicReport({
       : null,
   }));
 
-  const gaps = deriveGaps(detectorResult.checks, detectorResult.blogDetection);
+  const gaps = deriveGaps(detectorResult.checks, detectorResult.blogDetection, {
+    hasPricing: detectorResult.hasPricing,
+    hasDetailedServices: detectorResult.hasDetailedServices,
+  });
 
   const searchedCompany = mapSearchedCompany({
     detectorResult,
@@ -629,7 +646,6 @@ export async function buildPublicReport({
     result.aiVisibilityBreakdown = aiResult?.breakdown ?? null;
   }
 
-  result.gapsIdentified = computeGapsIdentified(result);
   return result;
 }
 

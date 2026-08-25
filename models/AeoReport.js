@@ -114,7 +114,6 @@ const aeoReportSchema = new mongoose.Schema({
       explanation: String,
     },
   ],
-  gapsIdentified: { type: Number, default: 0 },
   pdfBuffer: { type: Buffer, default: null },
 
   // Multi-platform AI query results
