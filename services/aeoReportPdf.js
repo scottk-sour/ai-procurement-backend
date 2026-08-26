@@ -725,8 +725,8 @@ function drawTheShiftPage(ctx, report) {
   y -= 25;
   const sections = [
     {
-      title: 'Buyers Are Changing How They Search',
-      text: 'We measured 1,214 UK solicitors across 17 UK cities in August 2026. 83% were never named once across 40 AI answers each. Most firms have never checked which side of that line they\'re on.',
+      title: 'Most Firms Are Never Named',
+      text: 'In August 2026 we measured 1,214 SRA-regulated solicitors across 17 UK cities. 83% were never named once across 40 AI answers each. We have not run the same measurement for other professions, but most firms of any kind have never checked which side of that line they\'re on.',
     },
     {
       title: 'What is AI Visibility (AEO)?',
