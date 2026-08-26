@@ -363,14 +363,14 @@ function drawCoverPage(ctx, report) {
   // Alarming headline
   y -= 55;
   const headline = report.aiMentioned
-    ? 'AI mentions you — but your competitors rank higher.'
-    : 'AI is NOT recommending your business.';
+    ? `AI named ${report.companyName} in this check.`
+    : `AI did not name ${report.companyName} in this check.`;
   const headlineW = bold.widthOfTextAtSize(headline, 16);
   page.drawText(headline, { x: cx - headlineW / 2, y, size: 16, font: bold, color: RED });
 
   y -= 25;
   const subhead = report.aiMentioned
-    ? `You appear at position ${report.aiPosition || '?'}, but ${report.competitors?.length || 0} competitors rank ahead or alongside you.`
+    ? `AI assistants can give different answers to the same question, so treat this as a snapshot rather than a fixed position.`
     : `When ${terms.customer} ask AI for ${/^[aeiou]/i.test(categoryLabel) ? 'an' : 'a'} ${categoryLabel.toLowerCase()} in ${report.city}, you don't appear. Here's who does.`;
   drawWrappedText(page, subhead, MARGIN + 20, y, font, 11, GREY, CONTENT_W - 40, 16);
 
@@ -506,7 +506,7 @@ function drawWhatAiKnowsPage(ctx, report) {
     y -= 18;
 
     const eduParagraphs = [
-      'Your website may perform well on traditional SEO audits -- but that no longer guarantees visibility. SEO measures how Google indexes your site. AI Visibility (AEO — Answer Engine Optimisation) measures whether AI actually recommends you.',
+      'Traditional SEO audits measure how search engines index and rank your site. AI Visibility (AEO — Answer Engine Optimisation) looks at something different: whether AI assistants can read and cite your firm\'s information when they answer questions. A strong SEO score does not tell you how AI describes you.',
       `AI recommendation engines like ${joinPlatforms(browsingPlatformNames(report), 'and')} don't just crawl your site -- they evaluate structured data, authority signals, verified profiles, and review sentiment to decide who to recommend.`,
       'A business can score 70+ on a website SEO audit and still score under 20 on AI visibility, because the signals AI uses are fundamentally different from what traditional SEO tools measure.',
     ];
@@ -725,8 +725,8 @@ function drawTheShiftPage(ctx, report) {
   y -= 25;
   const sections = [
     {
-      title: 'Buyers Are Changing How They Search',
-      text: 'According to Gartner, by 2026, traditional search engine volume will drop 25% as consumers shift to AI assistants. Forrester reports that 60% of B2B buyers now use AI tools to research suppliers before making contact. If your business isn\'t visible to AI, you\'re losing leads you\'ll never know about.',
+      title: 'Most Firms Are Never Named',
+      text: 'In August 2026 we measured 1,214 SRA-regulated solicitors across 17 UK cities. 83% were never named once across 40 AI answers each. We have not run the same measurement for other professions, but most firms of any kind have never checked which side of that line they\'re on.',
     },
     {
       title: 'What is AI Visibility (AEO)?',
@@ -794,7 +794,6 @@ function drawTheShiftPage(ctx, report) {
         { year: '2023', event: 'ChatGPT reaches 100M users — AI search goes mainstream' },
         { year: '2024', event: 'Google launches AI Overviews — traditional SEO starts declining' },
         { year: '2025', event: 'AI assistants become primary research tool for B2B buyers' },
-        { year: '2026', event: 'Businesses without AI visibility lose 25%+ of inbound leads' },
       ];
 
       for (const item of timeline) {

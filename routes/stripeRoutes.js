@@ -514,7 +514,7 @@ async function handleCheckoutComplete(session) {
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h2 style="color: #7c3aed;">Welcome to TendorAI Pro!</h2>
               <p style="color: #374151; line-height: 1.6;">
-                Your payment of <strong>&pound;299/month</strong> has been confirmed. Here's what happens next:
+                Your payment has been confirmed. Here's what happens next:
               </p>
               <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
                 <tr>
@@ -526,13 +526,13 @@ async function handleCheckoutComplete(session) {
                 <tr>
                   <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; vertical-align: top;">2.</td>
                   <td style="padding: 12px 0; color: #374151;">
-                    <strong>Reply to this email with your website login</strong> &mdash; we'll install your AI-optimised schema within 48 hours.
+                    <strong>Reply to this email with your website login</strong> &mdash; we'll install your AI-optimised schema.
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 12px 0; color: #7c3aed; font-weight: 600; vertical-align: top;">3.</td>
                   <td style="padding: 12px 0; color: #374141;">
-                    <strong>Your first AI Visibility Report</strong> arrives Monday morning &mdash; see which platforms recommend you across ChatGPT, Perplexity, Claude, Gemini, Grok, and Meta AI.
+                    <strong>Your first AI Visibility Report</strong> shows which platforms recommend you across ChatGPT, Perplexity, Claude, Gemini, Grok, and Meta AI.
                   </td>
                 </tr>
                 <tr>
@@ -544,7 +544,7 @@ async function handleCheckoutComplete(session) {
               </table>
               <div style="background: #f5f3ff; border-radius: 8px; padding: 16px; margin: 16px 0;">
                 <p style="color: #374151; margin: 0; font-size: 14px;">
-                  <strong>90-day promise</strong> &mdash; if your AI Visibility Score isn't moving in the right direction within 90 days of schema install, we'll review your account and process a full refund.
+                  <strong>What we promise:</strong> the structured data we install will be accurate and verifiable against your regulator's public register. We don't promise that any AI assistant will recommend you.
                 </p>
               </div>
               <a href="${dashboardUrl}" style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Go to Dashboard</a>
@@ -553,7 +553,7 @@ async function handleCheckoutComplete(session) {
               </p>
             </div>
           `,
-          text: `Welcome to TendorAI Pro! Payment of £299/month confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — schema installed within 48hrs. Step 3: First AI Visibility Report arrives Monday. Step 4: We draft AI-optimised content for you each week — review and approve before it publishes. Nothing goes live without your sign-off. View drafts: https://www.tendorai.com/vendor-dashboard/approvals. 90-day promise — review and refund if your score isn't moving in the right direction. Questions? hello@tendorai.com`,
+          text: `Welcome to TendorAI Pro! Payment confirmed. Step 1: Complete your profile at ${dashboardUrl}/settings. Step 2: Reply with your website login — we'll install your AI-optimised schema. Step 3: You'll receive your first AI Visibility Report. Step 4: We draft AI-optimised content for you each week — review and approve before it publishes. Nothing goes live without your sign-off. View drafts: https://www.tendorai.com/vendor-dashboard/approvals. What we promise: the structured data we install will be accurate and verifiable against your regulator's public register. We don't promise that any AI assistant will recommend you. Questions? hello@tendorai.com`,
           from: 'TendorAI <hello@tendorai.com>',
         });
         logger.info('Pro upgrade email sent', { vendorId: vendor._id, email: vendor.email });
@@ -695,7 +695,7 @@ async function handlePaymentFailed(invoice) {
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h2 style="color: #7c3aed;">Payment Failed</h2>
               <p style="color: #374151; line-height: 1.6;">
-                We were unable to process your payment of <strong>&pound;299</strong> for TendorAI Pro.
+                We were unable to process your payment for TendorAI Pro.
               </p>
               <p style="color: #374151; line-height: 1.6;">
                 Please update your payment method to keep your Pro features active. If not updated within 7 days, your account will revert to the free tier.
@@ -706,7 +706,7 @@ async function handlePaymentFailed(invoice) {
               </p>
             </div>
           `,
-          text: `TendorAI payment of £299 failed. Update your payment method at ${settingsUrl} to keep Pro features. Account reverts to free in 7 days if not updated. Contact hello@tendorai.com for help.`,
+          text: `TendorAI payment failed. Update your payment method at ${settingsUrl} to keep Pro features. Account reverts to free in 7 days if not updated. Contact hello@tendorai.com for help.`,
         });
         logger.info('Payment failed email sent', { vendorId: vendor._id });
       } catch (emailErr) {
