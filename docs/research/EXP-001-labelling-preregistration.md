@@ -100,4 +100,4 @@ The dated limitations note on TAI-R-2026-002 does not wait for any of this. It c
 Never silently replace a published figure. The URL does not change.
 13. Deviations
 Any departure from this document is recorded here with a date and a reason, including departures that seem harmless at the time.
-(none yet)
+27/08/2026 — The labelling-view candidate span (§6) is marked with `>>> <<<` in the generated view rather than the `«…»` specified in §6. Reason: to match the existing convention in `scripts/experiments/exportDisputedRows.js` and to avoid UTF-8 mangling of the guillemet characters when the CSV is opened in a spreadsheet. No other aspect of §6 is changed.
