@@ -116,7 +116,7 @@ console.log(`Mode:    ${DRY_RUN ? 'DRY-RUN (no writes)' : 'LIVE (will rewrite st
 // EVERY wave and platform of the study — including closed wave-1 history and the
 // wave-2 Perplexity rows the published figure rests on. Require --all-waves to
 // proceed deliberately; otherwise stop and show the operator the exact scope.
-if (wave === null && platform === null && !DRY_RUN && !ALL_WAVES) {
+if (wave === null && !DRY_RUN && !ALL_WAVES) {
   const waves = await ExperimentRun.distinct('wave', filter);
   const platforms = await ExperimentRun.distinct('platform', filter);
   console.error('REFUSING to run: no --wave and no --platform on a LIVE run.');
