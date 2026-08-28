@@ -38,6 +38,41 @@ if (studyIdx === -1 || configIdx === -1) {
 const study = args[studyIdx + 1];
 const configPath = args[configIdx + 1];
 
+// ── Scope + safety flags (guardrail; see the bulkWrite notes further down) ──
+// --wave / --platform narrow the destructive rewrite; --dry-run computes and
+// prints the tally without writing; --all-waves is the explicit opt-in to
+// rewrite the entire study when no scope is given.
+const waveIdx = args.indexOf('--wave');
+const platformIdx = args.indexOf('--platform');
+const DRY_RUN = args.includes('--dry-run');
+const ALL_WAVES = args.includes('--all-waves');
+
+let wave = null;
+if (waveIdx !== -1) {
+  const waveRaw = args[waveIdx + 1];
+  if (!waveRaw || !/^\d+$/.test(waveRaw)) {
+    console.error(`--wave must be a non-negative integer (got: ${waveRaw ?? '<missing>'})`);
+    process.exit(1);
+  }
+  wave = parseInt(waveRaw, 10);
+}
+
+let platform = null;
+if (platformIdx !== -1) {
+  platform = args[platformIdx + 1];
+  const platformPath = ExperimentRun.schema.path('platform');
+  const PLATFORM_ENUM = (platformPath && (platformPath.enumValues || platformPath.options?.enum)) || [];
+  if (!platform || !PLATFORM_ENUM.includes(platform)) {
+    console.error(`--platform must be one of: ${PLATFORM_ENUM.join(', ') || '(enum unavailable)'} (got: ${platform ?? '<missing>'})`);
+    process.exit(1);
+  }
+}
+
+// Build the query filter ONCE and reuse it at every query site below.
+const filter = { study, status: 'ok' };
+if (wave !== null) filter.wave = wave;
+if (platform !== null) filter.platform = platform;
+
 if (!fs.existsSync(configPath)) { console.error(`Config not found: ${configPath}`); process.exit(1); }
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
@@ -70,10 +105,36 @@ console.log(`Loaded ${configLookup.size} target entries from config`);
 
 await mongoose.connect(MONGODB_URI);
 
-const totalCount = await ExperimentRun.countDocuments({ study, status: 'ok' });
+// ── Scope announcement: make the blast radius visible before anything runs ──
+const totalCount = await ExperimentRun.countDocuments(filter);
+console.log(`Filter:  ${JSON.stringify(filter)}`);
+console.log(`Matches: ${totalCount} document(s)`);
+console.log(`Mode:    ${DRY_RUN ? 'DRY-RUN (no writes)' : 'LIVE (will rewrite stored citation flags)'}\n`);
+
+// ── Refuse an unscoped destructive run ──
+// No --wave and no --platform on a LIVE run would rewrite citation flags across
+// EVERY wave and platform of the study — including closed wave-1 history and the
+// wave-2 Perplexity rows the published figure rests on. Require --all-waves to
+// proceed deliberately; otherwise stop and show the operator the exact scope.
+if (wave === null && !DRY_RUN && !ALL_WAVES) {
+  const waves = await ExperimentRun.distinct('wave', filter);
+  const platforms = await ExperimentRun.distinct('platform', filter);
+  console.error('REFUSING to run: --wave is required for a LIVE run.');
+  console.error(`This would rewrite stored citation flags across every wave of study "${study}" for ${platform !== null ? `platform "${platform}"` : 'every platform'}:`);
+  console.error(`  waves:     ${waves.slice().sort((a, b) => a - b).join(', ') || '(none)'}`);
+  console.error(`  platforms: ${platforms.slice().sort().join(', ') || '(none)'}`);
+  console.error(`  documents: ${totalCount}`);
+  console.error('\nRe-run scoped, e.g.:');
+  console.error('  node scripts/experiments/recomputeCitations.js \\');
+  console.error(`    --study ${study} --config ${configPath} --wave <n> --platform <name> --dry-run`);
+  console.error('\nOr pass --all-waves to deliberately rewrite the entire study.');
+  await mongoose.disconnect();
+  process.exit(1);
+}
+
 console.log(`Streaming ${totalCount} clean runs for study "${study}"...\n`);
 
-const cursor = ExperimentRun.find({ study, status: 'ok' }).cursor();
+const cursor = ExperimentRun.find(filter).cursor();
 let scanned = 0;
 let flipped = 0;
 let totalCited = 0;
@@ -122,7 +183,7 @@ for await (const run of cursor) {
     };
   });
 
-  if (changed) {
+  if (!DRY_RUN && changed) {
     bulkOps.push({
       updateOne: {
         filter: { _id: run._id },
@@ -131,7 +192,10 @@ for await (const run of cursor) {
     });
   }
 
-  if (bulkOps.length >= BULK_SIZE) {
+  if (!DRY_RUN && bulkOps.length >= BULK_SIZE) {
+    // NOTE: writes flush in BULK_SIZE batches with NO surrounding transaction.
+    // A mid-run failure leaves documents partially recomputed with no rollback.
+    // (This has happened in production — do not assume all-or-nothing here.)
     await ExperimentRun.bulkWrite(bulkOps);
     bulkOps = [];
   }
@@ -141,7 +205,9 @@ for await (const run of cursor) {
   }
 }
 
-if (bulkOps.length > 0) {
+if (!DRY_RUN && bulkOps.length > 0) {
+  // NOTE: final batch flush — same no-transaction / no-rollback caveat as the
+  // in-loop flush above.
   await ExperimentRun.bulkWrite(bulkOps);
 }
 
