@@ -119,8 +119,8 @@ console.log(`Mode:    ${DRY_RUN ? 'DRY-RUN (no writes)' : 'LIVE (will rewrite st
 if (wave === null && !DRY_RUN && !ALL_WAVES) {
   const waves = await ExperimentRun.distinct('wave', filter);
   const platforms = await ExperimentRun.distinct('platform', filter);
-  console.error('REFUSING to run: no --wave and no --platform on a LIVE run.');
-  console.error(`This would rewrite stored citation flags across the ENTIRE study "${study}":`);
+  console.error('REFUSING to run: --wave is required for a LIVE run.');
+  console.error(`This would rewrite stored citation flags across every wave of study "${study}" for ${platform !== null ? `platform "${platform}"` : 'every platform'}:`);
   console.error(`  waves:     ${waves.slice().sort((a, b) => a - b).join(', ') || '(none)'}`);
   console.error(`  platforms: ${platforms.slice().sort().join(', ') || '(none)'}`);
   console.error(`  documents: ${totalCount}`);
