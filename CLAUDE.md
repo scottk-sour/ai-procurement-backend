@@ -23,7 +23,7 @@ System 1. Do not add LLM guessing to System 1.
 ## Git workflow
 - Claude Code pushes to feature branches, never main
 - Scott reviews diff on GitHub, opens PR, merges manually
-- Render auto-deploys from main
+- Render does NOT auto-deploy; deploy from main is triggered manually
 - Node 22.x, npm install on deploy
 
 ## Large file rule
