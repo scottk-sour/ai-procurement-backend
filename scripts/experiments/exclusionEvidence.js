@@ -93,20 +93,81 @@ for (const f of firms.values()) {
 }
 
 const allFirms = [...firms.values()];
-const PANEL_N = allFirms.length;
 
 const line = (s = '') => console.log(s);
 const rule = () => line('='.repeat(78));
+
+// ── Panel identity: computed from RAW config targets, independent of the
+//    entityName-keyed grouping used for name-collision analysis (Sections A–C).
+//    Reports both identity fields; does NOT pick one and does NOT deduplicate
+//    to whichever field happens to yield 1,214. ──
+const EXPECTED_PANEL = 1214;
+let totalObservations = 0;
+const entityNameSet = new Set();
+const targetUrlSet = new Set();
+const entityToUrls = new Map();  // entityName -> Set(url)
+const urlToEntities = new Map(); // url -> Set(entityName)
+for (const p of config.prompts) {
+  for (const t of (p.targets || [])) {
+    totalObservations++;
+    const name = t.entityName ?? '(missing entityName)';
+    const url = t.url ?? '(missing url)';
+    entityNameSet.add(name);
+    targetUrlSet.add(url);
+    if (!entityToUrls.has(name)) entityToUrls.set(name, new Set());
+    entityToUrls.get(name).add(url);
+    if (!urlToEntities.has(url)) urlToEntities.set(url, new Set());
+    urlToEntities.get(url).add(name);
+  }
+}
+const entityMultiUrl = [...entityToUrls.entries()].filter(([, s]) => s.size > 1);
+const urlMultiEntity = [...urlToEntities.entries()].filter(([, s]) => s.size > 1);
+const identityCountsAgree = entityNameSet.size === targetUrlSet.size;
+// Denominator used for the name-collision analysis below is the distinct
+// entityName count — LABELLED as such, not asserted to be "the panel".
+const PANEL_N = entityNameSet.size;
 
 rule();
 line('EXP-001 EXCLUSION EVIDENCE — analysis only, NOT a proposed exclusion list');
 rule();
 line(`Config: ${CONFIG_PATH}`);
-line(`Distinct panel firms (by entityName): ${PANEL_N}` +
-  (PANEL_N !== 1214 ? `  (note: differs from the expected 1,214 — verify the config)` : ''));
 line('normaliseFirmName imported from lib/mentionMatcher.js (repo implementation).');
 line('This report lists evidence of intrinsic name ambiguity. It removes nothing,');
 line('excludes nothing, and changes no denominator. Decisions are the reader\'s.');
+line('');
+
+rule();
+line('PANEL IDENTITY VERIFICATION — reported independently of the name-collision');
+line('grouping in Sections A–C. The script does NOT deduplicate to whichever field');
+line('yields 1,214, and does NOT choose a panel-identity definition.');
+rule();
+line(`Total target observations (prompts[].targets):   ${totalObservations}`);
+line(`Distinct entityName values:                      ${entityNameSet.size}`);
+line(`Distinct target URLs:                            ${targetUrlSet.size}`);
+line(`entityName count == target-URL count?            ${identityCountsAgree ? 'YES' : 'NO'}`);
+line(`entityName count == ${EXPECTED_PANEL}?                         ${entityNameSet.size === EXPECTED_PANEL ? 'YES' : 'NO'}`);
+line(`target-URL count == ${EXPECTED_PANEL}?                         ${targetUrlSet.size === EXPECTED_PANEL ? 'YES' : 'NO'}`);
+line('');
+line(`entityName values mapped to >1 distinct URL:     ${entityMultiUrl.length}`);
+for (const [name, urls] of entityMultiUrl.sort((a, b) => (b[1].size - a[1].size) || String(a[0]).localeCompare(String(b[0])))) {
+  line(`    "${name}" -> ${urls.size} URLs:`);
+  for (const u of [...urls].sort()) line(`        ${u}`);
+}
+line(`target URLs mapped to >1 distinct entityName:    ${urlMultiEntity.length}`);
+for (const [url, names] of urlMultiEntity.sort((a, b) => (b[1].size - a[1].size) || String(a[0]).localeCompare(String(b[0])))) {
+  line(`    ${url} -> ${names.size} entityNames:`);
+  for (const n of [...names].sort()) line(`        "${n}"`);
+}
+if (!identityCountsAgree || entityNameSet.size !== EXPECTED_PANEL || targetUrlSet.size !== EXPECTED_PANEL) {
+  line('');
+  line('DISCREPANCY: the identity counts do not all reconcile to the expected 1,214-firm');
+  line('panel. Reported, not resolved — the correct panel-identity definition is a');
+  line('decision for the reviewer, not this script.');
+}
+line('');
+line('NOTE: Sections A–C group candidates by entityName / normalised name. Where an');
+line('entityName maps to >1 URL (above), that grouping treats them as one firm; the');
+line('per-identity counts above are authoritative for panel identity.');
 line('');
 
 // ── A. Collision groups: >=2 distinct firms sharing an identical normalised name ──
@@ -163,7 +224,21 @@ line('  gazetteer is permitted. This bucket is therefore NOT auto-populated: doi
 line('  would require inventing place facts. Section B is expected to be INCOMPLETE —');
 line('  a human/gazetteer review of the single-token names (see A and C) is required to');
 line('  find place collisions the repository cannot establish. No items are listed here.');
-line(`\nB total (verified only): ${firmsInB.size} firm(s).`);
+line('');
+line('SINGLE-TOKEN CANDIDATE UNIVERSE — the COMPLETE set of panel firms whose');
+line('normalised name is a single token. This is the reproducible universe for the');
+line('human place-name review, so that no single-token firm name is hidden from it.');
+line('The script does NOT classify any of these as a place; verified city matches are');
+line('flagged only for convenience.');
+const singleTokenFirms = allFirms
+  .filter(f => f.tokenCount === 1)
+  .sort((a, b) => a.norm.localeCompare(b.norm) || a.entityName.localeCompare(b.entityName));
+line(`  count: ${singleTokenFirms.length}`);
+for (const f of singleTokenFirms) {
+  const cityMatch = cityForms.has(f.norm) ? `  [verified city "${cityForms.get(f.norm)}"]` : '';
+  line(`  ${f.entityName}  | normalised "${f.norm}"  | city: ${[...f.cities].sort().join(', ')}  | prompts: ${[...f.promptIds].sort().join(', ')}${cityMatch}`);
+}
+line(`\nB total (verified city matches only): ${firmsInB.size} firm(s); single-token universe: ${singleTokenFirms.length} firm(s).`);
 line('');
 
 // ── C. Short names ──
@@ -215,8 +290,9 @@ line(`  A&B: ${[...firmsInA].filter(n => firmsInB.has(n)).length}` +
   `  | A&C: ${[...firmsInA].filter(n => firmsInC.has(n)).length}` +
   `  | B&C: ${[...firmsInB].filter(n => firmsInC.has(n)).length}`);
 line(`total distinct affected firms:   ${union.size}`);
-line(`panel size:                      ${PANEL_N}`);
-line(`percentage of panel affected:    ${PANEL_N > 0 ? (union.size / PANEL_N * 100).toFixed(1) : '0.0'}%`);
+line(`denominator (distinct entityName): ${PANEL_N}   (name-collision grouping identity;`);
+line(`                                   see PANEL IDENTITY VERIFICATION for the per-identity counts)`);
+line(`percentage affected:             ${PANEL_N > 0 ? (union.size / PANEL_N * 100).toFixed(1) : '0.0'}%  (of distinct entityName)`);
 line('');
 line('EVIDENCE ONLY. No firm has been excluded, no denominator changed, no list written.');
 rule();
