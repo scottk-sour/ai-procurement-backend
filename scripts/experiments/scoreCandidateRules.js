@@ -53,7 +53,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { normaliseFirmName, normaliseResponseText, isFirmMentioned } from './lib/mentionMatcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -62,7 +62,7 @@ const EXPECTED_TOTAL = 267;
 const EXPECTED_A = 217;
 const EXPECTED_B = 50;
 const VALID_VERDICTS = new Set(['REAL', 'FALSE', 'AMBIGUOUS']);
-const RULES = ['CURRENT', 'BOUNDARY-SINGLE', 'BOUNDARY-BOTH'];
+export const RULES = ['CURRENT', 'BOUNDARY-SINGLE', 'BOUNDARY-BOTH'];
 
 // ── CLI ──
 function argVal(flag) {
@@ -71,13 +71,19 @@ function argVal(flag) {
 }
 function die(msg, code = 1) { console.error(msg); process.exit(code); }
 
-const GROUND_TRUTH = argVal('--ground-truth');
-const VIEW = argVal('--view');
-const KEY = argVal('--key');
-for (const [flag, p] of [['--ground-truth', GROUND_TRUTH], ['--view', VIEW], ['--key', KEY]]) {
-  if (!p) die(`Missing required argument ${flag}`);
-  if (!fs.existsSync(p)) die(`File not found for ${flag}: ${p}`);
-  try { fs.accessSync(p, fs.constants.R_OK); } catch { die(`File not readable for ${flag}: ${p}`); }
+// Parse + validate the three required CLI inputs. Moved out of module scope so
+// the file can be imported (e.g. by unit tests) without exiting; the arguments,
+// validation, and failure modes are identical to before when run as a script.
+function parseCliArgs() {
+  const GROUND_TRUTH = argVal('--ground-truth');
+  const VIEW = argVal('--view');
+  const KEY = argVal('--key');
+  for (const [flag, p] of [['--ground-truth', GROUND_TRUTH], ['--view', VIEW], ['--key', KEY]]) {
+    if (!p) die(`Missing required argument ${flag}`);
+    if (!fs.existsSync(p)) die(`File not found for ${flag}: ${p}`);
+    try { fs.accessSync(p, fs.constants.R_OK); } catch { die(`File not readable for ${flag}: ${p}`); }
+  }
+  return { GROUND_TRUTH, VIEW, KEY };
 }
 
 // ── Streaming RFC4180 parser (same shape as buildLabellingView.js) ──
@@ -121,9 +127,9 @@ function headerIndex(header, required, file) {
 }
 
 // ── Candidate rules (matcher untouched; boundary rules replicated locally) ──
-function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function ruleCurrent(responseText, firmName) { return isFirmMentioned(responseText, firmName) === true; }
-function ruleBoundary(responseText, firmName, multiBoundary) {
+export function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+export function ruleCurrent(responseText, firmName) { return isFirmMentioned(responseText, firmName) === true; }
+export function ruleBoundary(responseText, firmName, multiBoundary) {
   if (!responseText || !firmName) return false;
   const normText = normaliseResponseText(responseText);
   const normFirm = normaliseFirmName(firmName);
@@ -139,7 +145,7 @@ function ruleBoundary(responseText, firmName, multiBoundary) {
   if (token.length < 3 || (token.length < 4 && !isAcronym)) return false;
   return new RegExp(`\\b${escapeRe(token)}\\b`).test(normText);      // single-token: \b gate
 }
-const PREDICT = {
+export const PREDICT = {
   'CURRENT': (rt, fn) => ruleCurrent(rt, fn),
   'BOUNDARY-SINGLE': (rt, fn) => ruleBoundary(rt, fn, false),
   'BOUNDARY-BOTH': (rt, fn) => ruleBoundary(rt, fn, true),
@@ -152,6 +158,8 @@ function rawLocatable(responseText, normFirm) {
 }
 
 async function main() {
+  const { GROUND_TRUTH, VIEW, KEY } = parseCliArgs();
+
   // ── Load view ──
   const viewRows = new Map(); // row_uid -> {...}
   let viewHeader = null, vIdx = null;
@@ -390,4 +398,10 @@ async function main() {
   console.log(out.join('\n'));
 }
 
-main().catch((err) => { console.error('FATAL:', err.message); process.exit(1); });
+// Run only when executed as a script (node scripts/experiments/scoreCandidateRules.js …),
+// never on import. Importing the module (e.g. from a unit test) exposes the rule
+// functions without parsing CLI args or touching the filesystem.
+const invokedAsScript = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedAsScript) {
+  main().catch((err) => { console.error('FATAL:', err.message); process.exit(1); });
+}
