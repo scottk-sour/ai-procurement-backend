@@ -9,9 +9,9 @@
  * (e.g. preceded by a number, bullet, or start of line).
  */
 
-const SUFFIX_RE = /[\s,.]+(?:ltd|limited|llp|plc|pvt|co|company|uk|inc|incorporated|corp|corporation|group|holdings|services|solutions|solicitors?|law|legal|practice|associates?|partners?|(?:&\s*|and\s+)co|(?:&\s*|and\s+)sons)\.?$/i;
+export const SUFFIX_RE = /[\s,.]+(?:ltd|limited|llp|plc|pvt|co|company|uk|inc|incorporated|corp|corporation|group|holdings|services|solutions|solicitors?|law|legal|practice|associates?|partners?|(?:&\s*|and\s+)co|(?:&\s*|and\s+)sons)\.?$/i;
 
-function stripDiacritics(s) {
+export function stripDiacritics(s) {
   return String(s || '').normalize('NFD').replace(/\p{M}/gu, '');
 }
 
