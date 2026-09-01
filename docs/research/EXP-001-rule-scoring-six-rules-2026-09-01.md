@@ -13,7 +13,7 @@ The adjudication is unchanged. Only the set of rules under test has grown.
 | Study | `study_2026_07_exp001` |
 | Scoring date | 01/09/2026 |
 | Adjudication date | 28/08/2026 (unchanged — see below) |
-| Scoring commit | **Not confirmed.** See "Outstanding" below. |
+| Scoring commit | **Not confirmed** — not preserved. Bounded to `de43720` ≤ commit < `f945ad3`; see "Outstanding" below. |
 | Rules scored | CURRENT, BOUNDARY-SINGLE, BOUNDARY-BOTH, RETAINED-SUFFIX, BOUNDARY-PLUS-RETAINED, RETAINED-THEN-BARE |
 | Report body | Raw `scripts/experiments/scoreCandidateRules.js` stdout, verbatim and unreformatted |
 
@@ -39,9 +39,9 @@ deterministically from the seeds above.
 enforces it (integrity check 9), so a regenerated view carries no verdicts. For
 this run they were restored by `scripts/experiments/restoreVerdicts.js`, which
 parses the per-row table of the 28/08/2026 artefact and hardcodes nothing. That
-script has since been merged to `main` in `de43720` (PR #183). Whether this run
-executed before or after that merge is not recorded, which is part of why the
-scoring commit below is unconfirmed.
+script reached `main` in `de43720` (PR #183). The run required it, so the run
+necessarily executed at `de43720` or later — which is the lower bound on the
+scoring commit recorded under "Outstanding" below.
 
 ## Deviation from the pre-registration — carried forward, unchanged
 
@@ -88,14 +88,26 @@ every summary figure it states:
 six-rule printer in `scoreCandidateRules.js` as it stands on `main`, which differs
 from the three-rule layout used in the 28/08/2026 artefact.
 
-## Outstanding
+## Outstanding — the scoring commit was not preserved
 
-**The scoring commit is not recorded above because it was not supplied.** It has
-deliberately not been guessed. What can be established from the repository is
-only that the run used the six-rule scorer (present from `c374b9a`, on `main` from
-`5ce3043`) together with `restoreVerdicts.js` (PR #183, merged to `main` in
-`de43720`). The exact revision should be filled in here before this artefact is
-relied on.
+**The exact revision this run executed at is not recorded, and has not been
+guessed.** The container redeployed before the SHA was captured, so the working
+tree the run executed on no longer exists and its commit was not preserved. This
+is a permanent gap in the record, not an omission that can be closed later by
+inspecting the repository.
+
+What *is* established bounds it on both sides:
+
+- The run required `scripts/experiments/restoreVerdicts.js` to put the verdicts
+  back into the regenerated labelling view. That script reached `main` in
+  `de43720` (PR #183), so the scoring commit is **`de43720` or later**.
+- `f945ad3` — the merge of PR #184, which committed this artefact, deployed
+  01/09/2026 22:38 BST — is *after* the scoring run. It is **not** the scoring
+  commit, and the scoring commit is **earlier than `f945ad3`**.
+
+So: `de43720` ≤ scoring commit < `f945ad3`. The six-rule scorer itself has been
+present since `c374b9a` (on `main` from `5ce3043`), well before that interval
+opens, so the rules under test are not in doubt — only the exact revision.
 
 ## Report body
 
