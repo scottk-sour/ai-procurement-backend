@@ -35,9 +35,9 @@
  *                           ignored (isolates 3-char-acronym false positives).
  * The boundary rules reuse the exported normaliseFirmName / normaliseResponseText
  * and replicate the matcher's length + acronym gates verbatim; only the match
- * test changes. The retained-suffix form (see retainedSuffixForm) uses the
- * production SUFFIX_RE and stripDiacritics, imported from lib/mentionMatcher.js
- * (never copied). Primary decision metric: TOTAL ERRORS (FN + FP), not miss rate.
+ * test changes. retainedSuffixForm is imported from lib/mentionMatcher.js (the
+ * production matcher owns it and is the single source of truth for the selected
+ * RETAINED-SUFFIX rule). Primary decision metric: TOTAL ERRORS (FN + FP), not miss rate.
  *
  * Metric definitions (printed in the report header so numbers are unambiguous):
  *   A row is a POSITIVE prediction when the rule says the firm is mentioned.
@@ -63,7 +63,13 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { normaliseFirmName, normaliseResponseText, isFirmMentioned, SUFFIX_RE, stripDiacritics } from './lib/mentionMatcher.js';
+import { normaliseFirmName, normaliseResponseText, isFirmMentioned, retainedSuffixForm } from './lib/mentionMatcher.js';
+
+// retainedSuffixForm now lives in the production matcher (lib/mentionMatcher.js),
+// which is the single source of truth for the selected RETAINED-SUFFIX rule. It
+// is re-exported here so existing importers of the scorer (the unit test) keep
+// working without reaching past the scorer.
+export { retainedSuffixForm };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -161,61 +167,10 @@ export function ruleBoundary(responseText, firmName, multiBoundary) {
   if (token.length < 3 || (token.length < 4 && !isAcronym)) return false;
   return new RegExp(`\\b${escapeRe(token)}\\b`).test(normText);      // single-token: \b gate
 }
-// ── Retained-suffix form (added for the six-rule scoring) ──
-//
-// normaliseFirmName's pipeline, but the suffix-stripping loop stops ONE
-// productive iteration before the fully-stripped result, so exactly one generic
-// ending word is retained. Uses the PRODUCTION SUFFIX_RE and stripDiacritics
-// (imported from lib/mentionMatcher.js — never copied, re-declared or re-derived).
-//
-//   ALL LAW LIMITED               -> "all law"                (fully-stripped "all")
-//   BEST SOLICITORS LIMITED       -> "best solicitors"        (fully-stripped "best")
-//   YORKSHIRE LEGAL LIMITED       -> "yorkshire legal"        (fully-stripped "yorkshire")
-//   WAKE SMITH SOLICITORS LIMITED -> "wake smith solicitors"  (fully-stripped "wake smith")
-//
-// Edge cases (documented):
-//   * No strippable suffix: the loop makes no productive pass, so the retained
-//     form EQUALS the fully-stripped form (e.g. "Wake Smith" -> "wake smith").
-//   * Several suffixes in sequence: SUFFIX_RE is anchored ($) and requires a
-//     leading [\s,.]+, so it strips the RIGHTMOST suffix each pass. The retained
-//     word is therefore the LAST suffix removed before the loop terminated — for
-//     "WAKE SMITH SOLICITORS LIMITED" that is "solicitors" ("limited" was removed
-//     first). We do not impose any priority order; we follow the regex.
-//   * "Suffix-only"-looking names (e.g. "LAW LIMITED"): because SUFFIX_RE needs a
-//     leading [\s,.]+ separator, the FIRST token can never be stripped and the
-//     loop can never reach empty. "LAW LIMITED" -> strip " limited" -> "law";
-//     "law" has no leading separator so it is NOT stripped and the loop stops.
-//     The fully-stripped form is "law" and the retained form is "law limited"
-//     (NOT empty, and NOT a bare "law"). No special guard is applied here — short
-//     bare tokens are handled by the existing single-token length/acronym gate in
-//     the fallback rules below.
-export function retainedSuffixForm(firmName) {
-  if (!firmName) return '';
-  // preamble — identical to normaliseFirmName (imported stripDiacritics)
-  let s = stripDiacritics(firmName)
-    .toLowerCase()
-    .replace(/[''`´]/g, "'")
-    .replace(/&/g, ' and ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  // strip loop, capturing the value one productive pass before the final form.
-  // Mirrors normaliseFirmName's `do { … } while (s !== prev && s.length > 0)`.
-  let beforeLast = s;
-  let prev;
-  do {
-    prev = s;
-    const next = s.replace(SUFFIX_RE, '').trim();
-    if (next === prev) break;   // no change: the production loop stops here too
-    beforeLast = prev;          // prev is the value one strip before `next`
-    s = next;
-  } while (s.length > 0);
-  // `s` is now the production fully-stripped form; `beforeLast` is one earlier.
-  // Apply normaliseFirmName's post-loop punctuation cleanup to the retained form.
-  return beforeLast
-    .replace(/[.,;:()'"\[\]{}!?*#]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+
+// retainedSuffixForm is imported from lib/mentionMatcher.js (the production
+// matcher owns it; see the import + re-export above). The scorer no longer keeps
+// its own copy, so there is a single source of truth for the retained form.
 
 // Shared single-token bare-fallback test, parameterised by the two variants:
 //   requireFour=false, allowAcronym=true  -> the existing matcher gate (reject
