@@ -94,8 +94,9 @@ describe('isFirmMentioned — ChatGPT Cardiff response', () => {
   // RETAINED-SUFFIX does not detect it, because it matches the retained-suffix
   // form ("howells solicitors") and this response gives the bare name only. This
   // is the rule's measured trade-off: on the 267-row adjudicated sample it
-  // produces 21 false negatives against 5 false positives, versus 90 false
-  // negatives and 9 false positives under the previous rule. The previous rule
+  // produces 21 false negatives against 9 false positives (30 total errors at the
+  // pre-registered lower bound), versus 90 false negatives and 9 false positives
+  // under the previous rule. The previous rule
   // detected this specific case only because the "1." list marker happened to
   // satisfy a context gate that was inoperative in most real responses.
   // The expectation is false because that is what the matcher now returns — NOT
