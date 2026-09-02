@@ -88,8 +88,20 @@ describe('isFirmMentioned — Perplexity Cardiff response', () => {
 });
 
 describe('isFirmMentioned — ChatGPT Cardiff response', () => {
-  it('finds "Howells" (no suffix in response)', () => {
-    expect(isFirmMentioned(CHATGPT_CARDIFF_RESPONSE, 'Howells Solicitors')).toBe(true);
+  // KNOWN FALSE NEGATIVE — a documented limitation of RETAINED-SUFFIX, the rule
+  // selected by the EXP-001 six-rule scoring. "Howells" here is a GENUINE mention
+  // of the firm "Howells Solicitors": the response really does name the firm.
+  // RETAINED-SUFFIX does not detect it, because it matches the retained-suffix
+  // form ("howells solicitors") and this response gives the bare name only. This
+  // is the rule's measured trade-off: on the 267-row adjudicated sample it
+  // produces 21 false negatives against 5 false positives, versus 90 false
+  // negatives and 9 false positives under the previous rule. The previous rule
+  // detected this specific case only because the "1." list marker happened to
+  // satisfy a context gate that was inoperative in most real responses.
+  // The expectation is false because that is what the matcher now returns — NOT
+  // because the firm is absent (it is present).
+  it('does NOT detect bare "Howells" — documented RETAINED-SUFFIX false negative (the firm is genuinely mentioned)', () => {
+    expect(isFirmMentioned(CHATGPT_CARDIFF_RESPONSE, 'Howells Solicitors')).toBe(false);
   });
 
   it('finds "JWP Solicitors"', () => {
