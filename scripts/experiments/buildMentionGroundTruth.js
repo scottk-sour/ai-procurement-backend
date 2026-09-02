@@ -12,7 +12,11 @@
  *
  * It imports and CALLS the real matcher (isFirmMentioned / normaliseFirmName /
  * normaliseResponseText) from lib/mentionMatcher.js - it does not reimplement or
- * modify it.
+ * modify it. By default current_matcher_result comes from that live matcher;
+ * --definition-matcher <path> overrides ONLY that column with the isFirmMentioned
+ * of the given module (e.g. the frozen context-gate matcher mentionMatcher.pre186.js
+ * that originally defined the fixture). Normalisation and substring matching always
+ * use the live matcher.
  *
  * Draws a reproducible, stratified random sample of 150 runs (seed stated below),
  * spread across both platforms and across prompts, then emits one CSV row per
@@ -20,6 +24,8 @@
  * current matcher and substring-only matching DISAGREE are sorted first.
  *
  * Usage: node scripts/experiments/buildMentionGroundTruth.js
+ *        node scripts/experiments/buildMentionGroundTruth.js \
+ *          --definition-matcher scripts/experiments/lib/mentionMatcher.pre186.js
  * Requires: MONGODB_URI (or MONGO_URI) in env.
  */
 
@@ -28,7 +34,7 @@ dotenv.config();
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import mongoose from 'mongoose';
 import ExperimentRun from '../../models/ExperimentRun.js';
 import { isFirmMentioned, normaliseFirmName, normaliseResponseText } from './lib/mentionMatcher.js';
@@ -45,6 +51,32 @@ const SEED = 20260811; // reproducible sample seed
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_PATH = path.resolve(__dirname, '../../data/experiments/mention-ground-truth-sample.csv');
+
+// ---- Definition matcher (which isFirmMentioned computes current_matcher_result) ----
+// Defaults to the live matcher (lib/mentionMatcher.js), so behaviour is unchanged.
+// --definition-matcher <path> selects a different module whose isFirmMentioned is
+// used for current_matcher_result ONLY. Normalisation (normalised_firm_name,
+// token_count, substring_only_result) always uses the live matcher, so only the
+// current-matcher column reflects the chosen definition matcher. This lets the
+// fixture's membership be regenerated with the frozen context-gate matcher
+// (mentionMatcher.pre186.js) that originally defined it, independent of whatever
+// the live matcher has since become.
+const dmIdx = process.argv.indexOf('--definition-matcher');
+let definitionMatcherLabel = 'scripts/experiments/lib/mentionMatcher.js (live, default)';
+let isFirmMentionedForCurrent = isFirmMentioned;
+if (dmIdx !== -1) {
+  const dmArg = process.argv[dmIdx + 1];
+  if (!dmArg) { console.error('--definition-matcher requires a module path'); process.exit(1); }
+  const dmPath = path.resolve(dmArg);
+  if (!fs.existsSync(dmPath)) { console.error(`--definition-matcher module not found: ${dmPath}`); process.exit(1); }
+  const dmMod = await import(pathToFileURL(dmPath).href);
+  if (typeof dmMod.isFirmMentioned !== 'function') {
+    console.error(`--definition-matcher module does not export isFirmMentioned: ${dmPath}`);
+    process.exit(1);
+  }
+  isFirmMentionedForCurrent = dmMod.isFirmMentioned;
+  definitionMatcherLabel = dmPath;
+}
 
 // ---- seeded PRNG (deterministic; no Math.random) ----
 function mulberry32(seed) {
@@ -87,7 +119,8 @@ const runs = await ExperimentRun.find(FILTER)
 
 console.log(`Filter matched ${matchCount} runs (countDocuments); loaded ${runs.length} documents.`);
 console.log(`Filter: { study: '${STUDY}', wave: ${WAVE}, status: 'ok', platform in [${PLATFORMS.join(', ')}] }`);
-console.log(`Sample seed: ${SEED}\n`);
+console.log(`Sample seed: ${SEED}`);
+console.log(`Definition matcher (current_matcher_result): ${definitionMatcherLabel}\n`);
 
 // ---- Stratified reproducible sample of SAMPLE_SIZE runs ----
 // Group by promptId x platform cell. Within each cell, sort runs by _id (stable,
@@ -142,7 +175,7 @@ for (const r of sample) {
     const entity = t.entityName;
     const normFirm = entity ? normaliseFirmName(entity) : '';
     const tokenCount = normFirm ? normFirm.split(/\s+/).filter(Boolean).length : 0;
-    const current = entity ? (isFirmMentioned(r.responseText, entity) === true) : false;
+    const current = entity ? (isFirmMentionedForCurrent(r.responseText, entity) === true) : false;
     const substring = normFirm ? normText.includes(normFirm) : false;
     rows.push({
       run_id: String(r._id),
@@ -191,6 +224,7 @@ function tally(pred) {
 }
 const all = tally(() => true);
 console.log('== Summary ==');
+console.log(`  definition matcher (current_matcher_result): ${definitionMatcherLabel}`);
 console.log(`  rows written: ${all.total}  |  agree: ${all.agree}  |  disagree: ${all.disagree}`);
 console.log('  by platform:');
 for (const p of PLATFORMS) {
