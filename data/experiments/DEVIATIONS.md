@@ -65,3 +65,13 @@ Record every deviation from the pre-registration here, with date and corrective 
 - Baseline z-test "significance" is a pre-treatment single-firm imbalance, not a treatment effect. The difference-in-differences analysis design (comparing change from baseline within groups, not raw endpoint levels) was specified on 19/07/2026, pre-treatment, so this imbalance does not bias the treatment effect estimate.
 
 **Impact on analysis:** None. All corrections were applied to wave 1 (baseline) data before any treatment was deployed. The treatment (JSON-LD schema injection) has not yet been applied to any profile page.
+
+---
+
+## 02/09/2026 — EXP-001 fixture unrebuildable after the matcher change
+
+**What happened:** After PR #186 replaced the single-token path of the live `isFirmMentioned` with RETAINED-SUFFIX and was deployed, the 267-row fixture could no longer be regenerated: `buildMentionGroundTruth.js` produced 298 current-vs-substring disagreements instead of 469 and `buildLabellingView.js` produced 202 rows instead of 267, so `restoreVerdicts.js` and the scorer refused. Both strata are derived from the live matcher's `current_matcher_result` (Stratum A = current≠substring; Stratum B = current positives), so changing the matcher changed the fixture. Render clones shallow with **no remote**, so git history is unavailable on the box and the pre-#186 matcher that had defined the fixture could not be recovered there to rebuild it.
+
+**Corrective action:** The pre-#186 context-gate matcher was committed as a frozen, verbatim copy of `scripts/experiments/lib/mentionMatcher.js` at commit `a080129` → `scripts/experiments/lib/mentionMatcher.pre186.js`, and `buildMentionGroundTruth.js` gained `--definition-matcher <path>` (both in PR #188). Rebuilding with `--definition-matcher scripts/experiments/lib/mentionMatcher.pre186.js` reproduced the fixture exactly (469 disagreements = 217 perplexity / 252 chatgpt; 267 rows; `labelling-view.csv` 140,382 bytes; `labelling-key.csv` 11,124 bytes). The frozen matcher is used only to reproduce fixture membership and must never be used for scoring or recomputation. The underlying design is recorded in `docs/research/EXP-001-frozen-fixture-design.md` (PR #187); the gate run in `docs/research/EXP-001-regression-2026-09-02.md`.
+
+**Impact on analysis:** None. The 267 rows and their adjudicated verdicts are unchanged; the frozen definition matcher reproduces the same fixture membership, and the deployed rule was accepted on its own regression score (29 / 27) at commit `f90a3ca`.
