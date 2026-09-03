@@ -205,7 +205,15 @@ function isFirmRetriableError(msg) {
   return FIRM_RETRIABLE_PATTERNS.some(p => p.test(msg));
 }
 
-export async function firmApproveAndExecute(approvalId, vendorIdStr) {
+function approvalError(message, code) {
+  const e = new Error(message);
+  if (code) e.code = code;
+  return e;
+}
+
+export async function firmApproveAndExecute(approvalId, vendorIdStr, options = {}) {
+  const { qualifiedPersonConfirmation } = options;
+
   const item = await ApprovalQueue.findById(approvalId);
   if (!item) throw new Error('Approval item not found');
   if (item.vendorId.toString() !== vendorIdStr) {
@@ -215,7 +223,50 @@ export async function firmApproveAndExecute(approvalId, vendorIdStr) {
     throw new Error(`Cannot firm-approve from status "${item.status}" — draft must be approved by admin first`);
   }
 
-  item.firmApprovedAt = new Date();
+  // (5/6) Explicit qualified-person confirmation must be strictly true.
+  if (qualifiedPersonConfirmation !== true) {
+    throw approvalError(
+      'You must confirm that you are a qualified person and have reviewed this content in accordance with your regulatory obligations before it can be approved.',
+      'QUALIFIED_PERSON_CONFIRMATION_REQUIRED',
+    );
+  }
+
+  // (4) The firm must have a nominated qualified approver recorded.
+  const { default: Vendor } = await import('../models/Vendor.js');
+  const vendor = await Vendor.findById(item.vendorId).select('nominatedApprover').lean();
+  const na = vendor?.nominatedApprover;
+  if (!na || !na.name || !na.role || !na.registrationNumber || !na.regulator) {
+    throw approvalError(
+      'Your firm must record a nominated qualified approver (name, role, professional registration number and regulator) before content can be approved.',
+      'NOMINATED_APPROVER_REQUIRED',
+    );
+  }
+
+  // (3/4) Immutable approval record — written at the approval action, BEFORE
+  // publication, independently of whether publication later succeeds. One record
+  // per approval item (unique index), so a publication retry never duplicates it.
+  // Name / role / registration / regulator are SNAPSHOTTED here, never a live ref.
+  const { default: ContentApprovalRecord } = await import('../models/ContentApprovalRecord.js');
+  const existingRecord = await ContentApprovalRecord.findOne({ approvalItemId: item._id }).lean();
+  if (!existingRecord) {
+    await ContentApprovalRecord.create({
+      approvalItemId: item._id,
+      vendorId: item.vendorId,
+      approvedByVendorAccountId: vendorIdStr,
+      approverName: na.name,
+      approverRole: na.role,
+      approverRegistrationNumber: na.registrationNumber,
+      approverRegulator: na.regulator,
+      approvedAt: new Date(),
+      qualifiedPersonConfirmation: true,
+      individuallyAuthenticated: false,
+      identityAssurance: 'firm_account_attested',
+    });
+  }
+
+  // Record the firm approval on the queue item. This evidence — and the
+  // ContentApprovalRecord above — is NEVER erased, even if publication fails.
+  if (!item.firmApprovedAt) item.firmApprovedAt = new Date();
   item.firmApprovedBy = vendorIdStr;
   item.status = 'firm_completed';
   await item.save();
@@ -227,10 +278,11 @@ export async function firmApproveAndExecute(approvalId, vendorIdStr) {
     const firmCanFix = isFirmRetriableError(err.message);
 
     if (firmCanFix) {
+      // Allow the firm to retry publication. Approval evidence
+      // (firmApprovedAt / firmApprovedBy / the ContentApprovalRecord) is left
+      // INTACT — a failed publication must never erase the approval.
       item.status = 'approved';
       item.executionError = err.message;
-      item.firmApprovedAt = null;
-      item.firmApprovedBy = null;
       await item.save();
       console.warn(`[firmApproveAndExecute] Publish failed (firm-retriable) for ${approvalId}: ${err.message}`);
       return { ok: false, error: err.message, firmRetriable: true };
@@ -239,8 +291,7 @@ export async function firmApproveAndExecute(approvalId, vendorIdStr) {
     item.status = 'needs_review';
     item.decisionReason = `Firm approved but publish failed: ${err.message}`;
     item.executionError = err.message;
-    item.firmApprovedAt = null;
-    item.firmApprovedBy = null;
+    // firmApprovedAt / firmApprovedBy preserved — approval evidence is not erased.
     await item.save();
     console.error(`[firmApproveAndExecute] Publish failed (draft issue) for ${approvalId}, routed to needs_review: ${err.message}`);
     return { ok: false, error: err.message, routedToReview: true };

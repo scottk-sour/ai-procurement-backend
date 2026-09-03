@@ -1,6 +1,7 @@
 import express from 'express';
 import vendorAuth from '../middleware/vendorAuth.js';
 import ApprovalQueue from '../models/ApprovalQueue.js';
+import ContentApprovalRecord from '../models/ContentApprovalRecord.js';
 import { firmApproveAndExecute, firmRejectItem, firmRepublish } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
 
@@ -36,6 +37,39 @@ router.get('/', async (req, res) => {
       success: true,
       items,
       pagination: { page: pg, limit: lim, total, pages: Math.ceil(total / lim) },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/vendor/approvals/history — this firm's complete content-approval
+// history, read only from the immutable ContentApprovalRecord collection.
+// Scoped to req.vendorId, so a firm can only ever see its own records.
+// Historical posts approved before this system existed have no record and are
+// therefore (correctly) absent — nothing is backfilled or reconstructed.
+// NOTE: must be declared before GET '/:id' so "history" is not treated as an id.
+router.get('/history', async (req, res) => {
+  try {
+    const records = await ContentApprovalRecord.find({ vendorId: req.vendorId })
+      .sort({ approvedAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      total: records.length,
+      records: records.map((r) => ({
+        approvalItemId: r.approvalItemId,
+        vendorAccountId: r.approvedByVendorAccountId,
+        approverName: r.approverName,
+        approverRole: r.approverRole,
+        registrationNumber: r.approverRegistrationNumber,
+        regulator: r.approverRegulator,
+        approvedAt: r.approvedAt,
+        qualifiedPersonConfirmation: r.qualifiedPersonConfirmation,
+        individuallyAuthenticated: r.individuallyAuthenticated,
+        identityAssurance: r.identityAssurance,
+      })),
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -123,6 +157,17 @@ router.post('/:id/firm-data', async (req, res) => {
 // POST /api/vendor/approvals/:id/firm-approve — firm approves and auto-publishes
 router.post('/:id/firm-approve', async (req, res) => {
   try {
+    // (5/6) Explicit qualified-person confirmation is required and must be true.
+    // Represents: "I confirm I am a qualified person and have reviewed this
+    // content in accordance with our regulatory obligations."
+    const { qualifiedPersonConfirmation } = req.body || {};
+    if (qualifiedPersonConfirmation !== true) {
+      return res.status(400).json({
+        success: false,
+        error: 'You must confirm that you are a qualified person and have reviewed this content in accordance with your regulatory obligations before it can be approved.',
+      });
+    }
+
     const preCheck = await ApprovalQueue.findById(req.params.id).select('draftPayload firmData vendorId status').lean();
     if (preCheck && preCheck.vendorId?.toString() === req.vendorId.toString()) {
       const bodyText = [preCheck.draftPayload?.body || '', preCheck.draftPayload?.linkedInText || '', preCheck.draftPayload?.facebookText || ''].join('\n');
@@ -138,7 +183,7 @@ router.post('/:id/firm-approve', async (req, res) => {
       }
     }
 
-    const result = await firmApproveAndExecute(req.params.id, req.vendorId.toString());
+    const result = await firmApproveAndExecute(req.params.id, req.vendorId.toString(), { qualifiedPersonConfirmation });
 
     if (!result.ok) {
       if (result.firmRetriable) {
@@ -169,7 +214,9 @@ router.post('/:id/firm-approve', async (req, res) => {
     res.json({ success: true, status: item.status, liveUrl });
   } catch (err) {
     console.error('[firm-approve] error:', err);
-    const status = err.message.includes('not found') ? 404
+    const status = err.code === 'NOMINATED_APPROVER_REQUIRED' ? 422
+      : err.code === 'QUALIFIED_PERSON_CONFIRMATION_REQUIRED' ? 400
+      : err.message.includes('not found') ? 404
       : err.message.includes('Access denied') ? 403
       : err.message.includes('Cannot') || err.message.includes('must be') ? 400
       : 500;
