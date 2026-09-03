@@ -60,6 +60,7 @@ describe('ContentApprovalRecord model', () => {
     approverRegulator: 'SRA',
     approvedAt: new Date(),
     qualifiedPersonConfirmation: true,
+    contentFingerprint: 'fp-abc123',
   });
 
   it('requires the core evidence fields', () => {
@@ -69,6 +70,7 @@ describe('ContentApprovalRecord model', () => {
       'approvalItemId', 'vendorId', 'approvedByVendorAccountId',
       'approverName', 'approverRole', 'approverRegistrationNumber',
       'approverRegulator', 'approvedAt', 'qualifiedPersonConfirmation',
+      'contentFingerprint',
     ]) {
       expect(err.errors[f]).toBeDefined();
     }

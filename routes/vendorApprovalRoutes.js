@@ -2,6 +2,7 @@ import express from 'express';
 import vendorAuth from '../middleware/vendorAuth.js';
 import ApprovalQueue from '../models/ApprovalQueue.js';
 import ContentApprovalRecord from '../models/ContentApprovalRecord.js';
+import Vendor from '../models/Vendor.js';
 import { firmApproveAndExecute, firmRejectItem, firmRepublish } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
 
@@ -71,6 +72,57 @@ router.get('/history', async (req, res) => {
         identityAssurance: r.identityAssurance,
       })),
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/vendor/approvals/nominated-approver — read this firm's nominated approver.
+// (The vendor profile route PUT /profile whitelists fields and does NOT accept
+//  nominatedApprover, so this is the supported path to set/read it.)
+router.get('/nominated-approver', async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.vendorId).select('nominatedApprover').lean();
+    if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
+    res.json({ success: true, nominatedApprover: vendor.nominatedApprover || null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/vendor/approvals/nominated-approver — set this firm's nominated approver.
+// Scoped to the authenticated vendor (req.vendorId); a firm can only set its own.
+router.put('/nominated-approver', async (req, res) => {
+  try {
+    const VALID_REGULATORS = ['SRA', 'ICAEW', 'FCA', 'Propertymark'];
+    const { name, role, registrationNumber, regulator } = req.body || {};
+    const missing = [];
+    if (!name || !String(name).trim()) missing.push('name');
+    if (!role || !String(role).trim()) missing.push('role');
+    if (!registrationNumber || !String(registrationNumber).trim()) missing.push('registrationNumber');
+    if (!VALID_REGULATORS.includes(regulator)) missing.push('regulator');
+    if (missing.length) {
+      return res.status(400).json({
+        success: false,
+        error: `Nominated approver requires ${missing.join(', ')} (regulator must be one of ${VALID_REGULATORS.join(', ')}).`,
+      });
+    }
+
+    const nominatedApprover = {
+      name: String(name).trim(),
+      role: String(role).trim(),
+      registrationNumber: String(registrationNumber).trim(),
+      regulator,
+      recordedAt: new Date(),
+    };
+    const vendor = await Vendor.findByIdAndUpdate(
+      req.vendorId,
+      { $set: { nominatedApprover } },
+      { new: true },
+    ).select('nominatedApprover').lean();
+
+    if (!vendor) return res.status(404).json({ success: false, error: 'Vendor not found' });
+    res.json({ success: true, nominatedApprover: vendor.nominatedApprover });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

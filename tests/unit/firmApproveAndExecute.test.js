@@ -26,7 +26,7 @@ vi.mock('../../models/Vendor.js', () => ({
 vi.mock('../../models/ContentApprovalRecord.js', () => ({
   default: {
     create: async (data) => { const rec = { _id: `rec-${state.records.length}`, ...data }; state.records.push(rec); return rec; },
-    findOne: (q) => ({ lean: async () => state.records.find((r) => String(r.approvalItemId) === String(q.approvalItemId)) || null }),
+    findOne: (q) => ({ lean: async () => state.records.find((r) => String(r.approvalItemId) === String(q.approvalItemId) && r.contentFingerprint === q.contentFingerprint) || null }),
   },
 }));
 
@@ -148,5 +148,21 @@ describe('firmApproveAndExecute — failure & retry', () => {
     const second = await call();
     expect(second.ok).toBe(true);
     expect(state.records).toHaveLength(1); // still one — no duplicate
+  });
+
+  it('#13b re-approval after the content was edited writes a NEW record', async () => {
+    await call();
+    expect(state.records).toHaveLength(1);
+    const firstFingerprint = state.records[0].contentFingerprint;
+    expect(firstFingerprint).toBeTruthy();
+
+    // The draft is edited and re-approved (admin returns it to 'approved').
+    state.item.status = 'approved';
+    state.item.draftPayload = { title: 'A title', body: 'A DIFFERENT body after an edit.' };
+
+    const result = await call();
+    expect(result.ok).toBe(true);
+    expect(state.records).toHaveLength(2);            // new version -> new record
+    expect(state.records[1].contentFingerprint).not.toBe(firstFingerprint);
   });
 });

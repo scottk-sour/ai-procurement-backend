@@ -8,7 +8,10 @@ import mongoose from 'mongoose';
  *  - written once, at the moment of a successful firm approval (before publication);
  *  - there is no API update endpoint and no API delete endpoint;
  *  - a pre-save guard rejects any modification of an already-persisted record;
- *  - `approvalItemId` is unique, so publication retries never create duplicates.
+ *  - the (approvalItemId, contentFingerprint) pair is unique: a pure publication
+ *    retry of unchanged content reuses the existing record, while a re-approval
+ *    after the content was edited writes a NEW record (so a record never
+ *    describes a version the approver did not see).
  *
  * IDENTITY HONESTY: the firm authenticates through a shared Vendor account, not a
  * per-user login. This record therefore separates the authenticated acting
@@ -30,9 +33,13 @@ const contentApprovalRecordSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ApprovalQueue',
     required: true,
-    unique: true,
     index: true,
   },
+  // Fingerprint of the exact merged content (title + body + social, after firm
+  // data substitution) that the approver approved. Distinguishes a pure retry
+  // of unchanged content (same fingerprint -> reuse the record) from a
+  // re-approval after the content changed (new fingerprint -> new record).
+  contentFingerprint: { type: String, required: true, index: true },
   // The firm whose content this is (used to scope a firm's own history).
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -69,6 +76,11 @@ const contentApprovalRecordSchema = new mongoose.Schema({
     default: 'firm_account_attested',
   },
 }, { timestamps: true, collection: 'content_approval_records' });
+
+// One record per (approval item, content version). A pure publication retry of
+// unchanged content reuses the existing record; a re-approval after the content
+// was edited has a different fingerprint and so writes a new record.
+contentApprovalRecordSchema.index({ approvalItemId: 1, contentFingerprint: 1 }, { unique: true });
 
 // Immutability guard: allow the initial write only; reject any later modification.
 contentApprovalRecordSchema.pre('save', function (next) {

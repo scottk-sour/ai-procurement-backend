@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import ApprovalQueue from '../models/ApprovalQueue.js';
 import { getFirmContext, renderFirmContextBlock } from './contentPlanner/firmContext.js';
 
@@ -246,11 +247,27 @@ export async function firmApproveAndExecute(approvalId, vendorIdStr, options = {
   // publication, independently of whether publication later succeeds. One record
   // per approval item (unique index), so a publication retry never duplicates it.
   // Name / role / registration / regulator are SNAPSHOTTED here, never a live ref.
+  // Fingerprint the exact merged content the approver approved (title + body +
+  // social, after firm-data substitution — i.e. what will be published). A pure
+  // retry of unchanged content has the same fingerprint and reuses the record; a
+  // re-approval after the content was edited has a different fingerprint and
+  // writes a NEW record, so a record never describes a version the approver did
+  // not see.
+  const firmDataMap = buildFirmDataMap(item);
+  const merged = buildMergedPayload(item.draftPayload || {}, firmDataMap);
+  const contentFingerprint = crypto.createHash('sha256').update(JSON.stringify({
+    title: merged.title || '',
+    body: merged.body || '',
+    linkedInText: merged.linkedInText || '',
+    facebookText: merged.facebookText || '',
+  })).digest('hex');
+
   const { default: ContentApprovalRecord } = await import('../models/ContentApprovalRecord.js');
-  const existingRecord = await ContentApprovalRecord.findOne({ approvalItemId: item._id }).lean();
+  const existingRecord = await ContentApprovalRecord.findOne({ approvalItemId: item._id, contentFingerprint }).lean();
   if (!existingRecord) {
     await ContentApprovalRecord.create({
       approvalItemId: item._id,
+      contentFingerprint,
       vendorId: item.vendorId,
       approvedByVendorAccountId: vendorIdStr,
       approverName: na.name,
