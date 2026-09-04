@@ -10,6 +10,11 @@ const experimentRunSchema = new mongoose.Schema({
   modelParams: { type: mongoose.Schema.Types.Mixed },
   responseText: { type: String },
   citedUrls: [String],
+  // Raw API response, captured verbatim. Written ONLY on the Perplexity path and
+  // ONLY for wave >= 2 (see scripts/experiments/runExperimentScan.js). Mixed, no
+  // default, not indexed. Absent on wave-1 documents and on the ChatGPT/Gemini
+  // paths, so those documents' field sets are unchanged by this addition.
+  rawResponse: { type: mongoose.Schema.Types.Mixed },
   targets: [{
     url: { type: String, required: true },
     group: { type: String, enum: ['treatment', 'control'], required: true },

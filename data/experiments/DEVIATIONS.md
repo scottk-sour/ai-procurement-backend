@@ -75,3 +75,18 @@ Record every deviation from the pre-registration here, with date and corrective 
 **Corrective action:** The pre-#186 context-gate matcher was committed as a frozen, verbatim copy of `scripts/experiments/lib/mentionMatcher.js` at commit `a080129` → `scripts/experiments/lib/mentionMatcher.pre186.js`, and `buildMentionGroundTruth.js` gained `--definition-matcher <path>` (both in PR #188). Rebuilding with `--definition-matcher scripts/experiments/lib/mentionMatcher.pre186.js` reproduced the fixture exactly (469 disagreements = 217 perplexity / 252 chatgpt; 267 rows; `labelling-view.csv` 140,382 bytes; `labelling-key.csv` 11,124 bytes). The frozen matcher is used only to reproduce fixture membership and must never be used for scoring or recomputation. The underlying design is recorded in `docs/research/EXP-001-frozen-fixture-design.md` (PR #187); the gate run in `docs/research/EXP-001-regression-2026-09-02.md`.
 
 **Impact on analysis:** None. The 267 rows and their adjudicated verdicts are unchanged; the frozen definition matcher reproduces the same fixture membership, and the deployed rule was accepted on its own regression score (29 / 27) at commit `f90a3ca`.
+
+---
+
+## 04/09/2026 — AI-visibility content study: claim-use capture added (pre-registered change, not a deviation)
+
+**Study:** `study_2026_09_ai_visibility_content`, panel `buyer_research_30`.
+
+**What changed, and why it is pre-registered rather than a deviation:** ahead of the Wave 2 rerun (and before any Wave 2 collection), the schema and tooling gained the ability to measure *claim use* — whether, when a TendorAI target article was cited, the specific proposition it was written to supply was actually used in the answer. This is an **additive** capability declared before the data it applies to exists, so it is recorded here as a pre-registered change, not a correction of something already collected.
+
+- `ExperimentRun` gains a `rawResponse` field (Mixed, no default, not indexed). It is written **only on the Perplexity path and only for wave ≥ 2**. Wave 1 documents and the ChatGPT/Gemini paths are unchanged (`rawResponse` absent); `responseText` and `citedUrls` continue to be written exactly as before. Serialisability of the installed `openai@4.80.1` response object into the Mixed field was verified at runtime (plain JSON body + one non-enumerable `_request_id`; BSON round-trip lossless; a `max_tokens: 1024` completion is single-digit KB, far under the 16 MB BSON limit).
+- New frozen claim registry `data/experiments/visibility-content-claims.json` (starts `frozen: null`), read-only loader `lib/experiments/loadClaims.js`, new `claim_use_labels` collection (`models/ClaimUseLabel.js`), and the `exportClaimUseSheet.js` / `importClaimUseLabels.js` scripts.
+
+**Wave 1 integrity:** unaffected. No script reads or mutates a Wave-1 `experiment_runs` document; the claim-use export refuses `wave < 2`; the registry starts unfrozen and the export refuses to run until it is frozen. Wave 1 remains a level-1 open-set citation record and is not backfilled. See `docs/research/visibility-content-wave2-claim-use-2026-09-04.md`.
+
+**Impact on analysis:** None to date — capability only; no Wave 2 data collected yet.
