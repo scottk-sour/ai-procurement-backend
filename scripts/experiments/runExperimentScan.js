@@ -40,7 +40,10 @@ const PLATFORM_CONFIG = {
       });
       const text = resp.choices?.[0]?.message?.content || '';
       const citations = resp.citations || [];
-      return { text, citations, modelVersion: 'sonar' };
+      // `raw` carries the full API response object for wave >= 2 capture. text
+      // and citations are extracted exactly as before, so responseText/citedUrls
+      // are written unchanged.
+      return { text, citations, modelVersion: 'sonar', raw: resp };
     },
   },
   chatgpt: {
@@ -77,6 +80,7 @@ const PLATFORM_CONFIG = {
 };
 
 import { isFirmMentioned } from './lib/mentionMatcher.js';
+import { experimentRunDoc } from './lib/experimentRunDoc.js';
 
 function normaliseUrl(url) {
   try {
@@ -158,23 +162,13 @@ async function main() {
       while (clean < needed && attempts < maxAttempts) {
         attempts++;
         try {
-          const { text, citations, modelVersion } = await PLATFORM_CONFIG[platform].query(prompt.text);
+          const { text, citations, modelVersion, raw } = await PLATFORM_CONFIG[platform].query(prompt.text);
 
           const targetResults = checkTargets(text, citations, prompt.targets || []);
 
-          await ExperimentRun.create({
-            study,
-            wave,
-            promptId: prompt.id,
-            promptText: prompt.text,
-            platform,
-            modelVersion,
-            modelParams: { max_tokens: 1024 },
-            responseText: text,
-            citedUrls: citations,
-            targets: targetResults,
-            status: 'ok',
-          });
+          await ExperimentRun.create(experimentRunDoc({
+            study, wave, prompt, platform, modelVersion, text, citations, targetResults, raw,
+          }));
 
           clean++;
           totalNew++;
