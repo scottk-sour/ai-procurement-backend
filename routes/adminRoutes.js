@@ -17,6 +17,7 @@ import AeoReport from '../models/AeoReport.js';
 import VendorLead from '../models/VendorLead.js';
 import Review from '../models/Review.js';
 import VendorPost from '../models/VendorPost.js';
+import { aiTransitionWouldPublish, AI_PUBLISH_BLOCK_MESSAGE } from '../utils/aiContentPublishGuard.js';
 import AeoAudit from '../models/AeoAudit.js';
 import AIMentionScan from '../models/AIMentionScan.js';
 import SchemaInstallRequest from '../models/SchemaInstallRequest.js';
@@ -1161,6 +1162,16 @@ router.patch('/posts/:id', adminAuth, async (req, res) => {
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Status must be published or draft.' });
+    }
+
+    const existing = await VendorPost.findById(req.params.id).select('aiGenerated').lean();
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Post not found.' });
+    }
+    // No admin override: AI-generated content must not be published here — it
+    // must go through the firm content-approval process. Non-AI posts unaffected.
+    if (aiTransitionWouldPublish({ aiGenerated: existing.aiGenerated, status })) {
+      return res.status(403).json({ success: false, message: AI_PUBLISH_BLOCK_MESSAGE });
     }
 
     const post = await VendorPost.findByIdAndUpdate(

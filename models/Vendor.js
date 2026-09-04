@@ -53,6 +53,23 @@ const vendorSchema = new mongoose.Schema({
   chMatchedAt: { type: Date },
   officeCount: { type: Number },
 
+  // Nominated qualified approver — the firm-level nominated person accountable
+  // for approving AI-generated content. This is NOT an independently
+  // authenticated application user; the firm authenticates through a shared
+  // Vendor account. It records who the firm nominates, snapshotted into each
+  // approval record at approval time.
+  nominatedApprover: {
+    type: {
+      name: { type: String, trim: true },
+      role: { type: String, trim: true },
+      registrationNumber: { type: String, trim: true },
+      regulator: { type: String, enum: ['SRA', 'ICAEW', 'FCA', 'Propertymark'] },
+      recordedAt: { type: Date },
+    },
+    default: null,
+    _id: false,
+  },
+
   // Professional services fields (solicitors & accountants)
   fixedFees: [{
     service: { type: String, trim: true },

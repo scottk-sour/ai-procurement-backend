@@ -10,6 +10,8 @@ import {
   getApprovalById,
 } from '../services/approvalQueue.js';
 import { pingBingIndexNow } from '../services/indexNowService.js';
+import ApprovalQueue from '../models/ApprovalQueue.js';
+import { requiresFirmContentApproval, ADMIN_EXECUTE_BLOCK_MESSAGE } from '../utils/aiContentPublishGuard.js';
 
 const router = express.Router();
 
@@ -106,6 +108,15 @@ router.post('/:id/re-verify', async (req, res) => {
 // POST /api/admin/approvals/:id/execute
 router.post('/:id/execute', async (req, res) => {
   try {
+    // Firm content drafts must be approved and published through the firm
+    // approval path (POST /api/vendor/approvals/:id/firm-approve), which writes
+    // the immutable approval record. There is no admin override for firm content.
+    const pre = await ApprovalQueue.findById(req.params.id).select('itemType').lean();
+    if (!pre) return res.status(404).json({ success: false, error: 'Approval item not found' });
+    if (requiresFirmContentApproval(pre)) {
+      return res.status(403).json({ success: false, error: ADMIN_EXECUTE_BLOCK_MESSAGE });
+    }
+
     const item = await executeApprovedItem(req.params.id);
     console.log(`[ADMIN ACTION] approval_executed id=${item._id} agent=${item.agentName} type=${item.itemType} by=${req.admin?.email}`);
 

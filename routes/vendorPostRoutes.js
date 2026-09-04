@@ -2,6 +2,7 @@ import express from 'express';
 import VendorPost from '../models/VendorPost.js';
 import Vendor from '../models/Vendor.js';
 import vendorAuth from '../middleware/vendorAuth.js';
+import { aiCreateWouldPublish, aiTransitionWouldPublish, AI_PUBLISH_BLOCK_MESSAGE } from '../utils/aiContentPublishGuard.js';
 import {
   PILLAR_LIBRARIES,
   VERTICAL_ENTITIES,
@@ -169,6 +170,12 @@ router.post('/:vendorId/posts', vendorAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Title and body are required' });
     }
 
+    // AI-generated content must not be published through this direct route — it
+    // must go through the firm content-approval process. Non-AI posts unaffected.
+    if (aiCreateWouldPublish({ aiGenerated: !!aiGenerated, status })) {
+      return res.status(403).json({ success: false, error: AI_PUBLISH_BLOCK_MESSAGE });
+    }
+
     const post = new VendorPost({
       vendor: vendorId,
       title: title.trim(),
@@ -209,6 +216,13 @@ router.put('/:vendorId/posts/:postId', vendorAuth, async (req, res) => {
     }
 
     const { title, body, status, category, linkedInText, facebookText } = req.body;
+
+    // AI-generated content cannot be transitioned to published through this
+    // direct route — it must go through the firm content-approval process.
+    if (aiTransitionWouldPublish({ aiGenerated: post.aiGenerated, status })) {
+      return res.status(403).json({ success: false, error: AI_PUBLISH_BLOCK_MESSAGE });
+    }
+
     if (title !== undefined) post.title = title.trim();
     if (body !== undefined) post.body = body.trim();
     if (status !== undefined && ['draft', 'published', 'hidden'].includes(status)) post.status = status;
